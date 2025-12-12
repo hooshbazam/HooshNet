@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block title %}داشبورد - پنل کاربری{% endblock %}
+
+{% block content %}
+<div class="user-welcome fade-in">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h1>سلام، {{ user.first_name or 'کاربر' }} <span style="font-size: 1.2rem;">👋</span></h1>
+            <p>به پنل کاربری خود خوش آمدید</p>
+        </div>
+        <a href="{{ add_bot_prefix('/tickets') }}" class="icon-btn" style="position: relative;">
+            <i class="fas fa-bell"></i>
+            <span
+                style="position: absolute; top: 8px; right: 8px; width: 8px; height: 8px; background: var(--primary); border-radius: 50%;"></span>
+        </a>
+    </div>
+</div>
+
+<!-- Wallet Section -->
+<section class="fade-in" style="animation-delay: 0.1s;">
+    <div class="wallet-card">
+        <div class="wallet-currency">موجودی کیف پول</div>
+        <div class="wallet-balance">
+            {{ "{:,}".format(user.balance or 0) }} <span
+                style="font-size: 1.2rem; font-weight: 400; color: #ccc;">تومان</span>
+        </div>
+        <div class="wallet-actions">
+            <a href="{{ add_bot_prefix('/recharge') }}" class="btn-primary">
+                <i class="fas fa-plus"></i>
+                افزایش موجودی
+            </a>
+            <a href="{{ add_bot_prefix('/transactions') }}" class="btn-secondary">
+                <i class="fas fa-history"></i>
+                تراکنش‌ها
+            </a>
+        </div>
+    </div>
+</section>
+
+<!-- Quick Actions -->
+<section class="fade-in" style="animation-delay: 0.2s;">
+    <div class="quick-actions">
+        <a href="{{ add_bot_prefix('/buy-service') }}" class="action-item">
+            <div class="action-icon"><i class="fas fa-shopping-cart"></i></div>
+            <span class="action-label">خرید سرویس</span>
+        </a>
+        <a href="{{ add_bot_prefix('/renew-service') }}" class="action-item">
+            <div class="action-icon"><i class="fas fa-sync-alt"></i></div>
+            <span class="action-label">تمدید</span>
+        </a>
+        <a href="{{ add_bot_prefix('/add-volume') }}" class="action-item">
+            <div class="action-icon"><i class="fas fa-database"></i></div>
+            <span class="action-label">حجم اضافه</span>
+        </a>
+        <a href="{{ add_bot_prefix('/tickets') }}" class="action-item">
+            <div class="action-icon"><i class="fas fa-headset"></i></div>
+            <span class="action-label">پشتیبانی</span>
+        </a>
+    </div>
+</section>
+
+<!-- Stats Overview -->
+<section class="fade-in" style="animation-delay: 0.25s; margin-bottom: 24px;">
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div class="card" style="margin: 0; padding: 16px; display: flex; align-items: center; gap: 12px;">
+            <div
+                style="width: 40px; height: 40px; background: rgba(16, 185, 129, 0.1); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #10b981;">
+                <i class="fas fa-check-circle"></i>
+            </div>
+            <div>
+                <div style="font-size: 1.2rem; font-weight: 800;">{{ active_services }}</div>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">سرویس فعال</div>
+            </div>
+        </div>
+        <div class="card" style="margin: 0; padding: 16px; display: flex; align-items: center; gap: 12px;">
+            <div
+                style="width: 40px; height: 40px; background: rgba(59, 130, 246, 0.1); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #3b82f6;">
+                <i class="fas fa-cloud-download-alt"></i>
+            </div>
+            <div>
+                <div style="font-size: 1.2rem; font-weight: 800;">{{ total_traffic_gb|round(1) }} <small>GB</small>
+                </div>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">حجم کل</div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Active Services -->
+<section class="fade-in" style="animation-delay: 0.3s;">
+    <div
+        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding: 0 4px;">
+        <h3 style="margin: 0; font-size: 1.1rem; font-weight: 800;">سرویس‌های فعال</h3>
+        <a href="{{ add_bot_prefix('/services') }}"
+            style="font-size: 0.85rem; color: var(--primary); font-weight: 600;">مشاهده همه</a>
+    </div>
+
+    {% if services %}
+    {% for service in services[:3] %}
+    <div class="service-card" onclick="window.location.href='{{ add_bot_prefix('/services/' + service.id|string) }}'">
+        <div class="service-header">
+            <div style="display: flex; gap: 12px;">
+                <div class="service-icon">
+                    <i class="fas fa-shield-alt"></i>
+                </div>
+                <div class="service-info">
+                    <h3>{{ service.client_name or 'سرویس شخصی' }}</h3>
+                    <p>#{{ service.id }}</p>
+                </div>
+            </div>
+            <div class="service-status {% if service.is_online %}status-online{% else %}status-offline{% endif %}">
+                <div class="status-dot"></div>
+                {% if service.is_online %}آنلاین{% else %}آفلاین{% endif %}
+            </div>
+        </div>
+
+        {% set percentage = service.usage_percentage|default(0)|int %}
+        <div class="progress-track">
+            <div class="progress-fill"
+                style="width: {{ percentage }}%; {% if percentage > 90 %}background: var(--error); box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);{% elif percentage > 75 %}background: var(--warning); box-shadow: 0 0 10px rgba(245, 158, 11, 0.5);{% endif %}">
+            </div>
+        </div>
+        <div class="usage-stats">
+            <span>مصرف: {{ service.used_gb|default(0)|round(2) }} GB</span>
+            <span>کل: {{ service.total_gb }} GB</span>
+        </div>
+
+        <div style="margin-top: 16px; display: flex; gap: 8px;">
+            <button class="btn-secondary" style="padding: 8px; font-size: 0.85rem; flex: 1;"
+                onclick="event.stopPropagation(); copyToClipboard('{{ service.subscription_link }}')">
+                <i class="fas fa-copy"></i> کپی لینک
+            </button>
+            <a href="{{ add_bot_prefix('/services/' + service.id|string) }}" class="btn-secondary"
+                style="padding: 8px; font-size: 0.85rem; flex: 1; background: rgba(255,255,255,0.05);">
+                <i class="fas fa-cog"></i> مدیریت
+            </a>
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="card" style="text-align: center; padding: 40px 20px; border-style: dashed;">
+        <div
+            style="width: 60px; height: 60px; background: rgba(255, 255, 255, 0.05); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; color: var(--text-tertiary); font-size: 1.5rem;">
+            <i class="fas fa-ghost"></i>
+        </div>
+        <h3 style="margin: 0 0 8px;">هنوز سرویسی ندارید!</h3>
+        <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 24px;">برای دسترسی به اینترنت آزاد،
+            اولین سرویس خود را بسازید.</p>
+        <a href="{{ add_bot_prefix('/buy-service') }}" class="btn-primary"
+            style="width: fit-content; margin: 0 auto; padding: 10px 30px;">
+            <i class="fas fa-plus"></i>
+            خرید اشتراک
+        </a>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

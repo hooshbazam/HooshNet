@@ -1,0 +1,401 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}جزئیات سرویس{% endblock %}
+{% block page_subtitle %}مدیریت و مشاهده وضعیت سرویس {{ service.client_name }}{% endblock %}
+
+{% block content %}
+<div class="fade-in">
+    <!-- Header Actions -->
+    <div style="margin-bottom: var(--sp-lg);">
+        <a href="/admin/services" class="btn btn-secondary btn-sm" style="display: inline-flex;">
+            <i class="fas fa-arrow-right"></i>
+            بازگشت به لیست
+        </a>
+    </div>
+
+    <!-- Info Cards Grid -->
+    <div class="grid-4" style="margin-bottom: var(--sp-xl);">
+        <!-- Status Card -->
+        <div class="card">
+            <div style="display: flex; align-items: center; gap: var(--sp-md); margin-bottom: var(--sp-md);">
+                <div
+                    style="width: 40px; height: 40px; border-radius: var(--radius-lg); background: rgba(16, 185, 129, 0.1); color: var(--p-success); display: flex; align-items: center; justify-content: center;">
+                    <i class="fas fa-check-circle"></i>
+                </div>
+                <div style="font-weight: 700; color: var(--p-text-muted);">وضعیت</div>
+            </div>
+            <div style="font-size: 1.2rem; font-weight: 800; color: var(--p-text-main);">
+                {% if service.is_active %}
+                <span class="badge badge-success">فعال</span>
+                {% else %}
+                <span class="badge badge-error">غیرفعال</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Protocol Card -->
+        <div class="card">
+            <div style="display: flex; align-items: center; gap: var(--sp-md); margin-bottom: var(--sp-md);">
+                <div
+                    style="width: 40px; height: 40px; border-radius: var(--radius-lg); background: rgba(59, 130, 246, 0.1); color: var(--p-info); display: flex; align-items: center; justify-content: center;">
+                    <i class="fas fa-plug"></i>
+                </div>
+                <div style="font-weight: 700; color: var(--p-text-muted);">پروتکل</div>
+            </div>
+            <div style="font-size: 1.2rem; font-weight: 800; color: var(--p-text-main);">
+                {{ service.protocol or 'vless' }}
+            </div>
+        </div>
+
+        <!-- Panel Card -->
+        <div class="card">
+            <div style="display: flex; align-items: center; gap: var(--sp-md); margin-bottom: var(--sp-md);">
+                <div
+                    style="width: 40px; height: 40px; border-radius: var(--radius-lg); background: rgba(245, 158, 11, 0.1); color: var(--p-warning); display: flex; align-items: center; justify-content: center;">
+                    <i class="fas fa-server"></i>
+                </div>
+                <div style="font-weight: 700; color: var(--p-text-muted);">پنل</div>
+            </div>
+            <div style="font-size: 1.2rem; font-weight: 800; color: var(--p-text-main);">
+                {{ service.panel_name }}
+            </div>
+        </div>
+
+        <!-- Expiry Card -->
+        <div class="card">
+            <div style="display: flex; align-items: center; gap: var(--sp-md); margin-bottom: var(--sp-md);">
+                <div
+                    style="width: 40px; height: 40px; border-radius: var(--radius-lg); background: rgba(239, 68, 68, 0.1); color: var(--p-error); display: flex; align-items: center; justify-content: center;">
+                    <i class="fas fa-hourglass-half"></i>
+                </div>
+                <div style="font-weight: 700; color: var(--p-text-muted);">انقضا</div>
+            </div>
+            <div style="font-size: 1.2rem; font-weight: 800; color: var(--p-text-main);">
+                {% if service.remaining_days_realtime is not none %}
+                {% if service.remaining_days_realtime > 0 %}
+                {{ service.remaining_days_realtime }} روز
+                {% else %}
+                منقضی شده
+                {% endif %}
+                {% else %}
+                نامحدود
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: var(--sp-xl); margin-bottom: var(--sp-xl);">
+        <!-- Usage Stats -->
+        <div class="card">
+            <div class="card-header" style="margin-bottom: var(--sp-lg);">
+                <div class="card-title">
+                    <i class="fas fa-chart-pie" style="color: var(--p-info);"></i>
+                    آمار مصرف
+                </div>
+            </div>
+
+            <div
+                style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--sp-lg); margin-bottom: var(--sp-xl);">
+                <div
+                    style="text-align: center; padding: var(--sp-md); background: var(--p-bg-hover); border-radius: var(--radius-lg);">
+                    <div style="font-size: 0.9rem; color: var(--p-text-muted); margin-bottom: 5px;">حجم کل</div>
+                    <div style="font-size: 1.5rem; font-weight: 800; color: var(--p-text-main);">{{ (service.total_gb or
+                        0)|float|round(2) }} <span style="font-size: 0.9rem;">GB</span></div>
+                </div>
+                <div
+                    style="text-align: center; padding: var(--sp-md); background: var(--p-bg-hover); border-radius: var(--radius-lg);">
+                    <div style="font-size: 0.9rem; color: var(--p-text-muted); margin-bottom: 5px;">مصرف شده</div>
+                    <div style="font-size: 1.5rem; font-weight: 800; color: var(--p-warning);">{{ (service.used_gb or
+                        service.cached_used_gb or 0)|float|round(2) }} <span style="font-size: 0.9rem;">GB</span></div>
+                </div>
+                <div
+                    style="text-align: center; padding: var(--sp-md); background: var(--p-bg-hover); border-radius: var(--radius-lg);">
+                    <div style="font-size: 0.9rem; color: var(--p-text-muted); margin-bottom: 5px;">باقیمانده</div>
+                    <div style="font-size: 1.5rem; font-weight: 800; color: var(--p-success);">{{ ((service.total_gb or
+                        0) - (service.used_gb or service.cached_used_gb or 0))|float|round(2) }} <span
+                            style="font-size: 0.9rem;">GB</span></div>
+                </div>
+            </div>
+
+            <div style="margin-bottom: var(--sp-md);">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <span style="font-size: 0.9rem; color: var(--p-text-muted);">درصد مصرف</span>
+                    {% set total = service.total_gb or 0 %}
+                    {% set used = service.used_gb or service.cached_used_gb or 0 %}
+                    {% set percent = ((used / total) * 100)|float|round(1) if total > 0 else 0 %}
+                    <span style="font-size: 0.9rem; font-weight: 700;">{{ percent }}%</span>
+                </div>
+                <div class="progress-bar"
+                    style="height: 10px; background: var(--p-bg-main); border-radius: 5px; overflow: hidden;">
+                    <div
+                        style="width: {{ percent }}%; height: 100%; background: {% if percent > 90 %}var(--p-error){% elif percent > 70 %}var(--p-warning){% else %}var(--p-success){% endif %}; border-radius: 5px; transition: width 0.5s ease;">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- User Info -->
+        <div class="card">
+            <div class="card-header" style="margin-bottom: var(--sp-lg);">
+                <div class="card-title">
+                    <i class="fas fa-user" style="color: var(--p-primary);"></i>
+                    اطلاعات کاربر
+                </div>
+            </div>
+
+            <div
+                style="display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: var(--sp-lg);">
+                <div
+                    style="width: 80px; height: 80px; border-radius: 50%; background: var(--p-bg-hover); display: flex; align-items: center; justify-content: center; font-size: 2rem; font-weight: 800; color: var(--p-primary); margin-bottom: var(--sp-md);">
+                    {{ (service.first_name or service.username or 'U')[0]|upper }}
+                </div>
+                <div style="font-size: 1.2rem; font-weight: 800; margin-bottom: 5px;">{{ service.first_name or '' }} {{
+                    service.last_name or '' }}</div>
+                <div style="color: var(--p-text-muted);">@{{ service.username or 'بدون یوزرنیم' }}</div>
+            </div>
+
+            <div
+                style="padding: var(--sp-md); background: var(--p-bg-hover); border-radius: var(--radius-md); margin-bottom: var(--sp-lg);">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <span style="color: var(--p-text-muted); font-size: 0.9rem;">آیدی عددی</span>
+                    <span style="font-weight: 700;">{{ service.telegram_id }}</span>
+                </div>
+            </div>
+
+            <a href="/admin/users/{{ service.user_id }}" class="btn btn-outline btn-block">
+                مشاهده پروفایل کامل
+            </a>
+        </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="card">
+        <div class="card-header" style="margin-bottom: var(--sp-lg);">
+            <div class="card-title">
+                <i class="fas fa-cogs" style="color: var(--p-text-muted);"></i>
+                عملیات سرویس
+            </div>
+        </div>
+
+        <div style="display: flex; flex-wrap: wrap; gap: var(--sp-md);">
+            <button class="btn btn-primary" onclick="getConfig()">
+                <i class="fas fa-link"></i>
+                دریافت کانفیگ
+            </button>
+            <button class="btn btn-secondary" onclick="getQRCode()">
+                <i class="fas fa-qrcode"></i>
+                QR Code
+            </button>
+            <button class="btn btn-secondary" onclick="showAddVolumeModal()">
+                <i class="fas fa-plus-circle"></i>
+                افزودن حجم
+            </button>
+            <button class="btn btn-secondary" onclick="showRenewModal()">
+                <i class="fas fa-calendar-plus"></i>
+                تمدید سرویس
+            </button>
+            <button class="btn btn-outline"
+                style="border-color: var(--p-error); color: var(--p-error); margin-right: auto;"
+                onclick="deleteService()">
+                <i class="fas fa-trash"></i>
+                حذف سرویس
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Modals -->
+<!-- Add Volume Modal -->
+<div id="addVolumeModal" class="modal-overlay">
+    <div class="modal-card">
+        <div class="card-header">
+            <div class="card-title">
+                <i class="fas fa-plus-circle" style="color: var(--p-info);"></i>
+                افزودن حجم
+            </div>
+            <button onclick="closeModal('addVolumeModal')" class="close-btn"><i class="fas fa-times"></i></button>
+        </div>
+        <form onsubmit="addVolume(event)">
+            <div class="form-group">
+                <label class="form-label">حجم (گیگابایت)</label>
+                <input type="number" name="volume_gb" class="form-control" required min="1" step="1"
+                    placeholder="مثال: 10">
+            </div>
+            <div style="display: flex; gap: var(--sp-md); margin-top: var(--sp-lg);">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('addVolumeModal')"
+                    style="flex: 1;">لغو</button>
+                <button type="submit" class="btn btn-primary" style="flex: 2;">افزودن</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Renew Modal -->
+<div id="renewModal" class="modal-overlay">
+    <div class="modal-card">
+        <div class="card-header">
+            <div class="card-title">
+                <i class="fas fa-calendar-plus" style="color: var(--p-warning);"></i>
+                تمدید سرویس
+            </div>
+            <button onclick="closeModal('renewModal')" class="close-btn"><i class="fas fa-times"></i></button>
+        </div>
+        <form onsubmit="renewService(event)">
+            <div class="form-group">
+                <label class="form-label">تعداد روز</label>
+                <input type="number" name="days" class="form-control" required min="1" step="1" placeholder="مثال: 30">
+            </div>
+            <div style="display: flex; gap: var(--sp-md); margin-top: var(--sp-lg);">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('renewModal')"
+                    style="flex: 1;">لغو</button>
+                <button type="submit" class="btn btn-primary" style="flex: 2;">تمدید</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Config Modal -->
+<div id="configModal" class="modal-overlay">
+    <div class="modal-card">
+        <div class="card-header">
+            <div class="card-title">
+                <i class="fas fa-link" style="color: var(--p-primary);"></i>
+                لینک کانفیگ
+            </div>
+            <button onclick="closeModal('configModal')" class="close-btn"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="form-group">
+            <div style="display: flex; gap: var(--sp-sm);">
+                <input type="text" id="configLink" class="form-control" readonly
+                    style="direction: ltr; font-family: monospace;">
+                <button class="btn btn-secondary" onclick="copyConfig()">
+                    <i class="fas fa-copy"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- QR Modal -->
+<div id="qrModal" class="modal-overlay">
+    <div class="modal-card" style="max-width: 400px;">
+        <div class="card-header">
+            <div class="card-title">
+                <i class="fas fa-qrcode" style="color: var(--p-success);"></i>
+                QR Code
+            </div>
+            <button onclick="closeModal('qrModal')" class="close-btn"><i class="fas fa-times"></i></button>
+        </div>
+        <div
+            style="display: flex; justify-content: center; padding: var(--sp-lg); background: white; border-radius: var(--radius-lg);">
+            <div id="qrCodeContainer"></div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+    // Modal Functions
+    function showAddVolumeModal() {
+        document.getElementById('addVolumeModal').style.display = 'flex';
+    }
+
+    function showRenewModal() {
+        document.getElementById('renewModal').style.display = 'flex';
+    }
+
+    function closeModal(id) {
+        document.getElementById(id).style.display = 'none';
+    }
+
+    window.onclick = function (event) {
+        if (event.target.classList.contains('modal-overlay')) {
+            event.target.style.display = 'none';
+        }
+    }
+
+    // API Actions
+    async function getConfig() {
+        try {
+            const response = await apiCall('/api/services/{{ service.id }}/config');
+            document.getElementById('configLink').value = response.config;
+            document.getElementById('configModal').style.display = 'flex';
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    function copyConfig() {
+        const copyText = document.getElementById("configLink");
+        copyText.select();
+        document.execCommand("copy");
+        showToast('لینک کپی شد', 'success');
+    }
+
+    async function getQRCode() {
+        try {
+            const response = await apiCall('/api/services/{{ service.id }}/config');
+            const container = document.getElementById('qrCodeContainer');
+            container.innerHTML = '';
+            new QRCode(container, {
+                text: response.config,
+                width: 256,
+                height: 256
+            });
+            document.getElementById('qrModal').style.display = 'flex';
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    async function addVolume(event) {
+        event.preventDefault();
+        const form = event.target;
+        const volume = form.volume_gb.value;
+
+        try {
+            await apiCall('/api/admin/services/{{ service.id }}/volume', {
+                method: 'POST',
+                body: JSON.stringify({ volume_gb: parseInt(volume) })
+            });
+            showToast('حجم با موفقیت اضافه شد', 'success');
+            closeModal('addVolumeModal');
+            setTimeout(() => window.location.reload(), 1000);
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    async function renewService(event) {
+        event.preventDefault();
+        const form = event.target;
+        const days = form.days.value;
+
+        try {
+            await apiCall('/api/admin/services/{{ service.id }}/renew', {
+                method: 'POST',
+                body: JSON.stringify({ days: parseInt(days) })
+            });
+            showToast('سرویس با موفقیت تمدید شد', 'success');
+            closeModal('renewModal');
+            setTimeout(() => window.location.reload(), 1000);
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    async function deleteService() {
+        if (!confirm('آیا از حذف این سرویس اطمینان دارید؟')) return;
+
+        try {
+            await apiCall('/api/admin/services/{{ service.id }}', {
+                method: 'DELETE'
+            });
+            showToast('سرویس با موفقیت حذف شد', 'success');
+            setTimeout(() => window.location.href = '/admin/services', 1000);
+        } catch (error) {
+            console.error(error);
+        }
+    }
+</script>
+{% endblock %}

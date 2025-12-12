@@ -1,0 +1,834 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}جزئیات کاربر{% endblock %}
+
+{% block content %}
+<div class="user-detail-page fade-in">
+    <!-- Header - Minimal -->
+    <div class="user-detail-header-minimal">
+        <a href="/admin/users" class="btn-back-minimal">
+            <i class="fas fa-arrow-right"></i>
+        </a>
+        <h2 class="page-title-minimal">
+            <i class="fas fa-user-circle"></i>
+            جزئیات کاربر
+        </h2>
+    </div>
+
+    <!-- User Hero Card - Minimal -->
+    <div class="user-hero-card-minimal">
+        <div class="user-hero-content-minimal">
+            <div class="user-avatar-hero-minimal">
+                {% if user.has_photo %}
+                <img src="{{ bot_url_for('serve_user_photo', user_id=user.id) }}" alt="Avatar">
+                {% else %}
+                <i class="fas fa-user"></i>
+                {% endif %}
+            </div>
+            <div class="user-info-hero-minimal">
+                <h3 class="user-name-minimal">{{ user.first_name or '' }} {{ user.last_name or '' }}</h3>
+                <p class="user-username-minimal">
+                    <i class="fas fa-at"></i>
+                    @{{ user.username or 'بدون یوزرنیم' }}
+                </p>
+                <p class="user-telegram-id-minimal">
+                    <i class="fas fa-id-card"></i>
+                    آیدی تلگرام: {{ user.telegram_id }}
+                </p>
+                <p class="user-created-minimal">
+                    <i class="fas fa-calendar"></i>
+                    تاریخ ثبت‌نام: {{ user.created_at.strftime('%Y-%m-%d') if user.created_at else '-' }}
+                </p>
+            </div>
+        </div>
+
+        <div class="user-stats-grid-minimal">
+            <div class="stat-card-minimal stat-primary">
+                <div class="stat-icon-minimal">
+                    <i class="fas fa-wallet"></i>
+                </div>
+                <div class="stat-content-minimal">
+                    <div class="stat-value-minimal" id="balanceDisplay">{{ "{:,}".format(user.balance or 0) }}</div>
+                    <div class="stat-label-minimal">موجودی (تومان)</div>
+                </div>
+            </div>
+            <div class="stat-card-minimal stat-info">
+                <div class="stat-icon-minimal">
+                    <i class="fas fa-network-wired"></i>
+                </div>
+                <div class="stat-content-minimal">
+                    <div class="stat-value-minimal">{{ services|length }}</div>
+                    <div class="stat-label-minimal">تعداد سرویس</div>
+                </div>
+            </div>
+            <div class="stat-card-minimal stat-success">
+                <div class="stat-icon-minimal">
+                    <i class="fas fa-receipt"></i>
+                </div>
+                <div class="stat-content-minimal">
+                    <div class="stat-value-minimal">{{ transactions|length }}</div>
+                    <div class="stat-label-minimal">تعداد تراکنش</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="balance-actions-minimal">
+            <button class="btn-balance-minimal btn-balance-add-minimal" onclick="showAddBalanceModal()">
+                <i class="fas fa-plus-circle"></i>
+                <span>افزودن موجودی</span>
+            </button>
+            <button class="btn-balance-minimal btn-balance-subtract-minimal" onclick="showSubtractBalanceModal()">
+                <i class="fas fa-minus-circle"></i>
+                <span>کسر موجودی</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Services Section - Minimal -->
+    <div class="section-card-minimal fade-in" style="animation-delay: 0.1s;">
+        <div class="section-header-minimal">
+            <h3 class="section-title-minimal">
+                <i class="fas fa-network-wired"></i>
+                سرویس‌ها
+            </h3>
+            <span class="badge badge-info">{{ services|length }} سرویس</span>
+        </div>
+
+        {% if services %}
+        <div class="services-list-minimal">
+            {% for service in services %}
+            <div class="service-item-minimal">
+                <div class="service-info-minimal">
+                    <h4 class="service-name-minimal">{{ service.client_name }}</h4>
+                    <p class="service-detail-minimal">
+                        <i class="fas fa-server"></i>
+                        پنل: {{ service.panel_name }}
+                    </p>
+                    <p class="service-detail-minimal">
+                        <i class="fas fa-hdd"></i>
+                        حجم: {{ service.total_gb }} GB / استفاده شده: {{ service.used_gb or 0 }} GB
+                    </p>
+                </div>
+                <div class="service-status-minimal">
+                    {% if service.is_active %}
+                    <span class="status-badge status-active">
+                        <span class="status-dot-minimal"></span>
+                        فعال
+                    </span>
+                    {% else %}
+                    <span class="status-badge status-inactive">
+                        <span class="status-dot-minimal"></span>
+                        غیرفعال
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state-minimal">
+            <div class="empty-icon-minimal">
+                <i class="fas fa-inbox"></i>
+            </div>
+            <h3 class="empty-title-minimal">هیچ سرویسی وجود ندارد</h3>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Transactions Section - Minimal -->
+    <div class="section-card-minimal fade-in" style="animation-delay: 0.15s;">
+        <div class="section-header-minimal">
+            <h3 class="section-title-minimal">
+                <i class="fas fa-receipt"></i>
+                تراکنش‌ها
+            </h3>
+            <span class="badge badge-info">{{ transactions|length }} تراکنش</span>
+        </div>
+
+        {% if transactions %}
+        <div class="transactions-list-minimal">
+            {% for trans in transactions %}
+            <div class="transaction-item-minimal">
+                <div
+                    class="transaction-icon-minimal {% if trans.amount > 0 %}success-minimal{% else %}danger-minimal{% endif %}">
+                    {% if trans.amount > 0 %}
+                    <i class="fas fa-plus-circle"></i>
+                    {% else %}
+                    <i class="fas fa-minus-circle"></i>
+                    {% endif %}
+                </div>
+                <div class="transaction-info-minimal">
+                    <p class="transaction-description-minimal">{{ trans.description or '-' }}</p>
+                    <p class="transaction-date-minimal">{{ trans.created_at.strftime('%Y-%m-%d %H:%M:%S') if
+                        trans.created_at else '-' }}</p>
+                </div>
+                <div
+                    class="transaction-amount-minimal {% if trans.amount > 0 %}text-success{% else %}text-danger{% endif %}">
+                    {% if trans.amount > 0 %}+{% endif %}{{ "{:,}".format(trans.amount) }} تومان
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state-minimal">
+            <div class="empty-icon-minimal">
+                <i class="fas fa-receipt"></i>
+            </div>
+            <h3 class="empty-title-minimal">هیچ تراکنشی وجود ندارد</h3>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Add Balance Modal - Minimal -->
+<div id="addBalanceModal" class="modal"
+    onclick="if(event.target.id === 'addBalanceModal') closeModalUltra('addBalanceModal')">
+    <div class="modal-content" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <h3>
+                <i class="fas fa-plus-circle"></i>
+                افزودن موجودی
+            </h3>
+            <button class="modal-close" onclick="closeModalUltra('addBalanceModal')">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <form id="addBalanceForm" onsubmit="addBalance(event)" style="padding: var(--admin-sp-4);">
+            <div class="form-group">
+                <label>مبلغ (تومان)</label>
+                <input type="number" name="amount" required min="1" step="1000" placeholder="مثال: 100000">
+            </div>
+            <div class="form-group">
+                <label>توضیحات (اختیاری)</label>
+                <input type="text" name="description" placeholder="افزایش موجودی توسط ادمین">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary"
+                    onclick="closeModalUltra('addBalanceModal')">لغو</button>
+                <button type="submit" class="btn btn-success">افزودن موجودی</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Subtract Balance Modal - Minimal -->
+<div id="subtractBalanceModal" class="modal"
+    onclick="if(event.target.id === 'subtractBalanceModal') closeModalUltra('subtractBalanceModal')">
+    <div class="modal-content" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <h3>
+                <i class="fas fa-minus-circle"></i>
+                کسر موجودی
+            </h3>
+            <button class="modal-close" onclick="closeModalUltra('subtractBalanceModal')">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <form id="subtractBalanceForm" onsubmit="subtractBalance(event)" style="padding: var(--admin-sp-4);">
+            <div class="form-group">
+                <label>مبلغ (تومان)</label>
+                <input type="number" name="amount" required min="1" step="1000" placeholder="مثال: 50000">
+            </div>
+            <div class="form-group">
+                <label>توضیحات (اختیاری)</label>
+                <input type="text" name="description" placeholder="کسر موجودی توسط ادمین">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary"
+                    onclick="closeModalUltra('subtractBalanceModal')">لغو</button>
+                <button type="submit" class="btn btn-danger">کسر موجودی</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+    /* =====================================
+   User Detail Page - Minimal
+   ===================================== */
+    .user-detail-page {
+        display: flex;
+        flex-direction: column;
+        gap: var(--admin-sp-4);
+    }
+
+    .user-detail-header-minimal {
+        display: flex;
+        align-items: center;
+        gap: var(--admin-sp-3);
+        margin-bottom: var(--admin-sp-2);
+    }
+
+    .btn-back-minimal {
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--admin-bg-elevated);
+        border: 1.5px solid var(--admin-border-light);
+        border-radius: var(--admin-radius-lg);
+        color: var(--admin-text-primary);
+        text-decoration: none;
+        font-size: 1.125rem;
+        transition: all 0.3s;
+    }
+
+    .btn-back-minimal:hover {
+        background: var(--admin-bg-surface);
+        border-color: var(--admin-primary);
+        color: var(--admin-primary);
+        transform: translateX(-2px);
+    }
+
+    .page-title-minimal {
+        font-size: 1.5rem;
+        font-weight: 900;
+        color: var(--admin-text-primary);
+        display: flex;
+        align-items: center;
+        gap: var(--admin-sp-2);
+    }
+
+    .page-title-minimal i {
+        color: var(--admin-primary);
+        font-size: 1.75rem;
+    }
+
+    /* User Hero Card - Minimal */
+    .user-hero-card-minimal {
+        background: var(--admin-bg-elevated);
+        border: 1.5px solid var(--admin-border-light);
+        border-radius: var(--admin-radius-xl);
+        padding: var(--admin-sp-4);
+        margin-bottom: var(--admin-sp-4);
+    }
+
+    .user-hero-content-minimal {
+        display: flex;
+        align-items: center;
+        gap: var(--admin-sp-3);
+        margin-bottom: var(--admin-sp-4);
+        padding-bottom: var(--admin-sp-4);
+        border-bottom: 1.5px solid var(--admin-border-light);
+        flex-wrap: wrap;
+    }
+
+    .user-avatar-hero-minimal {
+        width: 64px;
+        height: 64px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--admin-primary) 0%, var(--admin-accent) 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 2rem;
+        overflow: hidden;
+        flex-shrink: 0;
+        box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25);
+    }
+
+    .user-avatar-hero-minimal img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .user-info-hero-minimal {
+        flex: 1;
+    }
+
+    .user-name-minimal {
+        font-size: 1.375rem;
+        font-weight: 900;
+        color: var(--admin-text-primary);
+        margin-bottom: var(--admin-sp-1);
+    }
+
+    .user-username-minimal,
+    .user-telegram-id-minimal,
+    .user-created-minimal {
+        font-size: 0.875rem;
+        color: var(--admin-text-secondary);
+        margin-bottom: var(--admin-sp-1);
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: var(--admin-sp-1);
+    }
+
+    .user-username-minimal i,
+    .user-telegram-id-minimal i,
+    .user-created-minimal i {
+        color: var(--admin-primary);
+        font-size: 0.875rem;
+    }
+
+    .user-stats-grid-minimal {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: var(--admin-sp-2);
+        margin-bottom: var(--admin-sp-4);
+    }
+
+    .stat-card-minimal {
+        background: var(--admin-bg-surface);
+        border: 1.5px solid var(--admin-border-light);
+        border-radius: var(--admin-radius-lg);
+        padding: var(--admin-sp-3);
+        display: flex;
+        align-items: center;
+        gap: var(--admin-sp-2);
+        transition: all 0.3s;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .stat-card-minimal::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 3px;
+        height: 100%;
+        background: var(--admin-primary);
+        transform: scaleY(0);
+        transform-origin: top;
+        transition: transform 0.3s;
+    }
+
+    .stat-card-minimal:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--admin-shadow-md);
+        border-color: var(--admin-primary);
+    }
+
+    .stat-card-minimal:hover::before {
+        transform: scaleY(1);
+    }
+
+    .stat-icon-minimal {
+        width: 40px;
+        height: 40px;
+        border-radius: var(--admin-radius-lg);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.125rem;
+        color: white;
+        flex-shrink: 0;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    .stat-primary .stat-icon-minimal {
+        background: linear-gradient(135deg, var(--admin-primary) 0%, var(--admin-primary-dark) 100%);
+    }
+
+    .stat-info .stat-icon-minimal {
+        background: linear-gradient(135deg, var(--admin-info) 0%, #2563eb 100%);
+    }
+
+    .stat-success .stat-icon-minimal {
+        background: linear-gradient(135deg, var(--admin-success) 0%, #059669 100%);
+    }
+
+    .stat-content-minimal {
+        flex: 1;
+    }
+
+    .stat-value-minimal {
+        font-size: 1.25rem;
+        font-weight: 900;
+        color: var(--admin-text-primary);
+        margin-bottom: 2px;
+        line-height: 1.2;
+    }
+
+    .stat-label-minimal {
+        font-size: 0.688rem;
+        color: var(--admin-text-tertiary);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .balance-actions-minimal {
+        display: flex;
+        gap: var(--admin-sp-2);
+        flex-wrap: wrap;
+    }
+
+    .btn-balance-minimal {
+        flex: 1;
+        min-width: 160px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--admin-sp-1);
+        padding: var(--admin-sp-3);
+        border-radius: var(--admin-radius-lg);
+        font-weight: 800;
+        font-size: 0.875rem;
+        cursor: pointer;
+        border: none;
+        transition: all 0.3s;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    .btn-balance-add-minimal {
+        background: linear-gradient(135deg, var(--admin-success) 0%, #059669 100%);
+        color: white;
+    }
+
+    .btn-balance-add-minimal:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);
+    }
+
+    .btn-balance-subtract-minimal {
+        background: linear-gradient(135deg, var(--admin-error) 0%, #dc2626 100%);
+        color: white;
+    }
+
+    .btn-balance-subtract-minimal:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35);
+    }
+
+    /* Section Card - Minimal */
+    .section-card-minimal {
+        background: var(--admin-bg-elevated);
+        border: 1.5px solid var(--admin-border-light);
+        border-radius: var(--admin-radius-xl);
+        padding: var(--admin-sp-4);
+    }
+
+    .section-header-minimal {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: var(--admin-sp-3);
+        padding-bottom: var(--admin-sp-3);
+        border-bottom: 1.5px solid var(--admin-border-light);
+        flex-wrap: wrap;
+        gap: var(--admin-sp-2);
+    }
+
+    .section-title-minimal {
+        font-size: 1.125rem;
+        font-weight: 900;
+        color: var(--admin-text-primary);
+        display: flex;
+        align-items: center;
+        gap: var(--admin-sp-2);
+    }
+
+    .section-title-minimal i {
+        color: var(--admin-primary);
+        font-size: 1.25rem;
+    }
+
+    /* Services List - Minimal */
+    .services-list-minimal {
+        display: flex;
+        flex-direction: column;
+        gap: var(--admin-sp-2);
+    }
+
+    .service-item-minimal {
+        background: var(--admin-bg-surface);
+        border: 1.5px solid var(--admin-border-light);
+        border-radius: var(--admin-radius-lg);
+        padding: var(--admin-sp-3);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        transition: all 0.3s;
+        flex-wrap: wrap;
+        gap: var(--admin-sp-2);
+    }
+
+    .service-item-minimal:hover {
+        border-color: var(--admin-primary);
+        box-shadow: var(--admin-shadow);
+        transform: translateX(-2px);
+    }
+
+    .service-info-minimal {
+        flex: 1;
+    }
+
+    .service-name-minimal {
+        font-size: 1rem;
+        font-weight: 900;
+        color: var(--admin-text-primary);
+        margin-bottom: var(--admin-sp-1);
+    }
+
+    .service-detail-minimal {
+        font-size: 0.813rem;
+        color: var(--admin-text-secondary);
+        margin-bottom: var(--admin-sp-1);
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: var(--admin-sp-1);
+    }
+
+    .service-detail-minimal i {
+        color: var(--admin-primary);
+        font-size: 0.875rem;
+    }
+
+    .service-status-minimal {
+        flex-shrink: 0;
+    }
+
+    .status-dot-minimal {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-left: var(--admin-sp-1);
+    }
+
+    .status-active .status-dot-minimal {
+        background: var(--admin-success);
+        box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+        animation: pulse-dot-minimal 2s infinite;
+    }
+
+    .status-inactive .status-dot-minimal {
+        background: var(--admin-error);
+    }
+
+    @keyframes pulse-dot-minimal {
+
+        0%,
+        100% {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        50% {
+            opacity: 0.7;
+            transform: scale(1.15);
+        }
+    }
+
+    /* Transactions List - Minimal */
+    .transactions-list-minimal {
+        display: flex;
+        flex-direction: column;
+        gap: var(--admin-sp-2);
+    }
+
+    .transaction-item-minimal {
+        background: var(--admin-bg-surface);
+        border: 1.5px solid var(--admin-border-light);
+        border-radius: var(--admin-radius-lg);
+        padding: var(--admin-sp-3);
+        display: flex;
+        align-items: center;
+        gap: var(--admin-sp-2);
+        transition: all 0.3s;
+    }
+
+    .transaction-item-minimal:hover {
+        border-color: var(--admin-primary);
+        box-shadow: var(--admin-shadow);
+        transform: translateX(-2px);
+    }
+
+    .transaction-icon-minimal {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+        flex-shrink: 0;
+    }
+
+    .transaction-icon-minimal.success-minimal {
+        background: rgba(16, 185, 129, 0.12);
+        color: var(--admin-success);
+    }
+
+    .transaction-icon-minimal.danger-minimal {
+        background: rgba(239, 68, 68, 0.12);
+        color: var(--admin-error);
+    }
+
+    .transaction-info-minimal {
+        flex: 1;
+    }
+
+    .transaction-description-minimal {
+        font-weight: 800;
+        color: var(--admin-text-primary);
+        margin-bottom: var(--admin-sp-1);
+        font-size: 0.875rem;
+    }
+
+    .transaction-date-minimal {
+        color: var(--admin-text-tertiary);
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .transaction-amount-minimal {
+        font-size: 1rem;
+        font-weight: 900;
+    }
+
+    /* Empty State - Minimal */
+    .empty-state-minimal {
+        text-align: center;
+        padding: var(--admin-sp-8) var(--admin-sp-4);
+    }
+
+    .empty-icon-minimal {
+        width: 64px;
+        height: 64px;
+        margin: 0 auto var(--admin-sp-3);
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.12) 0%, rgba(139, 92, 246, 0.12) 100%);
+        border-radius: var(--admin-radius-xl);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+        color: var(--admin-primary);
+    }
+
+    .empty-title-minimal {
+        font-size: 1.125rem;
+        font-weight: 900;
+        color: var(--admin-text-primary);
+    }
+
+    .fade-in {
+        animation: fadeIn 0.4s ease;
+    }
+
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    /* Responsive - Minimal */
+    @media (max-width: 640px) {
+        .user-hero-content-minimal {
+            flex-direction: column;
+            text-align: center;
+        }
+
+        .user-stats-grid-minimal {
+            grid-template-columns: 1fr;
+        }
+
+        .balance-actions-minimal {
+            flex-direction: column;
+        }
+
+        .btn-balance-minimal {
+            width: 100%;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const userId = {{ user.id }};
+
+    function showAddBalanceModal() {
+        document.getElementById('addBalanceModal').style.display = 'flex';
+    }
+
+    function showSubtractBalanceModal() {
+        document.getElementById('subtractBalanceModal').style.display = 'flex';
+    }
+
+    function closeModalUltra(modalId) {
+        document.getElementById(modalId).style.display = 'none';
+    }
+
+    async function addBalance(event) {
+        event.preventDefault();
+        const formData = new FormData(event.target);
+        const amount = parseInt(formData.get('amount'));
+        const description = formData.get('description') || 'افزایش موجودی توسط ادمین';
+
+        if (amount <= 0) {
+            showToast('مبلغ باید بیشتر از صفر باشد', 'error');
+            return;
+        }
+
+        try {
+            const result = await apiCall(`/api/admin/users/${userId}/balance`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    amount: amount,
+                    description: description,
+                    type: 'add'
+                })
+            });
+
+            if (result.success) {
+                showToast(result.message, 'success');
+                closeModalUltra('addBalanceModal');
+                const currentBalance = parseInt(document.getElementById('balanceDisplay').textContent.replace(/,/g, '').replace(' تومان', ''));
+                const newBalance = currentBalance + amount;
+                document.getElementById('balanceDisplay').textContent = newBalance.toLocaleString('fa-IR');
+                setTimeout(() => location.reload(), 1000);
+            }
+        } catch (error) {
+            // Error handled in apiCall
+        }
+    }
+
+    async function subtractBalance(event) {
+        event.preventDefault();
+        const formData = new FormData(event.target);
+        const amount = parseInt(formData.get('amount'));
+        const description = formData.get('description') || 'کسر موجودی توسط ادمین';
+
+        if (amount <= 0) {
+            showToast('مبلغ باید بیشتر از صفر باشد', 'error');
+            return;
+        }
+
+        try {
+            const result = await apiCall(`/api/admin/users/${userId}/balance`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    amount: amount,
+                    description: description,
+                    type: 'subtract'
+                })
+            });
+
+            if (result.success) {
+                showToast(result.message, 'success');
+                closeModalUltra('subtractBalanceModal');
+                const currentBalance = parseInt(document.getElementById('balanceDisplay').textContent.replace(/,/g, '').replace(' تومان', ''));
+                const newBalance = Math.max(0, currentBalance - amount);
+                document.getElementById('balanceDisplay').textContent = newBalance.toLocaleString('fa-IR');
+                setTimeout(() => location.reload(), 1000);
+            }
+        } catch (error) {
+            // Error handled in apiCall
+        }
+    }
+</script>
+{% endblock %}

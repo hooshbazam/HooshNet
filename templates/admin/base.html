@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#000000">
+    <title>{% block title %}پنل مدیریت{% endblock %}</title>
+
+    <!-- Telegram Web App SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+        rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/vazirmatn@33.0.3/Vazirmatn-font-face.css" rel="stylesheet">
+
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin-redesign.css') }}">
+
+    {% block extra_css %}{% endblock %}
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="brand-logo">
+                    <i class="fas fa-crown"></i>
+                </div>
+                <div class="brand-name">پنل مدیریت</div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <a href="/admin" class="nav-item {% if request.endpoint == 'admin_dashboard' %}active{% endif %}">
+                    <i class="fas fa-chart-pie"></i>
+                    <span>داشبورد</span>
+                </a>
+
+                <a href="/admin/users" class="nav-item {% if request.endpoint == 'admin_users' %}active{% endif %}">
+                    <i class="fas fa-users"></i>
+                    <span>کاربران</span>
+                </a>
+
+                <a href="/admin/panels" class="nav-item {% if request.endpoint == 'admin_panels' %}active{% endif %}">
+                    <i class="fas fa-server"></i>
+                    <span>پنل‌ها</span>
+                </a>
+
+                <a href="/admin/services"
+                    class="nav-item {% if request.endpoint == 'admin_services' or request.endpoint == 'admin_service_detail' %}active{% endif %}">
+                    <i class="fas fa-network-wired"></i>
+                    <span>سرویس‌ها</span>
+                </a>
+
+                <a href="/admin/transactions"
+                    class="nav-item {% if request.endpoint == 'admin_transactions' %}active{% endif %}">
+                    <i class="fas fa-receipt"></i>
+                    <span>تراکنش‌ها</span>
+                </a>
+
+                <a href="/admin/products"
+                    class="nav-item {% if request.endpoint == 'admin_products' or request.endpoint == 'admin_products_panel' %}active{% endif %}">
+                    <i class="fas fa-box-open"></i>
+                    <span>محصولات</span>
+                </a>
+
+                <a href="/admin/menu-layout"
+                    class="nav-item {% if request.endpoint == 'admin_menu_layout' %}active{% endif %}">
+                    <i class="fas fa-layer-group"></i>
+                    <span>چینش منو</span>
+                </a>
+
+                <a href="/admin/discounts"
+                    class="nav-item {% if request.endpoint == 'admin_discounts' %}active{% endif %}">
+                    <i class="fas fa-ticket-alt"></i>
+                    <span>تخفیف‌ها</span>
+                </a>
+
+                <a href="/admin/broadcast"
+                    class="nav-item {% if request.endpoint == 'admin_broadcast' %}active{% endif %}">
+                    <i class="fas fa-bullhorn"></i>
+                    <span>همگانی</span>
+                </a>
+
+                <a href="/admin/tickets"
+                    class="nav-item {% if request.endpoint == 'admin_tickets' or request.endpoint == 'admin_ticket_detail' %}active{% endif %}">
+                    <i class="fas fa-headset"></i>
+                    <span>تیکت‌ها</span>
+                </a>
+
+                <a href="/admin/logs" class="nav-item {% if request.endpoint == 'admin_logs' %}active{% endif %}">
+                    <i class="fas fa-clipboard-list"></i>
+                    <span>لاگ‌ها</span>
+                </a>
+
+                <a href="#"
+                    class="nav-item {% if request.endpoint == 'admin_texts' or request.endpoint == 'admin_text_detail' %}active{% endif %}"
+                    onclick="window.location.href=fixUrl('/admin/texts'); return false;">
+                    <i class="fas fa-pen-nib"></i>
+                    <span>متن‌ها</span>
+                </a>
+
+                <a href="/admin/settings"
+                    class="nav-item {% if request.endpoint == 'admin_settings' %}active{% endif %}">
+                    <i class="fas fa-cog"></i>
+                    <span>تنظیمات</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <a href="/dashboard" class="nav-item">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>خروج به پنل کاربری</span>
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Top Header -->
+            <header class="top-header" id="topHeader">
+                <div class="header-actions">
+                    <div class="menu-toggle" id="menuToggle">
+                        <i class="fas fa-bars"></i>
+                    </div>
+                    <div class="user-profile">
+                        {% if photo_url %}
+                        <img src="{{ bot_url_for('user_photo') }}" alt="Profile" class="user-avatar">
+                        {% else %}
+                        <div class="user-avatar"
+                            style="background: var(--p-gradient-red); display: flex; align-items: center; justify-content: center; color: white;">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        {% endif %}
+                        <div class="user-info">
+                            <span class="user-name">{{ user.first_name or 'مدیر' }}</span>
+                            <span class="user-role">مدیر کل سیستم</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="header-title">
+                    <h1>{% block page_title %}داشبورد{% endblock %}</h1>
+                    <p>{% block page_subtitle %}خوش آمدید، وضعیت سیستم پایدار است{% endblock %}</p>
+                </div>
+            </header>
+
+            <!-- Page Content -->
+            <div class="content-wrapper">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+
+        <!-- Overlay for mobile sidebar -->
+        <div class="sidebar-overlay" id="sidebarOverlay"
+            style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 45; backdrop-filter: blur(4px);">
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toastContainer"
+        style="position: fixed; top: 20px; left: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px;">
+    </div>
+
+    <!-- Scripts -->
+    <script>
+        // Telegram Web App Initialization
+        if (window.Telegram && window.Telegram.WebApp) {
+            const tg = window.Telegram.WebApp;
+            tg.expand();
+            tg.enableClosingConfirmation();
+
+            // Set colors
+            tg.setHeaderColor('#000000');
+            tg.setBackgroundColor('#000000');
+
+            tg.ready();
+        }
+
+        // Sidebar Toggle
+        const menuToggle = document.getElementById('menuToggle');
+        const sidebar = document.getElementById('sidebar');
+        const sidebarOverlay = document.getElementById('sidebarOverlay');
+
+        function toggleSidebar() {
+            sidebar.classList.toggle('active');
+            if (sidebar.classList.contains('active')) {
+                sidebarOverlay.style.display = 'block';
+            } else {
+                sidebarOverlay.style.display = 'none';
+            }
+        }
+
+        menuToggle?.addEventListener('click', toggleSidebar);
+        sidebarOverlay?.addEventListener('click', toggleSidebar);
+
+        // Header Scroll Effect
+        window.addEventListener('scroll', () => {
+            const header = document.getElementById('topHeader');
+            if (window.scrollY > 10) {
+                header.classList.add('scrolled');
+            } else {
+                header.classList.remove('scrolled');
+            }
+        });
+
+        // Toast Function
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            if (!container) return;
+
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.style.cssText = `
+                background: var(--p-bg-card);
+                border: 1px solid var(--border-color);
+                border-right: 4px solid var(--p-${type});
+                padding: 1rem;
+                border-radius: var(--radius-lg);
+                box-shadow: var(--shadow-lg);
+                min-width: 300px;
+                display: flex;
+                align-items: center;
+                gap: 1rem;
+                animation: slideIn 0.3s ease;
+                color: var(--p-text-main);
+            `;
+
+            const icons = {
+                success: 'fa-check-circle',
+                error: 'fa-exclamation-circle',
+                warning: 'fa-exclamation-triangle',
+                info: 'fa-info-circle'
+            };
+
+            toast.innerHTML = `
+                <i class="fas ${icons[type] || icons.info}" style="color: var(--p-${type}); font-size: 1.2rem;"></i>
+                <div style="flex: 1;">
+                    <div style="font-weight: 700; margin-bottom: 0.25rem;">${type === 'success' ? 'موفق' : type === 'error' ? 'خطا' : 'اطلاع'}</div>
+                    <div style="font-size: 0.85rem; color: var(--p-text-muted);">${message}</div>
+                </div>
+                <button onclick="this.parentElement.remove()" style="color: var(--p-text-muted); cursor: pointer;"><i class="fas fa-times"></i></button>
+            `;
+
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.animation = 'slideOut 0.3s ease forwards';
+                setTimeout(() => toast.remove(), 300);
+            }, 5000);
+        }
+
+        // Multi-bot URL fixer
+        function fixUrl(url) {
+            if (!url || typeof url !== 'string' || url.startsWith('http') || url.startsWith('/static/')) return url;
+            const pathParts = window.location.pathname.split('/').filter(p => p);
+            if (pathParts.length > 0) {
+                const potentialBotId = pathParts[0];
+                if (/^\d+$/.test(potentialBotId)) {
+                    if (!url.startsWith(`/${potentialBotId}`)) {
+                        return `/${potentialBotId}${url.startsWith('/') ? url : '/' + url}`;
+                    }
+                }
+            }
+            return url;
+        }
+
+        // API Helper
+        async function apiCall(url, options = {}) {
+            try {
+                const finalUrl = fixUrl(url);
+                const response = await fetch(finalUrl, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...options.headers
+                    },
+                    ...options
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.message || 'خطا در ارتباط با سرور');
+                return data;
+            } catch (error) {
+                showToast(error.message, 'error');
+                throw error;
+            }
+        }
+    </script>
+
+    {% block extra_js %}{% endblock %}
+</body>
+
+</html>

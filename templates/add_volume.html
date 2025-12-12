@@ -1,0 +1,753 @@
+{% extends "base.html" %}
+
+{% block title %}افزایش حجم - پنل کاربری{% endblock %}
+
+{% block content %}
+<style>
+    :root {
+        --glass-bg: rgba(15, 23, 42, 0.6);
+        --glass-border: rgba(255, 255, 255, 0.08);
+        --neon-primary: #6366f1;
+        --neon-accent: #8b5cf6;
+        --neon-success: #10b981;
+        --card-radius: 24px;
+        --btn-radius: 18px;
+    }
+
+    .volume-page-container {
+        padding-bottom: 120px;
+        max-width: 800px;
+        margin: 0 auto;
+    }
+
+    /* Hero */
+    .volume-hero {
+        position: relative;
+        background: radial-gradient(circle at 50% 0%, rgba(99, 102, 241, 0.15) 0%, transparent 70%);
+        padding: 2rem 1.5rem 3rem;
+        text-align: center;
+        margin-bottom: 1rem;
+    }
+
+    .hero-icon-box {
+        width: 80px;
+        height: 80px;
+        background: rgba(99, 102, 241, 0.1);
+        border-radius: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2.5rem;
+        color: var(--neon-primary);
+        margin: 0 auto 1.5rem;
+        box-shadow: 0 0 30px rgba(99, 102, 241, 0.2);
+        border: 1px solid rgba(99, 102, 241, 0.2);
+    }
+
+    .hero-title {
+        font-size: 1.75rem;
+        font-weight: 900;
+        color: white;
+        margin-bottom: 0.5rem;
+    }
+
+    /* Wizard Steps */
+    .wizard-steps {
+        display: flex;
+        justify-content: center;
+        gap: 1rem;
+        margin-bottom: 2rem;
+        padding: 0 1.5rem;
+    }
+
+    .step-indicator {
+        width: 40px;
+        height: 4px;
+        border-radius: 2px;
+        background: rgba(255, 255, 255, 0.1);
+        transition: all 0.3s;
+    }
+
+    .step-indicator.active {
+        background: var(--neon-primary);
+        box-shadow: 0 0 10px rgba(99, 102, 241, 0.5);
+    }
+
+    /* Step Content */
+    .step-content {
+        display: none;
+        animation: fadeIn 0.3s ease-out;
+    }
+
+    .step-content.active {
+        display: block;
+    }
+
+    /* Step 1: Service Selection */
+    .service-select-container {
+        padding: 0 1.5rem;
+    }
+
+    .service-card {
+        background: var(--glass-bg);
+        border: 1px solid var(--glass-border);
+        border-radius: 20px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .service-card:hover {
+        border-color: var(--neon-primary);
+        background: rgba(99, 102, 241, 0.05);
+    }
+
+    .service-card.selected {
+        border-color: var(--neon-primary);
+        background: rgba(99, 102, 241, 0.1);
+        box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+    }
+
+    .service-icon {
+        width: 48px;
+        height: 48px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+        color: white;
+    }
+
+    .service-info {
+        flex: 1;
+    }
+
+    .service-name {
+        font-weight: 700;
+        color: white;
+        margin-bottom: 0.25rem;
+    }
+
+    .service-meta {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+    }
+
+    /* Step 2: Volume Selection */
+    .volume-select-container {
+        padding: 0 1.5rem;
+    }
+
+    .volume-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+
+    .volume-chip {
+        background: var(--glass-bg);
+        border: 1px solid var(--glass-border);
+        border-radius: 16px;
+        padding: 1rem 0.5rem;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .volume-chip:hover {
+        border-color: var(--neon-primary);
+        transform: translateY(-2px);
+    }
+
+    .volume-chip.selected {
+        background: var(--neon-primary);
+        border-color: var(--neon-primary);
+        color: white;
+        box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+    }
+
+    .volume-value {
+        font-size: 1.2rem;
+        font-weight: 800;
+        margin-bottom: 0.25rem;
+    }
+
+    .volume-unit {
+        font-size: 0.8rem;
+        opacity: 0.8;
+    }
+
+    .custom-input-wrapper {
+        position: relative;
+        margin-bottom: 2rem;
+    }
+
+    .custom-input {
+        width: 100%;
+        background: var(--glass-bg);
+        border: 1px solid var(--glass-border);
+        border-radius: 20px;
+        padding: 1.25rem;
+        text-align: center;
+        font-size: 1.5rem;
+        font-weight: 800;
+        color: white;
+        font-family: inherit;
+    }
+
+    .custom-input:focus {
+        outline: none;
+        border-color: var(--neon-primary);
+    }
+
+    /* Summary Card (Sticky Bottom) */
+    .summary-card {
+        position: fixed;
+        bottom: calc(20px + env(safe-area-inset-bottom));
+        left: 1.5rem;
+        right: 1.5rem;
+        max-width: 760px;
+        margin: 0 auto;
+        background: rgba(15, 23, 42, 0.95);
+        backdrop-filter: blur(20px);
+        border: 1px solid var(--glass-border);
+        border-radius: 24px;
+        padding: 1.25rem;
+        z-index: 100;
+        box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.3);
+        display: none;
+        animation: slideUp 0.3s ease-out;
+    }
+
+    .summary-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+
+    .total-price {
+        font-size: 1.25rem;
+        font-weight: 900;
+        color: var(--neon-success);
+    }
+
+    .btn-submit {
+        width: 100%;
+        background: linear-gradient(135deg, var(--neon-primary), var(--neon-accent));
+        color: white;
+        border: none;
+        border-radius: 16px;
+        padding: 1rem;
+        font-size: 1rem;
+        font-weight: 800;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.75rem;
+        box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+    }
+
+    .btn-submit:disabled {
+        background: var(--glass-border);
+        opacity: 0.5;
+        cursor: not-allowed;
+        box-shadow: none;
+    }
+
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+        }
+
+        to {
+            opacity: 1;
+        }
+    }
+
+    @keyframes slideUp {
+        from {
+            transform: translateY(100%);
+        }
+
+        to {
+            transform: translateY(0);
+        }
+    }
+
+    /* Step 3: Payment */
+    .invoice-card {
+        background: var(--glass-bg);
+        border: 1px solid var(--glass-border);
+        border-radius: 20px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+    }
+
+    .invoice-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 1rem;
+        color: var(--text-secondary);
+        font-size: 0.95rem;
+    }
+
+    .invoice-row.total {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--glass-border);
+        color: white;
+        font-weight: 700;
+        font-size: 1.1rem;
+        margin-bottom: 0;
+    }
+
+    .payment-method-card {
+        background: var(--glass-bg);
+        border: 1px solid var(--glass-border);
+        border-radius: 18px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        position: relative;
+    }
+
+    .payment-method-card:hover {
+        background: rgba(99, 102, 241, 0.05);
+        border-color: var(--neon-primary);
+    }
+
+    .payment-method-card.selected {
+        background: rgba(99, 102, 241, 0.1);
+        border-color: var(--neon-primary);
+        box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+    }
+
+    .payment-method-card.disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        filter: grayscale(1);
+    }
+
+    .pm-icon {
+        width: 48px;
+        height: 48px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+        color: white;
+    }
+
+    .pm-info {
+        flex: 1;
+    }
+
+    .pm-title {
+        font-weight: 700;
+        color: white;
+        margin-bottom: 0.25rem;
+    }
+
+    .pm-desc {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+    }
+
+    .pm-check {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        border: 2px solid var(--glass-border);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: transparent;
+        transition: all 0.2s;
+    }
+
+    .payment-method-card.selected .pm-check {
+        background: var(--neon-primary);
+        border-color: var(--neon-primary);
+        color: white;
+    }
+</style>
+
+<div class="volume-page-container">
+    <!-- Hero -->
+    <div class="volume-hero">
+        <div class="hero-icon-box">
+            <i class="fas fa-database"></i>
+        </div>
+        <h1 class="hero-title">افزایش حجم</h1>
+        <p style="color: var(--text-secondary);">ترافیک اضافه به سرویس خود اضافه کنید</p>
+    </div>
+
+    <!-- Wizard Steps -->
+    <div class="wizard-steps">
+        <div class="step-indicator active" id="ind-1"></div>
+        <div class="step-indicator" id="ind-2"></div>
+        <div class="step-indicator" id="ind-3"></div>
+    </div>
+
+    <!-- Step 1: Service Selection -->
+    <div class="step-content active" id="step-1">
+        <div class="service-select-container">
+            <div style="margin-bottom: 1rem; color: var(--text-secondary); font-size: 0.9rem;">سرویس مورد نظر را انتخاب
+                کنید:</div>
+            <div id="servicesList">
+                <!-- Populated by JS -->
+                <div class="text-center p-4 text-muted">در حال بارگذاری...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step 2: Volume Selection -->
+    <div class="step-content" id="step-2">
+        <div class="volume-select-container">
+            <div
+                style="margin-bottom: 1rem; color: var(--text-secondary); font-size: 0.9rem; display: flex; justify-content: space-between;">
+                <span>مقدار حجم را انتخاب کنید:</span>
+                <span style="font-size: 0.8rem;">قیمت هر گیگ: <span id="pricePerGbDisplay"
+                        style="color: var(--neon-success); font-weight: bold;">-</span></span>
+            </div>
+
+            <div class="volume-grid">
+                <div class="volume-chip" onclick="selectVolume(1)">
+                    <div class="volume-value">1</div>
+                    <div class="volume-unit">GB</div>
+                </div>
+                <div class="volume-chip" onclick="selectVolume(5)">
+                    <div class="volume-value">5</div>
+                    <div class="volume-unit">GB</div>
+                </div>
+                <div class="volume-chip" onclick="selectVolume(10)">
+                    <div class="volume-value">10</div>
+                    <div class="volume-unit">GB</div>
+                </div>
+                <div class="volume-chip" onclick="selectVolume(20)">
+                    <div class="volume-value">20</div>
+                    <div class="volume-unit">GB</div>
+                </div>
+                <div class="volume-chip" onclick="selectVolume(50)">
+                    <div class="volume-value">50</div>
+                    <div class="volume-unit">GB</div>
+                </div>
+                <div class="volume-chip" onclick="selectVolume(100)">
+                    <div class="volume-value">100</div>
+                    <div class="volume-unit">GB</div>
+                </div>
+            </div>
+
+            <div class="custom-input-wrapper">
+                <input type="number" class="custom-input" placeholder="یا مقدار دلخواه (GB)" id="customVolume"
+                    oninput="handleCustomVolume(this.value)">
+            </div>
+
+            <div class="summary-card" id="summaryCard"
+                style="position: static; margin-top: 2rem; display: block; box-shadow: none; background: var(--glass-bg);">
+                <div class="summary-row">
+                    <div style="display: flex; flex-direction: column;">
+                        <span style="font-size: 0.8rem; color: var(--text-secondary);">مبلغ قابل پرداخت</span>
+                        <span class="total-price" id="totalPrice">0 تومان</span>
+                    </div>
+                    <div style="text-align: left;">
+                        <span style="font-size: 0.8rem; color: var(--text-secondary); display: block;">حجم
+                            انتخابی</span>
+                        <span style="font-weight: 700; color: white;" id="selectedVolDisplay">0 GB</span>
+                    </div>
+                </div>
+                <button class="btn-submit" id="submitBtn" onclick="nextStep()">
+                    <span>ادامه و پرداخت</span>
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+            </div>
+
+            <button class="btn-submit"
+                style="background: transparent; border: 1px solid var(--glass-border); box-shadow: none; margin-top: 1rem;"
+                onclick="prevStep()">
+                بازگشت به انتخاب سرویس
+            </button>
+        </div>
+    </div>
+
+    <!-- Step 3: Payment -->
+    <div class="step-content" id="step-3">
+        <div class="volume-select-container">
+            <div style="margin-bottom: 1rem; color: var(--text-secondary); font-size: 0.9rem;">فاکتور و روش پرداخت:
+            </div>
+
+            <div class="invoice-card">
+                <div class="invoice-row">
+                    <span>سرویس</span>
+                    <span id="inv-service-name" style="color: white; font-weight: 600;">-</span>
+                </div>
+                <div class="invoice-row">
+                    <span>حجم اضافه</span>
+                    <span id="inv-volume" style="color: white; font-weight: 600;">-</span>
+                </div>
+                <div class="invoice-row total">
+                    <span>مبلغ قابل پرداخت</span>
+                    <span id="inv-total-price" style="color: var(--neon-success);">-</span>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 1rem; color: var(--text-secondary); font-size: 0.9rem;">روش پرداخت را انتخاب
+                کنید:</div>
+
+            <div class="payment-methods">
+                <div class="payment-method-card" onclick="selectPaymentMethod('balance')" id="pm-balance">
+                    <div class="pm-icon"><i class="fas fa-wallet"></i></div>
+                    <div class="pm-info">
+                        <div class="pm-title">پرداخت از کیف پول</div>
+                        <div class="pm-desc">موجودی: <span id="user-balance-display">0</span> تومان</div>
+                    </div>
+                    <div class="pm-check"><i class="fas fa-check-circle"></i></div>
+                </div>
+
+                <div class="payment-method-card" onclick="selectPaymentMethod('gateway')" id="pm-gateway">
+                    <div class="pm-icon"><i class="fas fa-credit-card"></i></div>
+                    <div class="pm-info">
+                        <div class="pm-title">پرداخت آنلاین</div>
+                        <div class="pm-desc">کارت‌های عضو شتاب</div>
+                    </div>
+                    <div class="pm-check"><i class="fas fa-check-circle"></i></div>
+                </div>
+            </div>
+
+            <button class="btn-submit" id="finalPayBtn" onclick="handleFinalPayment()" disabled>
+                پرداخت نهایی
+            </button>
+
+            <button class="btn-submit"
+                style="background: transparent; border: 1px solid var(--glass-border); margin-top: 10px;"
+                onclick="prevStep()">
+                بازگشت
+            </button>
+        </div>
+    </div>
+
+
+</div>
+
+<script>
+    let services = [];
+    let selectedService = null;
+    let selectedVolume = 0;
+    let currentStep = 1;
+    let selectedPaymentMethod = null;
+    const userBalance = {{ user.balance if user and user.balance else 0 }};
+
+    const preselectedServiceId = {{ preselected_service_id if preselected_service_id else 'null' }};
+
+    // Load Services
+    async function loadServices() {
+        try {
+            const response = await fetch('/api/services');
+            const data = await response.json();
+            if (data.success) {
+                services = data.services;
+                renderServices(services);
+
+                // Auto-select if preselected
+                if (preselectedServiceId) {
+                    const targetService = services.find(s => s.id == preselectedServiceId);
+                    if (targetService) {
+                        selectService(targetService);
+                    }
+                }
+            }
+        } catch (error) {
+            document.getElementById('servicesList').innerHTML = '<div class="text-center text-danger">خطا در بارگذاری</div>';
+        }
+    }
+
+    function renderServices(list) {
+        const container = document.getElementById('servicesList');
+        container.innerHTML = '';
+
+        if (list.length === 0) {
+            container.innerHTML = '<div class="text-center text-muted">سرویسی یافت نشد</div>';
+            return;
+        }
+
+        list.forEach(service => {
+            const div = document.createElement('div');
+            div.className = `service-card ${selectedService?.id === service.id ? 'selected' : ''}`;
+            div.onclick = () => selectService(service);
+            div.innerHTML = `
+                <div class="service-icon">
+                    <i class="fas fa-server"></i>
+                </div>
+                <div class="service-info">
+                    <div class="service-name">${service.name}</div>
+                    <div class="service-meta">${service.total_gb} GB • ${service.remaining_days || 0} روز</div>
+                </div>
+                <i class="fas fa-chevron-left" style="color: var(--text-tertiary);"></i>
+            `;
+            container.appendChild(div);
+        });
+    }
+
+    function selectService(service) {
+        selectedService = service;
+        renderServices(services);
+        nextStep();
+    }
+
+    function nextStep() {
+        if (currentStep === 1 && !selectedService) return;
+        if (currentStep === 2 && selectedVolume <= 0) return;
+
+        document.getElementById(`step-${currentStep}`).classList.remove('active');
+
+        currentStep++;
+
+        document.getElementById(`step-${currentStep}`).classList.add('active');
+        document.getElementById(`ind-${currentStep}`).classList.add('active');
+
+        if (currentStep === 3) {
+            prepareInvoice();
+        }
+    }
+
+    function prevStep() {
+        document.getElementById(`step-${currentStep}`).classList.remove('active');
+        document.getElementById(`ind-${currentStep}`).classList.remove('active');
+
+        currentStep--;
+
+        document.getElementById(`step-${currentStep}`).classList.add('active');
+
+        if (currentStep === 1) {
+            selectedService = null;
+            renderServices(services);
+        }
+    }
+
+    function selectVolume(gb) {
+        selectedVolume = gb;
+        document.getElementById('customVolume').value = '';
+        updateUI();
+    }
+
+    function handleCustomVolume(val) {
+        selectedVolume = parseInt(val) || 0;
+        document.querySelectorAll('.volume-chip').forEach(el => el.classList.remove('selected'));
+        updateSummary();
+    }
+
+    function updateUI() {
+        document.querySelectorAll('.volume-chip').forEach(el => {
+            const val = parseInt(el.querySelector('.volume-value').innerText);
+            el.classList.toggle('selected', val === selectedVolume);
+        });
+        updateSummary();
+    }
+
+    function updateSummary() {
+        const price = selectedService ? (selectedService.price_per_gb || 0) : 0;
+        const total = selectedVolume * price;
+        document.getElementById('totalPrice').textContent = total.toLocaleString() + ' تومان';
+        document.getElementById('selectedVolDisplay').textContent = selectedVolume + ' GB';
+        document.getElementById('submitBtn').disabled = selectedVolume <= 0;
+
+        // Update price per GB display if element exists
+        const priceDisplay = document.getElementById('pricePerGbDisplay');
+        if (priceDisplay) {
+            priceDisplay.textContent = price.toLocaleString() + ' تومان';
+        }
+    }
+
+    function prepareInvoice() {
+        const price = selectedService ? (selectedService.price_per_gb || 0) : 0;
+        const total = selectedVolume * price;
+
+        document.getElementById('inv-service-name').textContent = selectedService.name;
+        document.getElementById('inv-volume').textContent = selectedVolume + ' GB';
+        document.getElementById('inv-total-price').textContent = total.toLocaleString() + ' تومان';
+        document.getElementById('user-balance-display').textContent = userBalance.toLocaleString();
+
+        // Check balance
+        const balanceCard = document.getElementById('pm-balance');
+        if (userBalance < total) {
+            balanceCard.classList.add('disabled');
+            balanceCard.onclick = null;
+            balanceCard.querySelector('.pm-desc').innerHTML += ' <span style="color: #ef4444; font-size: 0.7rem;">(موجودی ناکافی)</span>';
+        } else {
+            balanceCard.classList.remove('disabled');
+            balanceCard.onclick = () => selectPaymentMethod('balance');
+        }
+
+        // Reset payment selection
+        selectedPaymentMethod = null;
+        document.querySelectorAll('.payment-method-card').forEach(el => el.classList.remove('selected'));
+        document.getElementById('finalPayBtn').disabled = true;
+    }
+
+    function selectPaymentMethod(method) {
+        selectedPaymentMethod = method;
+        document.querySelectorAll('.payment-method-card').forEach(el => el.classList.remove('selected'));
+        document.getElementById(`pm-${method}`).classList.add('selected');
+        document.getElementById('finalPayBtn').disabled = false;
+    }
+
+    async function handleFinalPayment() {
+        if (!selectedService || selectedVolume <= 0 || !selectedPaymentMethod) return;
+
+        const btn = document.getElementById('finalPayBtn');
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> در حال پردازش...';
+
+        try {
+            const response = await fetch('/api/add-volume', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    service_id: selectedService.id,
+                    volume_gb: selectedVolume,
+                    payment_method: selectedPaymentMethod
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                if (result.payment_required && result.payment_link) {
+                    // Gateway payment
+                    window.location.href = result.payment_link;
+                } else {
+                    // Balance payment (success)
+                    showToast('افزایش حجم موفقیت‌آمیز بود', 'success');
+                    setTimeout(() => window.location.href = '/services', 1000);
+                }
+            } else {
+                showToast(result.message || 'خطا در عملیات', 'error');
+                btn.disabled = false;
+                btn.innerHTML = originalHtml;
+            }
+        } catch (error) {
+            showToast('خطا در ارتباط با سرور', 'error');
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }
+    }
+
+    loadServices();
+</script>
+{% endblock %}

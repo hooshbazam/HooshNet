@@ -1,0 +1,683 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}لاگ‌های سیستم{% endblock %}
+
+{% block content %}
+<div class="logs-management-minimal">
+    <!-- Hero Header - Minimal -->
+    <div class="logs-hero-minimal fade-in">
+        <div class="hero-content-minimal">
+            <div class="hero-icon-minimal">
+                <i class="fas fa-file-alt"></i>
+            </div>
+            <div class="hero-text-minimal">
+                <h1 class="hero-title-minimal">لاگ‌های سیستم</h1>
+                <p class="hero-subtitle-minimal">مشاهده و بررسی تمام لاگ‌های سیستم</p>
+            </div>
+        </div>
+        <div class="hero-actions-minimal">
+            <div class="filter-select-wrapper-minimal">
+                <select id="logLevelFilter" onchange="filterLogs()" class="filter-select-minimal">
+                    <option value="">همه</option>
+                    <option value="INFO">اطلاعات</option>
+                    <option value="WARNING">هشدار</option>
+                    <option value="ERROR">خطا</option>
+                </select>
+                <i class="fas fa-filter filter-icon-minimal"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- Logs List - Minimal -->
+    <div class="logs-list-minimal fade-in" style="animation-delay: 0.1s;">
+        {% if logs %}
+        {% for log in logs %}
+        <div class="log-item-minimal log-{{ log.level.lower() }}-minimal">
+            <div class="log-icon-wrapper-minimal">
+                <div class="log-icon-minimal log-icon-{{ log.level.lower() }}-minimal">
+                    <i
+                        class="fas {% if log.level == 'INFO' %}fa-info-circle{% elif log.level == 'WARNING' %}fa-exclamation-triangle{% elif log.level == 'ERROR' %}fa-exclamation-circle{% else %}fa-circle{% endif %}"></i>
+                </div>
+                <div class="log-icon-glow-minimal"></div>
+            </div>
+            <div class="log-content-minimal">
+                <div class="log-message-minimal">{{ log.message }}</div>
+                <div class="log-meta-minimal">
+                    <span class="log-module-minimal">
+                        <i class="fas fa-tag"></i>
+                        {{ log.module or 'سیستم' }}
+                    </span>
+                    <span class="log-time-minimal">
+                        <i class="fas fa-clock"></i>
+                        {{ log.created_at }}
+                    </span>
+                </div>
+            </div>
+            <div class="log-level-badge-minimal level-{{ log.level.lower() }}-minimal">
+                {{ log.level }}
+            </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="empty-state-minimal">
+            <div class="empty-icon-minimal">
+                <i class="fas fa-file-alt"></i>
+            </div>
+            <h3 class="empty-title-minimal">هیچ لاگی یافت نشد</h3>
+            <p class="empty-desc-minimal">در حال حاضر هیچ لاگی در سیستم ثبت نشده است</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Pagination - Minimal -->
+    {% if total_pages > 1 %}
+    <div class="pagination-minimal fade-in" style="animation-delay: 0.15s;">
+        <div class="pagination-info-minimal">
+            نمایش <strong>{{ ((page - 1) * 10) + 1 }}</strong> تا <strong>{{ [page * 10, total]|min }}</strong> از
+            <strong>{{ total }}</strong> مورد
+        </div>
+        <div class="pagination-controls-minimal">
+            {% if page > 1 %}
+            <a href="?page={{ page - 1 }}" class="pagination-btn-minimal" title="قبلی">
+                <i class="fas fa-chevron-right"></i>
+            </a>
+            {% else %}
+            <span class="pagination-btn-minimal disabled">
+                <i class="fas fa-chevron-right"></i>
+            </span>
+            {% endif %}
+
+            <div class="pagination-numbers-minimal">
+                {% for p in range(1, total_pages + 1) %}
+                {% if p == page %}
+                <span class="pagination-number-minimal active">{{ p }}</span>
+                {% elif p == 1 or p == total_pages or (p >= page - 2 and p <= page + 2) %} <a href="?page={{ p }}"
+                    class="pagination-number-minimal">{{ p }}</a>
+                    {% elif p == page - 3 or p == page + 3 %}
+                    <span class="pagination-ellipsis-minimal">...</span>
+                    {% endif %}
+                    {% endfor %}
+            </div>
+
+            {% if page < total_pages %} <a href="?page={{ page + 1 }}" class="pagination-btn-minimal" title="بعدی">
+                <i class="fas fa-chevron-left"></i>
+                </a>
+                {% else %}
+                <span class="pagination-btn-minimal disabled">
+                    <i class="fas fa-chevron-left"></i>
+                </span>
+                {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+    /* =====================================
+   Logs Management - Minimal Dark Mode
+   ===================================== */
+    .logs-management-minimal {
+        padding: var(--admin-sp-4);
+        max-width: 1400px;
+        margin: 0 auto;
+    }
+
+    /* Hero Header - Minimal */
+    .logs-hero-minimal {
+        background: var(--admin-bg-elevated);
+        border: 1.5px solid var(--admin-border-light);
+        border-radius: var(--admin-radius-xl);
+        padding: var(--admin-sp-5);
+        margin-bottom: var(--admin-sp-4);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: var(--admin-sp-4);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .logs-hero-minimal::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 200px;
+        height: 200px;
+        background: radial-gradient(circle, rgba(99, 102, 241, 0.1) 0%, transparent 70%);
+        border-radius: 50%;
+        transform: translate(50px, -50px);
+    }
+
+    .hero-content-minimal {
+        display: flex;
+        align-items: center;
+        gap: var(--admin-sp-3);
+        position: relative;
+        z-index: 1;
+    }
+
+    .hero-icon-minimal {
+        width: 56px;
+        height: 56px;
+        border-radius: var(--admin-radius-lg);
+        background: linear-gradient(135deg, var(--admin-primary) 0%, var(--admin-accent) 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 1.5rem;
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    }
+
+    .hero-text-minimal {
+        display: flex;
+        flex-direction: column;
+        gap: var(--admin-sp-1);
+    }
+
+    .hero-title-minimal {
+        font-size: 1.5rem;
+        font-weight: 900;
+        color: var(--admin-text-primary);
+        margin: 0;
+    }
+
+    .hero-subtitle-minimal {
+        font-size: 0.875rem;
+        color: var(--admin-text-tertiary);
+        font-weight: 600;
+        margin: 0;
+    }
+
+    .hero-actions-minimal {
+        position: relative;
+        z-index: 1;
+    }
+
+    .filter-select-wrapper-minimal {
+        position: relative;
+    }
+
+    .filter-select-minimal {
+        padding: var(--admin-sp-2) var(--admin-sp-4) var(--admin-sp-2) var(--admin-sp-3);
+        background: var(--admin-bg-surface);
+        border: 1.5px solid var(--admin-border-light);
+        border-radius: var(--admin-radius-lg);
+        color: var(--admin-text-primary);
+        font-weight: 800;
+        font-size: 0.813rem;
+        cursor: pointer;
+        outline: none;
+        appearance: none;
+        transition: all 0.3s ease;
+        min-width: 150px;
+    }
+
+    .filter-select-minimal:hover {
+        border-color: var(--admin-primary);
+        background: rgba(99, 102, 241, 0.05);
+    }
+
+    .filter-select-minimal:focus {
+        border-color: var(--admin-primary);
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    }
+
+    .filter-icon-minimal {
+        position: absolute;
+        left: var(--admin-sp-3);
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--admin-primary);
+        pointer-events: none;
+    }
+
+    /* Logs List - Minimal */
+    .logs-list-minimal {
+        display: flex;
+        flex-direction: column;
+        gap: var(--admin-sp-2);
+        margin-bottom: var(--admin-sp-4);
+    }
+
+    .log-item-minimal {
+        background: var(--admin-bg-elevated);
+        border: 1.5px solid var(--admin-border-light);
+        border-radius: var(--admin-radius-xl);
+        padding: var(--admin-sp-4);
+        display: flex;
+        align-items: flex-start;
+        gap: var(--admin-sp-3);
+        position: relative;
+        overflow: hidden;
+        transition: all 0.3s ease;
+    }
+
+    .log-item-minimal:hover {
+        transform: translateX(-4px);
+        box-shadow: var(--admin-shadow-md);
+        border-color: var(--admin-primary);
+    }
+
+    .log-item-minimal::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 3px;
+        height: 100%;
+        background: var(--admin-primary);
+        transform: scaleY(0);
+        transform-origin: top;
+        transition: transform 0.3s ease;
+    }
+
+    .log-item-minimal:hover::before {
+        transform: scaleY(1);
+    }
+
+    .log-icon-wrapper-minimal {
+        position: relative;
+        flex-shrink: 0;
+    }
+
+    .log-icon-minimal {
+        width: 40px;
+        height: 40px;
+        border-radius: var(--admin-radius-lg);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 1.125rem;
+        position: relative;
+        z-index: 2;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+
+    .log-icon-info-minimal {
+        background: linear-gradient(135deg, var(--admin-info) 0%, #2563eb 100%);
+    }
+
+    .log-icon-warning-minimal {
+        background: linear-gradient(135deg, var(--admin-warning) 0%, #d97706 100%);
+    }
+
+    .log-icon-error-minimal {
+        background: linear-gradient(135deg, var(--admin-error) 0%, #dc2626 100%);
+    }
+
+    .log-icon-glow-minimal {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        opacity: 0.3;
+        z-index: 1;
+        animation: pulse-glow-minimal 2s infinite;
+    }
+
+    .log-info-minimal .log-icon-glow-minimal {
+        background: var(--admin-info);
+    }
+
+    .log-warning-minimal .log-icon-glow-minimal {
+        background: var(--admin-warning);
+    }
+
+    .log-error-minimal .log-icon-glow-minimal {
+        background: var(--admin-error);
+    }
+
+    @keyframes pulse-glow-minimal {
+
+        0%,
+        100% {
+            transform: translate(-50%, -50%) scale(1);
+            opacity: 0.3;
+        }
+
+        50% {
+            transform: translate(-50%, -50%) scale(1.2);
+            opacity: 0.1;
+        }
+    }
+
+    .log-content-minimal {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: var(--admin-sp-2);
+    }
+
+    .log-message-minimal {
+        font-size: 0.938rem;
+        color: var(--admin-text-primary);
+        font-weight: 700;
+        line-height: 1.6;
+        word-break: break-word;
+    }
+
+    .log-meta-minimal {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--admin-sp-3);
+    }
+
+    .log-module-minimal,
+    .log-time-minimal {
+        display: flex;
+        align-items: center;
+        gap: var(--admin-sp-1);
+        font-size: 0.75rem;
+        color: var(--admin-text-tertiary);
+        font-weight: 600;
+    }
+
+    .log-module-minimal i,
+    .log-time-minimal i {
+        color: var(--admin-primary);
+        font-size: 0.813rem;
+    }
+
+    .log-level-badge-minimal {
+        padding: var(--admin-sp-1) var(--admin-sp-2);
+        border-radius: var(--admin-radius-md);
+        font-size: 0.688rem;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        flex-shrink: 0;
+    }
+
+    .level-info-minimal {
+        background: rgba(59, 130, 246, 0.15);
+        color: var(--admin-info);
+    }
+
+    .level-warning-minimal {
+        background: rgba(251, 191, 36, 0.15);
+        color: var(--admin-warning);
+    }
+
+    .level-error-minimal {
+        background: rgba(239, 68, 68, 0.15);
+        color: var(--admin-error);
+    }
+
+    /* Empty State - Minimal */
+    .empty-state-minimal {
+        text-align: center;
+        padding: var(--admin-sp-12) var(--admin-sp-4);
+    }
+
+    .empty-icon-minimal {
+        width: 80px;
+        height: 80px;
+        margin: 0 auto var(--admin-sp-4);
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.12) 0%, rgba(139, 92, 246, 0.12) 100%);
+        border-radius: var(--admin-radius-xl);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+        color: var(--admin-primary);
+    }
+
+    .empty-title-minimal {
+        font-size: 1.25rem;
+        font-weight: 900;
+        color: var(--admin-text-primary);
+        margin-bottom: var(--admin-sp-2);
+    }
+
+    .empty-desc-minimal {
+        font-size: 0.938rem;
+        color: var(--admin-text-tertiary);
+        font-weight: 600;
+    }
+
+    /* Pagination - Minimal */
+    .pagination-minimal {
+        background: var(--admin-bg-elevated);
+        border: 1.5px solid var(--admin-border-light);
+        border-radius: var(--admin-radius-xl);
+        padding: var(--admin-sp-4);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: var(--admin-sp-3);
+    }
+
+    .pagination-info-minimal {
+        font-size: 0.875rem;
+        color: var(--admin-text-secondary);
+        font-weight: 600;
+    }
+
+    .pagination-info-minimal strong {
+        color: var(--admin-text-primary);
+        font-weight: 900;
+    }
+
+    .pagination-controls-minimal {
+        display: flex;
+        align-items: center;
+        gap: var(--admin-sp-2);
+    }
+
+    .pagination-btn-minimal {
+        width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--admin-bg-surface);
+        border: 1.5px solid var(--admin-border-light);
+        border-radius: var(--admin-radius-md);
+        color: var(--admin-text-primary);
+        text-decoration: none;
+        font-weight: 800;
+        font-size: 0.813rem;
+        transition: all 0.3s ease;
+    }
+
+    .pagination-btn-minimal:hover:not(.disabled) {
+        background: var(--admin-primary);
+        border-color: var(--admin-primary);
+        color: white;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    }
+
+    .pagination-btn-minimal.disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+
+    .pagination-numbers-minimal {
+        display: flex;
+        align-items: center;
+        gap: var(--admin-sp-1);
+    }
+
+    .pagination-number-minimal {
+        min-width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--admin-bg-surface);
+        border: 1.5px solid var(--admin-border-light);
+        border-radius: var(--admin-radius-md);
+        color: var(--admin-text-primary);
+        text-decoration: none;
+        font-weight: 800;
+        font-size: 0.813rem;
+        transition: all 0.3s ease;
+    }
+
+    .pagination-number-minimal:hover {
+        background: rgba(99, 102, 241, 0.1);
+        border-color: var(--admin-primary);
+        color: var(--admin-primary);
+    }
+
+    .pagination-number-minimal.active {
+        background: linear-gradient(135deg, var(--admin-primary) 0%, var(--admin-primary-dark) 100%);
+        border-color: var(--admin-primary);
+        color: white;
+        box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+    }
+
+    .pagination-ellipsis-minimal {
+        padding: 0 var(--admin-sp-2);
+        color: var(--admin-text-tertiary);
+        font-weight: 800;
+    }
+
+    /* Fade In Animation */
+    .fade-in {
+        animation: fadeInMinimal 0.4s ease;
+    }
+
+    @keyframes fadeInMinimal {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    /* Responsive - Minimal */
+    @media (max-width: 768px) {
+        .logs-management-minimal {
+            padding: var(--admin-sp-3);
+        }
+
+        .logs-hero-minimal {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .hero-actions-minimal {
+            width: 100%;
+        }
+
+        .filter-select-minimal {
+            width: 100%;
+        }
+
+        .log-item-minimal {
+            flex-wrap: wrap;
+        }
+
+        .log-level-badge-minimal {
+            width: 100%;
+            text-align: center;
+            margin-top: var(--admin-sp-2);
+        }
+
+        .pagination-minimal {
+            flex-direction: column;
+        }
+
+        .pagination-controls-minimal {
+            width: 100%;
+            justify-content: center;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+
+
+    async function filterLogs() {
+        const level = document.getElementById('logLevelFilter').value;
+        const url = level ? fixUrl(`/api/admin/logs?level=${level}`) : fixUrl('/api/admin/logs');
+
+        try {
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            const data = await response.json();
+
+            if (data.success && data.logs) {
+                const logsList = document.querySelector('.logs-list-minimal');
+                logsList.innerHTML = '';
+
+                if (data.logs.length === 0) {
+                    logsList.innerHTML = `
+                    <div class="empty-state-minimal">
+                        <div class="empty-icon-minimal">
+                            <i class="fas fa-file-alt"></i>
+                        </div>
+                        <h3 class="empty-title-minimal">هیچ لاگی یافت نشد</h3>
+                        <p class="empty-desc-minimal">در حال حاضر هیچ لاگی با این فیلتر یافت نشد</p>
+                    </div>
+                `;
+                    return;
+                }
+
+                data.logs.forEach(log => {
+                    const logItem = document.createElement('div');
+                    logItem.className = `log-item-minimal log-${log.level.toLowerCase()}-minimal`;
+
+                    const icons = {
+                        'INFO': 'fa-info-circle',
+                        'WARNING': 'fa-exclamation-triangle',
+                        'ERROR': 'fa-exclamation-circle'
+                    };
+
+                    logItem.innerHTML = `
+                    <div class="log-icon-wrapper-minimal">
+                        <div class="log-icon-minimal log-icon-${log.level.toLowerCase()}-minimal">
+                            <i class="fas ${icons[log.level] || 'fa-circle'}"></i>
+                        </div>
+                        <div class="log-icon-glow-minimal"></div>
+                    </div>
+                    <div class="log-content-minimal">
+                        <div class="log-message-minimal">${log.message || ''}</div>
+                        <div class="log-meta-minimal">
+                            <span class="log-module-minimal">
+                                <i class="fas fa-tag"></i>
+                                ${log.module || 'سیستم'}
+                            </span>
+                            <span class="log-time-minimal">
+                                <i class="fas fa-clock"></i>
+                                ${log.created_at}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="log-level-badge-minimal level-${log.level.toLowerCase()}-minimal">
+                        ${log.level}
+                    </div>
+                `;
+
+                    logsList.appendChild(logItem);
+                });
+            }
+        } catch (error) {
+            console.error('Error filtering logs:', error);
+            showToast('خطا در بارگذاری لاگ‌ها', 'error');
+        }
+    }
+</script>
+{% endblock %}

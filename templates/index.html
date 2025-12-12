@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#000000">
+    <title>ورود به پنل</title>
+
+    <!-- Telegram Web App SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+        rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/vazirmatn@33.0.3/Vazirmatn-font-face.css" rel="stylesheet">
+
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet"
+        href="{{ url_for('static', filename='css/landing-page-redesign.css') }}?v={{ range(1, 10000) | random }}">
+</head>
+
+<body>
+
+    <!-- Background Effects -->
+    <div class="bg-effect">
+        <div class="bg-orb orb-1"></div>
+        <div class="bg-orb orb-2"></div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="landing-container">
+
+        <!-- Animated Logo -->
+        <div class="logo-wrapper">
+            <div class="logo-circle"></div>
+            <div class="logo-pulse"></div>
+            <i class="fas fa-shield-halved logo-icon"></i>
+        </div>
+
+        <!-- Typography -->
+        <div>
+            <h1 class="app-title">VPN PANEL</h1>
+            <p class="app-subtitle">اتصال امن، سریع و بدون محدودیت</p>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div class="loader-container">
+            <div class="loader-bar">
+                <div class="loader-progress"></div>
+            </div>
+            <p class="status-text" id="status">در حال بررسی امنیت...</p>
+        </div>
+
+    </div>
+
+    <!-- Logic -->
+    <script>
+        // Initialize Telegram WebApp
+        if (window.Telegram && window.Telegram.WebApp) {
+            const tg = window.Telegram.WebApp;
+            tg.expand();
+            tg.disableVerticalSwipes();
+            if (tg.lockOrientation) tg.lockOrientation();
+            tg.enableClosingConfirmation();
+            if (tg.setHeaderColor) tg.setHeaderColor('#000000');
+            if (tg.setBackgroundColor) tg.setBackgroundColor('#000000');
+            tg.ready();
+
+            // Ensure full height
+            window.addEventListener('resize', function () {
+                if (!tg.isExpanded) tg.expand();
+            });
+
+            setTimeout(() => {
+                tg.expand();
+            }, 100);
+        }
+
+        const status = document.getElementById('status');
+
+        function updateStatus(msg) {
+            status.textContent = msg;
+            status.style.opacity = '0';
+            setTimeout(() => {
+                status.style.opacity = '1';
+            }, 100);
+        }
+
+        function parseTelegramData() {
+            if (window.Telegram && window.Telegram.WebApp) {
+                const webApp = window.Telegram.WebApp;
+                const initData = webApp.initData || '';
+                const initDataUnsafe = webApp.initDataUnsafe || {};
+                const user = initDataUnsafe.user;
+
+                if (user && user.id) {
+                    return {
+                        init_data: initData,
+                        user: {
+                            id: user.id,
+                            username: user.username || '',
+                            first_name: user.first_name || '',
+                            last_name: user.last_name || '',
+                            photo_url: user.photo_url || user.profile_photo_url || user.photo || ''
+                        }
+                    };
+                }
+            }
+
+            // Fallback for URL hash (dev mode or direct link)
+            const hash = window.location.hash.substring(1);
+            if (hash) {
+                const params = new URLSearchParams(hash);
+                const userParam = params.get('tgWebAppData');
+
+                if (userParam) {
+                    const tgParams = new URLSearchParams(userParam);
+                    const userJson = tgParams.get('user');
+                    const initData = userParam;
+
+                    if (userJson) {
+                        try {
+                            const user = JSON.parse(decodeURIComponent(userJson));
+                            return {
+                                init_data: initData,
+                                user: user
+                            };
+                        } catch (e) {
+                            console.error('Failed to parse user JSON:', e);
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
+        function login(data) {
+            updateStatus('خوش آمدید ' + data.user.first_name);
+
+            const pathParts = window.location.pathname.split('/').filter(p => p);
+            const botName = pathParts[0] || '';
+            const authPath = botName ? `/${botName}/auth/telegram-webapp` : '/auth/telegram-webapp';
+
+            fetch(authPath, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            })
+                .then(response => response.json())
+                .then(result => {
+                    if (result.success) {
+                        updateStatus('در حال ورود به پنل...');
+                        setTimeout(() => {
+                            let redirectUrl = result.redirect;
+                            if (botName && redirectUrl && !redirectUrl.startsWith(`/${botName}/`)) {
+                                if (redirectUrl.startsWith('/')) {
+                                    redirectUrl = `/${botName}${redirectUrl}`;
+                                } else if (!redirectUrl.startsWith('http')) {
+                                    redirectUrl = `/${botName}/${redirectUrl}`;
+                                }
+                            }
+                            window.location.href = redirectUrl;
+                        }, 800);
+                    } else {
+                        updateStatus('خطا: ' + result.message);
+                    }
+                })
+                .catch(err => {
+                    console.error('Fetch error:', err);
+                    updateStatus('خطا در برقراری ارتباط');
+                });
+        }
+
+        // Start Process
+        setTimeout(() => {
+            const data = parseTelegramData();
+
+            if (data && data.user && data.user.id) {
+                login(data);
+            } else {
+                updateStatus('لطفاً از طریق ربات وارد شوید');
+                document.querySelector('.loader-bar').style.display = 'none';
+            }
+        }, 1500); // Slight delay for animation to play
+    </script>
+</body>
+
+</html>

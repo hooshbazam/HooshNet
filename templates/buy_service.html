@@ -1,0 +1,650 @@
+{% extends "base.html" %}
+
+{% block title %}خرید سرویس حرفه‌ای{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet"
+    href="{{ url_for('static', filename='css/buy-service-redesign-v3.css') }}?v={{ range(1, 10000) | random }}">
+{% endblock %}
+
+{% block content %}
+<div class="buy-header fade-in-up">
+    <div class="header-back-btn" onclick="handleBack()">
+        <i class="fas fa-arrow-right"></i>
+    </div>
+    <h1>خرید سرویس</h1>
+    <p>تجربه سرعت و امنیت بدون محدودیت</p>
+</div>
+
+<!-- Wizard Progress -->
+<div class="wizard-steps fade-in-up" style="animation-delay: 0.1s;">
+    <div class="step-dot active" id="dot1"></div>
+    <div class="step-dot" id="dot2"></div>
+    <div class="step-dot" id="dot3"></div>
+</div>
+
+<form id="buyServiceForm" onsubmit="return false;">
+
+    <!-- Step 1: Select Panel -->
+    <div class="form-step fade-in-up" id="step1" style="animation-delay: 0.2s;">
+        <h3 style="padding: 0 20px; margin-bottom: 16px; font-size: 1.1rem;">انتخاب لوکیشن</h3>
+        <div id="panelsContainer" class="selection-grid">
+            <div class="loading-spinner" style="grid-column: 1/-1; text-align: center; padding: 40px;">
+                <i class="fas fa-circle-notch fa-spin" style="font-size: 2rem; color: var(--primary);"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step 1.5: Purchase Type -->
+    <div class="form-step fade-in-up" id="step1_5" style="display: none;">
+        <h3 style="padding: 0 20px; margin-bottom: 16px; font-size: 1.1rem;">نوع سرویس</h3>
+        <div class="selection-grid">
+            <div class="modern-card" onclick="selectPurchaseType('gigabyte')">
+                <div class="check-indicator"><i class="fas fa-check"></i></div>
+                <i class="fas fa-bolt card-icon"></i>
+                <div class="card-title">سرویس حجمی</div>
+                <div class="card-subtitle">حجم دلخواه • بدون محدودیت زمانی</div>
+            </div>
+            <div class="modern-card" onclick="selectPurchaseType('plan')">
+                <div class="check-indicator"><i class="fas fa-check"></i></div>
+                <i class="fas fa-clock card-icon"></i>
+                <div class="card-title">سرویس اشتراکی</div>
+                <div class="card-subtitle">بسته‌های متنوع • زمان‌دار</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step 2: Volume Selection -->
+    <div class="form-step fade-in-up" id="step2" style="display: none;">
+        <h3 style="padding: 0 20px; margin-bottom: 16px; font-size: 1.1rem;">انتخاب حجم</h3>
+        <div id="volumesContainer" class="volume-grid">
+            <!-- Filled by JS -->
+        </div>
+
+        <div class="custom-input-group">
+            <input type="number" id="customVolume" placeholder="حجم دلخواه (GB)" min="1" max="500">
+            <button type="button" onclick="setCustomVolume()">تایید</button>
+        </div>
+    </div>
+
+    <!-- Step 2: Category Selection -->
+    <div class="form-step fade-in-up" id="step2_category" style="display: none;">
+        <h3 style="padding: 0 20px; margin-bottom: 16px; font-size: 1.1rem;">انتخاب دسته‌بندی</h3>
+        <div id="categoriesContainer" class="selection-list">
+            <!-- Filled by JS -->
+        </div>
+    </div>
+
+    <!-- Step 3: Product Selection -->
+    <div class="form-step fade-in-up" id="step3_product" style="display: none;">
+        <h3 style="padding: 0 20px; margin-bottom: 16px; font-size: 1.1rem;">انتخاب پلن</h3>
+        <div id="productsContainer" class="selection-list">
+            <!-- Filled by JS -->
+        </div>
+    </div>
+
+    <!-- Step 3: Payment -->
+    <div class="form-step fade-in-up" id="step3" style="display: none;">
+
+        <div class="invoice-card">
+            <div class="invoice-row">
+                <span class="invoice-label">سرویس</span>
+                <span class="invoice-value" id="summaryPanel">-</span>
+            </div>
+            <div class="invoice-row">
+                <span class="invoice-label">نوع</span>
+                <span class="invoice-value" id="summaryType">-</span>
+            </div>
+            <div class="invoice-row">
+                <span class="invoice-label" id="summaryVolumeLabel">مقدار</span>
+                <span class="invoice-value" id="summaryVolume">-</span>
+            </div>
+            <div class="invoice-row" id="summaryDurationRow" style="display: none;">
+                <span class="invoice-label">مدت زمان</span>
+                <span class="invoice-value" id="summaryDuration">-</span>
+            </div>
+
+            <div class="discount-box">
+                <input type="text" id="discountCode" placeholder="کد تخفیف دارید؟">
+                <button type="button" class="discount-btn" onclick="applyDiscountCode()">
+                    <i class="fas fa-arrow-left"></i>
+                </button>
+            </div>
+            <div id="discountMessage" style="font-size: 0.8rem; margin-top: 8px; min-height: 20px;"></div>
+
+            <div class="invoice-row total">
+                <span class="invoice-label">مبلغ نهایی</span>
+                <span class="invoice-total-price" id="summaryPrice">0</span>
+            </div>
+        </div>
+
+        <div style="padding: 0 20px; margin-top: 30px;">
+            <h3 style="margin-bottom: 16px; font-size: 1.1rem;">روش پرداخت</h3>
+            <div class="payment-methods">
+                <div class="payment-item selected" onclick="selectPaymentMethod('balance', this)">
+                    <input type="radio" name="payment_method" value="balance" checked style="display:none;">
+                    <div class="payment-icon"><i class="fas fa-wallet"></i></div>
+                    <div style="flex: 1; margin-right: 16px;">
+                        <div style="font-weight: 700;">کیف پول</div>
+                        <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">
+                            موجودی: {{ "{:,}".format(user.balance or 0) }} تومان
+                        </div>
+                    </div>
+                    <div class="check-circle"><i class="fas fa-check-circle" style="color: var(--primary);"></i></div>
+                </div>
+
+                <div class="payment-item" onclick="selectPaymentMethod('gateway', this)">
+                    <input type="radio" name="payment_method" value="gateway" style="display:none;">
+                    <div class="payment-icon"><i class="fas fa-credit-card"></i></div>
+                    <div style="flex: 1; margin-right: 16px;">
+                        <div style="font-weight: 700;">درگاه بانکی</div>
+                        <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">
+                            پرداخت امن با کلیه کارت‌های عضو شتاب
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Spacer for fixed bottom bar -->
+        <div style="height: 100px;"></div>
+    </div>
+
+</form>
+
+<!-- Action Bar -->
+<div class="action-bar">
+    <button type="button" class="btn-action btn-back" id="btnBack" onclick="handleBack()" style="display: none;">
+        <i class="fas fa-arrow-right"></i> بازگشت
+    </button>
+    <button type="button" class="btn-action btn-submit" id="btnSubmit" onclick="submitForm()" style="display: none;">
+        <span>پرداخت نهایی</span> <i class="fas fa-chevron-left"></i>
+    </button>
+</div>
+
+<script>
+    let currentStep = 1;
+    let historyStack = [];
+
+    let selectedPanel = null;
+    let selectedVolume = null;
+    let selectedProduct = null;
+    let selectedCategory = null;
+    let purchaseType = 'gigabyte';
+    let pricePerGB = 0;
+    let appliedDiscountCode = null;
+    let originalPrice = 0;
+    let renewServiceId = {{ renew_service_id|default ('null') | tojson | safe }};
+    let renewPanelId = {{ renew_panel_id|default ('null') | tojson | safe }};
+    let hasSinglePanel = false;
+
+    document.addEventListener('DOMContentLoaded', function () {
+        loadPanels();
+        updateNavButtons();
+    });
+
+    // Navigation Logic
+    function goToStep(stepId, addToHistory = true) {
+        // Hide all steps
+        document.querySelectorAll('.form-step').forEach(el => {
+            el.style.display = 'none';
+            el.classList.remove('active');
+        });
+
+        // Show target
+        let targetId = typeof stepId === 'number' ? `step${stepId}` : (stepId.startsWith('step') ? stepId : `step${stepId}`);
+        const targetEl = document.getElementById(targetId);
+        if (targetEl) {
+            targetEl.style.display = 'block';
+            // Reset animation
+            targetEl.classList.remove('fade-in-up');
+            void targetEl.offsetWidth; // trigger reflow
+            targetEl.classList.add('fade-in-up');
+        }
+
+        // Update Dots
+        updateDots(targetId);
+
+        // History
+        if (addToHistory) {
+            if (historyStack.length === 0 || historyStack[historyStack.length - 1] !== targetId) {
+                historyStack.push(targetId);
+            }
+        }
+
+        updateNavButtons(targetId);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function updateDots(stepId) {
+        const dots = [document.getElementById('dot1'), document.getElementById('dot2'), document.getElementById('dot3')];
+        dots.forEach(d => d.classList.remove('active', 'completed'));
+
+        if (stepId === 'step1') {
+            dots[0].classList.add('active');
+        } else if (stepId === 'step1_5' || stepId === 'step2' || stepId === 'step2_category') {
+            dots[0].classList.add('completed');
+            dots[1].classList.add('active');
+        } else if (stepId === 'step3_product') {
+            dots[0].classList.add('completed');
+            dots[1].classList.add('active');
+        } else if (stepId === 'step3') {
+            dots[0].classList.add('completed');
+            dots[1].classList.add('completed');
+            dots[2].classList.add('active');
+        }
+    }
+
+    function updateNavButtons(stepId = 'step1') {
+        const btnBack = document.getElementById('btnBack');
+        const btnSubmit = document.getElementById('btnSubmit');
+
+        // Back button logic - Bottom button is now hidden by default or used only in specific cases
+        // We rely on the header back button for main navigation
+        // But we can keep the bottom one for consistency if desired, or hide it.
+        // User asked for "A back button in the best place". Header is best.
+        // I will hide the bottom back button to avoid clutter, as requested "best place" implies one optimal placement.
+        btnBack.style.display = 'none';
+
+        // Submit button logic
+        if (stepId === 'step3') {
+            btnSubmit.style.display = 'flex';
+        } else {
+            btnSubmit.style.display = 'none';
+        }
+    }
+
+    function handleBack() {
+        if (historyStack.length > 1) {
+            historyStack.pop(); // Remove current
+            const prevStep = historyStack[historyStack.length - 1];
+            goToStep(prevStep, false);
+        } else {
+            // If history is empty or we are at the start, go to dashboard
+            const current = document.querySelector('.form-step[style*="display: block"]').id;
+
+            // Fallback logic if history is empty
+            if (current === 'step1') {
+                window.location.href = '/dashboard';
+                return;
+            }
+
+            if (current === 'step1_5') goToStep('step1', false);
+            else if (current === 'step2') goToStep('step1_5', false);
+            else if (current === 'step2_category') goToStep('step1_5', false);
+            else if (current === 'step3_product') goToStep('step2_category', false);
+            else if (current === 'step3') {
+                if (purchaseType === 'plan') goToStep('step3_product', false);
+                else goToStep('step2', false);
+            }
+        }
+    }
+
+    // Logic Functions
+    async function loadPanels() {
+        try {
+            const response = await fetch(fixUrl('/api/panels'));
+            const data = await response.json();
+            const container = document.getElementById('panelsContainer');
+            container.innerHTML = '';
+
+            if (data.success && data.panels && data.panels.length > 0) {
+                if (data.panels.length === 1) {
+                    const panel = data.panels[0];
+                    hasSinglePanel = true;
+                    selectPanel(panel);
+                    return;
+                }
+
+                hasSinglePanel = false;
+                data.panels.forEach(panel => {
+                    const div = document.createElement('div');
+                    div.className = 'modern-card';
+                    div.onclick = () => selectPanel(panel);
+
+                    const saleType = panel.sale_type || 'gigabyte';
+                    let typeLabel = saleType === 'plan' ? 'اشتراکی' : (saleType === 'both' ? 'ترکیبی' : 'حجمی');
+
+                    div.innerHTML = `
+                        <div class="check-indicator"><i class="fas fa-check"></i></div>
+                        <i class="fas fa-globe-americas card-icon"></i>
+                        <div class="card-title">${panel.name}</div>
+                        <div class="card-subtitle">${panel.country_fa || panel.location || 'نامشخص'}</div>
+                        <div class="card-subtitle" style="margin-top:4px; color:var(--primary); font-size:0.75rem;">${typeLabel}</div>
+                    `;
+                    container.appendChild(div);
+                });
+
+                if (renewServiceId && renewPanelId) {
+                    const panel = data.panels.find(p => p.id === renewPanelId);
+                    if (panel) selectPanel(panel);
+                }
+            } else {
+                container.innerHTML = '<div style="text-align:center; width:100%; color:var(--text-secondary); grid-column:1/-1;">هیچ پنلی یافت نشد</div>';
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            showToast('خطا در بارگذاری پنل‌ها', 'error');
+        }
+    }
+
+    function selectPanel(panel) {
+        selectedPanel = panel;
+        pricePerGB = panel.price_per_gb || 0;
+
+        if (!hasSinglePanel) {
+            // Visual feedback could be added here if we weren't immediately navigating
+        }
+
+        if (renewServiceId && renewPanelId && panel.id !== renewPanelId) {
+            renewServiceId = null;
+            renewPanelId = null;
+            fetch(fixUrl('/api/clear-renewal-session'), { method: 'POST' });
+        }
+
+        if (renewServiceId && renewPanelId && panel.id === renewPanelId) {
+            purchaseType = 'plan';
+            loadCategories();
+            goToStep('step2_category');
+            return;
+        }
+
+        const saleType = panel.sale_type || 'gigabyte';
+        if (saleType === 'both') {
+            goToStep('step1_5');
+        } else if (saleType === 'plan') {
+            purchaseType = 'plan';
+            loadCategories();
+            goToStep('step2_category');
+        } else {
+            purchaseType = 'gigabyte';
+            loadVolumes();
+            goToStep('step2');
+        }
+    }
+
+    function selectPurchaseType(type) {
+        purchaseType = type;
+        if (type === 'gigabyte') {
+            loadVolumes();
+            goToStep('step2');
+        } else {
+            loadCategories();
+            goToStep('step2_category');
+        }
+    }
+
+    async function loadCategories() {
+        try {
+            const response = await fetch(fixUrl(`/api/panel/${selectedPanel.id}/categories`));
+            const data = await response.json();
+            const container = document.getElementById('categoriesContainer');
+            container.innerHTML = '';
+
+            const categories = data.categories || [];
+            const hasNoCat = data.has_products_without_category;
+
+            if (categories.length === 0 && hasNoCat) {
+                loadProducts(null);
+                goToStep('step3_product');
+                return;
+            }
+
+            categories.forEach(cat => {
+                const div = document.createElement('div');
+                div.className = 'modern-card';
+                div.style.flexDirection = 'row';
+                div.style.alignItems = 'center';
+                div.style.textAlign = 'right';
+                div.style.padding = '16px';
+                div.onclick = () => selectCategory(cat);
+
+                div.innerHTML = `
+                    <div class="check-indicator" style="position:static; margin-left:12px; transform:scale(1); opacity:0; width:0; border:none;"></div>
+                    <i class="fas fa-folder card-icon" style="font-size:1.5rem; margin:0 0 0 16px;"></i>
+                    <div style="flex:1;">
+                        <div class="card-title" style="font-size:1rem;">${cat.name}</div>
+                    </div>
+                    <i class="fas fa-chevron-left" style="color:var(--text-tertiary);"></i>
+                `;
+                container.appendChild(div);
+            });
+
+            if (hasNoCat) {
+                const div = document.createElement('div');
+                div.className = 'modern-card';
+                div.style.flexDirection = 'row';
+                div.style.alignItems = 'center';
+                div.style.textAlign = 'right';
+                div.style.padding = '16px';
+                div.onclick = () => { selectedCategory = null; loadProducts(null); goToStep('step3_product'); };
+                div.innerHTML = `
+                    <i class="fas fa-box-open card-icon" style="font-size:1.5rem; margin:0 0 0 16px;"></i>
+                    <div style="flex:1;">
+                        <div class="card-title" style="font-size:1rem;">سایر محصولات</div>
+                    </div>
+                    <i class="fas fa-chevron-left" style="color:var(--text-tertiary);"></i>
+                `;
+                container.appendChild(div);
+            }
+        } catch (error) {
+            showToast('خطا در بارگذاری دسته‌بندی‌ها', 'error');
+        }
+    }
+
+    function selectCategory(category) {
+        selectedCategory = category;
+        loadProducts(category.id);
+        goToStep('step3_product');
+    }
+
+    async function loadProducts(categoryId) {
+        try {
+            const url = categoryId
+                ? fixUrl(`/api/panel/${selectedPanel.id}/products?category_id=${categoryId}`)
+                : fixUrl(`/api/panel/${selectedPanel.id}/products`);
+            const response = await fetch(url);
+            const data = await response.json();
+            const container = document.getElementById('productsContainer');
+            container.innerHTML = '';
+
+            if (data.products && data.products.length > 0) {
+                data.products.forEach(product => {
+                    const div = document.createElement('div');
+                    div.className = 'modern-card';
+                    div.style.flexDirection = 'row';
+                    div.style.alignItems = 'center';
+                    div.style.textAlign = 'right';
+                    div.style.padding = '16px';
+                    div.onclick = () => selectProduct(product);
+
+                    div.innerHTML = `
+                        <div style="flex:1;">
+                            <div class="card-title" style="font-size:1rem;">${product.name}</div>
+                            <div class="card-subtitle">${product.volume_gb} GB • ${product.duration_days} روز</div>
+                        </div>
+                        <div style="font-weight: 800; color: var(--primary); font-size:1.1rem;">${product.price.toLocaleString('fa-IR')}</div>
+                    `;
+                    container.appendChild(div);
+                });
+            } else {
+                container.innerHTML = '<div style="text-align:center; width:100%; color:var(--text-secondary);">محصولی یافت نشد</div>';
+            }
+        } catch (error) {
+            showToast('خطا در بارگذاری محصولات', 'error');
+        }
+    }
+
+    function selectProduct(product) {
+        selectedProduct = product;
+        originalPrice = product.price;
+        if (appliedDiscountCode) removeDiscountCode();
+        updatePriceDisplay();
+        goToStep('step3');
+    }
+
+    function loadVolumes() {
+        const volumes = [5, 10, 20, 30, 50, 100, 150, 200, 250];
+        const container = document.getElementById('volumesContainer');
+        container.innerHTML = '';
+
+        volumes.forEach(volume => {
+            const price = volume * pricePerGB;
+            const div = document.createElement('div');
+            div.className = 'volume-chip';
+            div.onclick = () => selectVolume(volume, price, div);
+            div.innerHTML = `
+                <span class="vol-amount">${volume} <span class="vol-unit">GB</span></span>
+                <div class="vol-price">${price.toLocaleString('fa-IR')}</div>
+            `;
+            container.appendChild(div);
+        });
+    }
+
+    function setCustomVolume() {
+        const vol = parseInt(document.getElementById('customVolume').value);
+        if (!vol || vol < 1 || vol > 500) {
+            showToast('حجم باید بین 1 تا 500 باشد', 'error');
+            return;
+        }
+        selectVolume(vol, vol * pricePerGB, null);
+    }
+
+    function selectVolume(volume, price, element) {
+        selectedVolume = { gb: volume, price: price };
+        originalPrice = price;
+        if (appliedDiscountCode) removeDiscountCode();
+
+        document.querySelectorAll('.volume-chip').forEach(el => el.classList.remove('selected'));
+        if (element) element.classList.add('selected');
+
+        updatePriceDisplay();
+        goToStep('step3');
+    }
+
+    function updatePriceDisplay() {
+        let finalPrice = originalPrice;
+        if (appliedDiscountCode) {
+            finalPrice = appliedDiscountCode.final_amount;
+        }
+
+        document.getElementById('summaryPanel').textContent = selectedPanel.name;
+
+        if (purchaseType === 'plan') {
+            document.getElementById('summaryType').textContent = 'اشتراکی';
+            document.getElementById('summaryVolumeLabel').textContent = 'پلن';
+            document.getElementById('summaryVolume').textContent = selectedProduct.name;
+            document.getElementById('summaryDurationRow').style.display = 'flex';
+            document.getElementById('summaryDuration').textContent = selectedProduct.duration_days + ' روز';
+        } else {
+            document.getElementById('summaryType').textContent = 'حجمی';
+            document.getElementById('summaryVolumeLabel').textContent = 'حجم';
+            document.getElementById('summaryVolume').textContent = selectedVolume.gb + ' GB';
+            document.getElementById('summaryDurationRow').style.display = 'none';
+        }
+
+        document.getElementById('summaryPrice').textContent = finalPrice.toLocaleString('fa-IR') + ' تومان';
+    }
+
+    function selectPaymentMethod(method, element) {
+        document.querySelectorAll('input[name="payment_method"]').forEach(input => {
+            if (input.value === method) input.checked = true;
+        });
+
+        document.querySelectorAll('.payment-item').forEach(el => {
+            el.classList.remove('selected');
+            const check = el.querySelector('.check-circle');
+            if (check) check.remove();
+        });
+
+        element.classList.add('selected');
+
+        // Add check circle to selected
+        if (!element.querySelector('.check-circle')) {
+            const check = document.createElement('div');
+            check.className = 'check-circle';
+            check.innerHTML = '<i class="fas fa-check-circle" style="color: var(--primary);"></i>';
+            element.appendChild(check);
+        }
+    }
+
+    async function applyDiscountCode() {
+        const code = document.getElementById('discountCode').value.trim();
+        if (!code) return;
+
+        const msg = document.getElementById('discountMessage');
+        msg.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        msg.style.color = 'var(--text-secondary)';
+
+        try {
+            const res = await fetch(fixUrl('/api/validate-discount-code'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code, amount: originalPrice })
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                appliedDiscountCode = data;
+                msg.innerHTML = `<i class="fas fa-check"></i> کسر ${data.discount_amount.toLocaleString('fa-IR')} تومان`;
+                msg.style.color = '#10b981';
+                updatePriceDisplay();
+            } else {
+                msg.innerHTML = `<i class="fas fa-times"></i> ${data.message}`;
+                msg.style.color = '#ef4444';
+            }
+        } catch (e) {
+            msg.innerHTML = 'خطا در بررسی کد';
+            msg.style.color = '#ef4444';
+        }
+    }
+
+    function removeDiscountCode() {
+        appliedDiscountCode = null;
+        document.getElementById('discountCode').value = '';
+        document.getElementById('discountMessage').innerHTML = '';
+        updatePriceDisplay();
+    }
+
+    // Form Submission
+    async function submitForm() {
+        if (!selectedPanel) return showToast('پنل انتخاب نشده است', 'error');
+        if (purchaseType === 'plan' && !selectedProduct) return showToast('محصول انتخاب نشده است', 'error');
+        if (purchaseType === 'gigabyte' && !selectedVolume) return showToast('حجم انتخاب نشده است', 'error');
+
+        const paymentMethod = document.querySelector('input[name="payment_method"]:checked').value;
+        showToast('در حال انتقال به درگاه...', 'info');
+
+        try {
+            const body = {
+                panel_id: selectedPanel.id,
+                payment_method: paymentMethod,
+                purchase_type: purchaseType,
+                discount_code: appliedDiscountCode ? appliedDiscountCode.code : null,
+                ...(renewServiceId && { renew_service_id: renewServiceId, renew_panel_id: renewPanelId }),
+                ...(purchaseType === 'plan' ? { product_id: selectedProduct.id } : { volume_gb: selectedVolume.gb })
+            };
+
+            const res = await fetch(fixUrl('/api/create-service'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                if (data.payment_link) {
+                    window.location.href = data.payment_link;
+                } else {
+                    showToast('سرویس با موفقیت ایجاد شد', 'success');
+                    setTimeout(() => window.location.href = '/services', 1500);
+                }
+            } else {
+                showToast(data.message || 'خطا در ایجاد سرویس', 'error');
+            }
+        } catch (e) {
+            showToast('خطا در ارتباط با سرور', 'error');
+        }
+    }
+</script>
+{% endblock %}

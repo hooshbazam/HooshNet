@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}تمدید سرویس - پنل کاربری{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet"
+    href="{{ url_for('static', filename='css/renew-service-modern.css') }}?v={{ range(1, 10000) | random }}">
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@100;300;400;500;700;900&display=swap"
+    rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="renew-container">
+    <div class="page-header">
+        <h1 class="page-title">تمدید سرویس</h1>
+        <p class="page-subtitle">سرویس مورد نظر خود را جهت تمدید انتخاب کنید</p>
+    </div>
+
+    {% if services %}
+    <div class="services-grid">
+        {% for service in services %}
+        <a href="{{ url_for('renew_service_detail', service_id=service.id) }}" class="service-card"
+            data-service-id="{{ service.id }}" data-expiry="{{ service.expires_at }}">
+            <div class="card-header">
+                <div class="service-name">
+                    <div class="service-icon">
+                        <i class="fas fa-shield-alt"></i>
+                    </div>
+                    <div>
+                        {{ service.client_name or service.name or 'سرویس VPN' }}
+                        <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 400;">{{
+                            service.panel_name }}</div>
+                    </div>
+                </div>
+                <div class="status-badge" id="status-{{ service.id }}">
+                    فعال
+                </div>
+            </div>
+
+            <div class="card-stats">
+                <div class="stat-item">
+                    <span class="stat-label">حجم کل</span>
+                    <span class="stat-value">{{ service.total_gb }} GB</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">مصرف شده</span>
+                    <span class="stat-value">{{ "%.2f"|format(service.used_gb|default(0)|float) }} GB</span>
+                </div>
+            </div>
+
+            <div class="expiry-info">
+                <span>تاریخ انقضا: <span style="color: white; margin-right: 5px;">{{ service.expiry_date or 'نامحدود'
+                        }}</span></span>
+                <span class="days-remaining" id="days-{{ service.id }}">
+                    <!-- Calculated by JS -->
+                </span>
+            </div>
+
+            <button class="action-btn">
+                <span>تمدید سرویس</span>
+                <i class="fas fa-arrow-left"></i>
+            </button>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-icon">
+            <i class="fas fa-box-open"></i>
+        </div>
+        <h3>سرویسی یافت نشد</h3>
+        <p style="color: var(--text-muted); margin-bottom: 20px;">شما هیچ سرویس اشتراکی فعالی برای تمدید ندارید.</p>
+        <a href="{{ url_for('buy_service') }}" class="action-btn" style="max-width: 200px; margin: 0 auto;">
+            خرید سرویس جدید
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        // Calculate remaining days for each service
+        const cards = document.querySelectorAll('.service-card');
+
+        cards.forEach(card => {
+            const expiryStr = card.dataset.expiry;
+            const serviceId = card.dataset.serviceId;
+            const daysEl = document.getElementById(`days-${serviceId}`);
+            const statusEl = document.getElementById(`status-${serviceId}`);
+
+            if (!expiryStr || expiryStr === 'None') {
+                daysEl.textContent = 'نامحدود';
+                return;
+            }
+
+            // Parse date (assuming ISO format or similar standard)
+            const expiryDate = new Date(expiryStr.replace(' ', 'T'));
+            const now = new Date();
+
+            // Calculate difference in days
+            const diffTime = expiryDate - now;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+            if (diffDays > 0) {
+                daysEl.textContent = `${diffDays} روز باقیمانده`;
+                if (diffDays <= 3) {
+                    daysEl.style.color = '#ef4444'; // Red for urgent
+                    statusEl.style.borderColor = '#ef4444';
+                    statusEl.style.color = '#ef4444';
+                    statusEl.style.background = 'rgba(239, 68, 68, 0.1)';
+                    statusEl.textContent = 'رو به اتمام';
+                }
+            } else {
+                daysEl.textContent = 'منقضی شده';
+                daysEl.style.color = '#ef4444';
+                statusEl.classList.add('expired');
+                statusEl.textContent = 'منقضی';
+            }
+        });
+
+        // Auto-scroll to specific service if in URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const targetId = urlParams.get('service_id');
+        if (targetId) {
+            const targetCard = document.querySelector(`.service-card[data-service-id="${targetId}"]`);
+            if (targetCard) {
+                setTimeout(() => {
+                    targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    targetCard.style.borderColor = 'var(--primary)';
+                    targetCard.style.boxShadow = '0 0 0 2px var(--primary)';
+                }, 500);
+            }
+        }
+    });
+</script>
+{% endblock %}

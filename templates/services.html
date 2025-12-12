@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+
+{% block title %}سرویس‌های من - پنل کاربری{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet"
+    href="{{ url_for('static', filename='css/services-ultra-modern.css') }}?v={{ range(1, 10000) | random }}">
+{% endblock %}
+
+{% block content %}
+<div class="services-page-wrapper">
+    <!-- Header -->
+    <div class="page-header-modern">
+        <div class="header-titles">
+            <h1>سرویس‌های من</h1>
+            <p>مدیریت و مشاهده وضعیت اشتراک‌ها</p>
+        </div>
+        <a href="{{ url_for('buy_service') }}" class="add-service-btn-mini">
+            <i class="fas fa-plus"></i>
+        </a>
+    </div>
+
+    {% if services %}
+    <!-- Stats Overview -->
+    <div class="stats-overview">
+        <div class="stat-box" style="--stat-color: #6366f1;">
+            <div class="stat-value">{{ services|length }}</div>
+            <div class="stat-label">کل سرویس‌ها</div>
+        </div>
+        <div class="stat-box" style="--stat-color: #00c851;">
+            <div class="stat-value">{{ online_services }}</div>
+            <div class="stat-label">فعال</div>
+        </div>
+        <div class="stat-box" style="--stat-color: #ffbb33;">
+            <div class="stat-value">{{ services|sum(attribute='total_gb')|int }}</div>
+            <div class="stat-label">گیگابایت</div>
+        </div>
+    </div>
+
+    <!-- Search & Filter Controls -->
+    <div class="controls-area">
+        <div class="search-wrapper">
+            <input type="text" id="serviceSearch" class="search-input-modern" placeholder="جستجو در سرویس‌ها..."
+                onkeyup="filterServices()">
+            <i class="fas fa-search search-icon-float"></i>
+        </div>
+
+        <div class="filter-scroll">
+            <div class="filter-pill active" onclick="setFilter('all')" data-filter="all">
+                <i class="fas fa-th-large"></i> همه
+            </div>
+            <div class="filter-pill" onclick="setFilter('online')" data-filter="online">
+                <i class="fas fa-wifi"></i> آنلاین
+            </div>
+            <div class="filter-pill" onclick="setFilter('offline')" data-filter="offline">
+                <i class="fas fa-power-off"></i> آفلاین
+            </div>
+        </div>
+    </div>
+
+    <!-- Services Grid -->
+    <div id="servicesGrid" class="services-grid">
+        <!-- Filled by JS -->
+    </div>
+
+    <!-- Pagination -->
+    <div id="servicesPagination" class="pagination-modern">
+        <!-- Filled by JS -->
+    </div>
+
+    {% else %}
+    <!-- Empty State -->
+    <div class="empty-state-modern">
+        <div class="empty-icon-glow">
+            <i class="fas fa-box-open"></i>
+        </div>
+        <div class="empty-text">
+            <h3>لیست سرویس‌ها خالی است</h3>
+            <p>شما هنوز هیچ سرویسی خریداری نکرده‌اید</p>
+        </div>
+        <a href="{{ url_for('buy_service') }}" class="btn-renew"
+            style="display: inline-flex; padding: 1rem 2rem; border-radius: 16px; text-decoration: none; justify-content: center; align-items: center; gap: 10px;">
+            <i class="fas fa-plus-circle"></i> خرید اولین سرویس
+        </a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const allServices = {{ (services or[]) | tojson | safe }};
+    const servicesPerPage = 10;
+    let currentServicesPage = 1;
+    let filteredServices = Array.isArray(allServices) ? [...allServices] : [];
+    let currentFilter = 'all';
+
+    document.addEventListener('DOMContentLoaded', function () {
+        if (allServices.length > 0) {
+            renderServicesPage(1);
+        }
+    });
+
+    function renderServicesPage(page) {
+        const start = (page - 1) * servicesPerPage;
+        const end = start + servicesPerPage;
+        const pageServices = filteredServices.slice(start, end);
+        const container = document.getElementById('servicesGrid');
+
+        if (pageServices.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state-modern" style="grid-column: 1/-1; margin-top: 0;">
+                    <div class="empty-icon-glow" style="font-size: 3rem; margin-bottom: 1rem;"><i class="fas fa-search"></i></div>
+                    <div class="empty-text">
+                        <h3>نتیجه‌ای یافت نشد</h3>
+                        <p>سرویسی با این مشخصات پیدا نشد</p>
+                    </div>
+                </div>
+            `;
+            document.getElementById('servicesPagination').style.display = 'none';
+            return;
+        }
+
+        container.innerHTML = pageServices.map((service, index) => {
+            const usagePercent = service.usage_percentage || 0;
+            const usedGb = parseFloat(service.used_gb || 0).toFixed(2);
+            const totalGb = parseFloat(service.total_gb || 0).toFixed(2);
+
+            const isOnline = Boolean(service.is_online === true || service.is_online === 'true' || service.is_online === 1);
+            const statusClass = isOnline ? 'online' : 'offline';
+            const statusText = isOnline ? 'آنلاین' : 'آفلاین';
+
+            // Animation delay stagger
+            const delay = index * 0.05;
+
+            return `
+            <div class="service-card-modern" style="animation-delay: ${delay}s" onclick="window.location.href='${fixUrl(`/services/${service.id}`)}'">
+                <div class="card-bg-glow"></div>
+                
+                <div class="card-top">
+                    <div class="service-identity">
+                        <div class="service-icon-box">
+                            <i class="fas fa-shield-alt"></i>
+                        </div>
+                        <div class="service-info">
+                            <h3>${(service.client_name || 'سرویس').substring(0, 20)}</h3>
+                            <span>${(service.panel_name || 'پنل اصلی').substring(0, 15)}</span>
+                        </div>
+                    </div>
+                    <div class="status-indicator ${statusClass}">
+                        <div class="pulse-dot"></div>
+                        ${statusText}
+                    </div>
+                </div>
+
+                <div class="usage-section">
+                    <div class="usage-labels">
+                        <span class="usage-text">مصرف شده</span>
+                        <span class="usage-numbers">${usedGb} <span style="color:var(--text-dim); font-weight:400;">/ ${totalGb} GB</span></span>
+                    </div>
+                    <div class="progress-track">
+                        <div class="progress-fill" style="width: ${usagePercent}%; ${usagePercent > 90 ? 'background: var(--danger); box-shadow: 0 0 15px rgba(255, 68, 68, 0.5);' : ''}"></div>
+                    </div>
+                </div>
+
+                <div class="card-actions-modern">
+                    <a href="${fixUrl(`/services/${service.id}`)}" class="action-btn btn-manage" onclick="event.stopPropagation()">
+                        مدیریت
+                    </a>
+                    ${service.product_id ? `
+                        <a href="${fixUrl(`/renew-service/${service.id}`)}" class="action-btn btn-renew" onclick="event.stopPropagation()">
+                            <i class="fas fa-sync-alt"></i> تمدید
+                        </a>
+                    ` : `
+                        <a href="${fixUrl(`/add-volume?service_id=${service.id}`)}" class="action-btn btn-renew" onclick="event.stopPropagation()">
+                            <i class="fas fa-plus"></i> حجم
+                        </a>
+                    `}
+                    <button class="action-btn btn-copy" onclick="event.stopPropagation(); copyToClipboard('${service.subscription_link || ''}')">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                </div>
+            </div>
+            `;
+        }).join('');
+
+        renderPagination(Math.ceil(filteredServices.length / servicesPerPage));
+    }
+
+    function renderPagination(totalPages) {
+        const container = document.getElementById('servicesPagination');
+        if (totalPages <= 1) {
+            container.style.display = 'none';
+            return;
+        }
+
+        container.style.display = 'flex';
+        let html = '';
+        for (let i = 1; i <= totalPages; i++) {
+            html += `<div class="page-dot-modern ${i === currentServicesPage ? 'active' : ''}" onclick="changePage(${i})"></div>`;
+        }
+        container.innerHTML = html;
+    }
+
+    function changePage(page) {
+        currentServicesPage = page;
+        renderServicesPage(page);
+        document.getElementById('servicesGrid').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function filterServices() {
+        const search = document.getElementById('serviceSearch').value.toLowerCase();
+
+        filteredServices = allServices.filter(s => {
+            const matchesSearch = (s.client_name || '').toLowerCase().includes(search) ||
+                (s.panel_name || '').toLowerCase().includes(search);
+
+            const isOnline = Boolean(s.is_online === true || s.is_online === 'true' || s.is_online === 1);
+            const matchesFilter = currentFilter === 'all' ||
+                (currentFilter === 'online' && isOnline) ||
+                (currentFilter === 'offline' && !isOnline);
+
+            return matchesSearch && matchesFilter;
+        });
+
+        currentServicesPage = 1;
+        renderServicesPage(1);
+    }
+
+    function setFilter(filter) {
+        currentFilter = filter;
+        document.querySelectorAll('.filter-pill').forEach(el => {
+            el.classList.toggle('active', el.dataset.filter === filter);
+        });
+        filterServices();
+    }
+</script>
+{% endblock %}

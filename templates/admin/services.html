@@ -1,0 +1,184 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}مدیریت سرویس‌ها{% endblock %}
+{% block page_subtitle %}لیست و وضعیت سرویس‌های کاربران{% endblock %}
+
+{% block content %}
+<div class="fade-in">
+    <!-- Actions Bar -->
+    <div class="card" style="margin-bottom: var(--sp-xl);">
+        <div
+            style="display: flex; flex-wrap: wrap; gap: var(--sp-md); justify-content: space-between; align-items: center;">
+
+            <!-- Stats Summary -->
+            <div style="display: flex; gap: var(--sp-lg); align-items: center;">
+                <div style="display: flex; align-items: center; gap: var(--sp-sm);">
+                    <div
+                        style="width: 40px; height: 40px; border-radius: var(--radius-lg); background: rgba(99, 102, 241, 0.1); color: var(--p-info); display: flex; align-items: center; justify-content: center;">
+                        <i class="fas fa-server"></i>
+                    </div>
+                    <div>
+                        <div style="font-weight: 700;">{{ total }}</div>
+                        <div style="font-size: 0.8rem; color: var(--p-text-muted);">کل سرویس‌ها</div>
+                    </div>
+                </div>
+
+                <div style="width: 1px; height: 30px; background: var(--border-color);"></div>
+
+                <div style="display: flex; align-items: center; gap: var(--sp-sm);">
+                    <div
+                        style="width: 40px; height: 40px; border-radius: var(--radius-lg); background: rgba(16, 185, 129, 0.1); color: var(--p-success); display: flex; align-items: center; justify-content: center;">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <div>
+                        <div style="font-weight: 700;">{{ stats.active_services or 0 }}</div>
+                        <div style="font-size: 0.8rem; color: var(--p-text-muted);">فعال</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search -->
+            <div
+                style="flex: 1; min-width: 300px; display: flex; align-items: center; gap: var(--sp-sm); background: var(--p-bg-main); padding: var(--sp-sm) var(--sp-md); border-radius: var(--radius-lg); border: 1px solid var(--border-color);">
+                <i class="fas fa-search" style="color: var(--p-text-muted);"></i>
+                <input type="text" id="searchInput" placeholder="جستجو (نام سرویس، کاربر، پنل...)" value="{{ search }}"
+                    style="flex: 1; color: var(--p-text-main);" onkeypress="handleSearchKeypress(event)">
+                {% if search %}
+                <button onclick="clearSearch()" style="color: var(--p-text-muted); cursor: pointer;"><i
+                        class="fas fa-times"></i></button>
+                {% endif %}
+            </div>
+
+            <button class="btn btn-primary" onclick="performSearch()">
+                <i class="fas fa-search"></i>
+                <span>جستجو</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Services Grid -->
+    <div class="grid-3">
+        {% if services %}
+        {% for service in services %}
+        <div class="card service-card">
+            <div class="card-header"
+                style="margin-bottom: var(--sp-md); border-bottom: 1px solid var(--border-color); padding-bottom: var(--sp-md);">
+                <div style="display: flex; gap: var(--sp-md); align-items: center;">
+                    <div style="position: relative;">
+                        <div
+                            style="width: 50px; height: 50px; border-radius: var(--radius-lg); background: var(--p-bg-hover); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; color: {% if service.is_active %}var(--p-success){% else %}var(--p-error){% endif %};">
+                            <i class="fas fa-network-wired"></i>
+                        </div>
+                        <div
+                            style="position: absolute; bottom: -2px; right: -2px; width: 12px; height: 12px; border-radius: 50%; background: {% if service.is_active %}var(--p-success){% else %}var(--p-error){% endif %}; border: 2px solid var(--p-bg-card);">
+                        </div>
+                    </div>
+                    <div style="flex: 1; min-width: 0;">
+                        <div
+                            style="font-weight: 800; font-size: 1rem; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            {{ service.client_name }}</div>
+                        <div style="font-size: 0.8rem; color: var(--p-text-muted);">#{{ service.id }}</div>
+                    </div>
+                </div>
+                <a href="/admin/services/{{ service.id }}" class="btn btn-sm btn-outline">
+                    <i class="fas fa-eye"></i>
+                </a>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: var(--sp-sm);">
+                <div
+                    style="display: flex; justify-content: space-between; align-items: center; padding: var(--sp-sm); background: var(--p-bg-hover); border-radius: var(--radius-md);">
+                    <div style="display: flex; align-items: center; gap: var(--sp-sm);">
+                        <i class="fas fa-user" style="color: var(--p-text-muted); font-size: 0.8rem;"></i>
+                        <span style="font-size: 0.8rem; color: var(--p-text-muted);">کاربر</span>
+                    </div>
+                    <div style="text-align: left;">
+                        <div style="font-weight: 700; font-size: 0.9rem;">{{ service.first_name or '---' }}</div>
+                        <div style="font-size: 0.7rem; color: var(--p-text-muted);">@{{ service.username or '---' }}
+                        </div>
+                    </div>
+                </div>
+
+                <div
+                    style="display: flex; justify-content: space-between; align-items: center; padding: var(--sp-sm); background: var(--p-bg-hover); border-radius: var(--radius-md);">
+                    <div style="display: flex; align-items: center; gap: var(--sp-sm);">
+                        <i class="fas fa-server" style="color: var(--p-text-muted); font-size: 0.8rem;"></i>
+                        <span style="font-size: 0.8rem; color: var(--p-text-muted);">پنل</span>
+                    </div>
+                    <span style="font-weight: 700; color: var(--p-info);">{{ service.panel_name }}</span>
+                </div>
+
+                <div style="padding: var(--sp-sm); background: var(--p-bg-hover); border-radius: var(--radius-md);">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                        <span style="font-size: 0.8rem; color: var(--p-text-muted);">مصرف</span>
+                        <span style="font-size: 0.8rem; font-weight: 700;">
+                            {{ "{:.2f}".format(service.used_gb or service.cached_used_gb or 0) }} / {{ service.total_gb
+                            or '∞' }} GB
+                        </span>
+                    </div>
+                    <div class="progress-bar"
+                        style="height: 6px; background: var(--p-bg-main); border-radius: 3px; overflow: hidden;">
+                        {% set used_percent = ((service.used_gb or service.cached_used_gb or 0) / (service.total_gb or
+                        1) * 100) if (service.total_gb or 0) > 0 else 0 %}
+                        <div
+                            style="width: {{ used_percent }}%; height: 100%; background: {% if used_percent > 90 %}var(--p-error){% elif used_percent > 70 %}var(--p-warning){% else %}var(--p-success){% endif %}; border-radius: 3px;">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="card" style="grid-column: 1 / -1; text-align: center; padding: var(--sp-3xl);">
+            <i class="fas fa-network-wired"
+                style="font-size: 3rem; color: var(--p-bg-active); margin-bottom: var(--sp-lg);"></i>
+            <h3 style="margin-bottom: var(--sp-sm);">سرویسی یافت نشد</h3>
+            <p class="text-muted">هیچ سرویسی با مشخصات وارد شده پیدا نشد.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Pagination -->
+    {% if total_pages > 1 %}
+    <div class="card"
+        style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--sp-md); margin-top: var(--sp-xl);">
+        <div class="text-muted" style="font-size: 0.9rem;">
+            نمایش صفحه <strong>{{ page }}</strong> از <strong>{{ total_pages }}</strong>
+        </div>
+        <div style="display: flex; gap: var(--sp-sm);">
+            {% if page > 1 %}
+            <a href="?page={{ page - 1 }}{% if search %}&search={{ search }}{% endif %}"
+                class="btn btn-sm btn-secondary">
+                <i class="fas fa-chevron-right"></i>
+                قبلی
+            </a>
+            {% endif %}
+
+            {% if page < total_pages %} <a href="?page={{ page + 1 }}{% if search %}&search={{ search }}{% endif %}"
+                class="btn btn-sm btn-secondary">
+                بعدی
+                <i class="fas fa-chevron-left"></i>
+                </a>
+                {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+    function handleSearchKeypress(event) {
+        if (event.key === 'Enter') {
+            performSearch();
+        }
+    }
+
+    function performSearch() {
+        const query = document.getElementById('searchInput').value;
+        window.location.href = `?search=${encodeURIComponent(query)}`;
+    }
+
+    function clearSearch() {
+        window.location.href = window.location.pathname;
+    }
+</script>
+{% endblock %}

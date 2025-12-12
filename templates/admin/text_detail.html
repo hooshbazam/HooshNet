@@ -1,0 +1,275 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}ویرایش متن{% endblock %}
+{% block page_subtitle %}{{ text_key }}{% endblock %}
+
+{% block content %}
+<div class="fade-in">
+    <!-- Actions Bar -->
+    <div class="card" style="margin-bottom: var(--sp-xl);">
+        <div
+            style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--sp-md);">
+            <div style="display: flex; align-items: center; gap: var(--sp-md);">
+                <a href="/admin/texts" class="btn btn-outline btn-sm">
+                    <i class="fas fa-arrow-right"></i>
+                </a>
+                <div>
+                    <div style="font-weight: 700; font-family: monospace;">{{ text_key }}</div>
+                    <div style="font-size: 0.8rem; color: var(--p-text-muted);">
+                        <span class="badge badge-secondary">{{ text_def.category }}</span>
+                        {% if db_text %}
+                        <span class="badge badge-success">سفارشی شده</span>
+                        {% else %}
+                        <span class="badge badge-warning">پیش‌فرض</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid-ticket-layout" style="display: grid; grid-template-columns: 1fr 350px; gap: var(--sp-xl);">
+        <!-- Main Edit Area -->
+        <div style="display: flex; flex-direction: column; gap: var(--sp-md);">
+            <!-- Default Text Warning -->
+            {% if not db_text %}
+            <div class="alert alert-warning">
+                <i class="fas fa-info-circle"></i>
+                <div>
+                    <strong>توجه:</strong>
+                    این متن در حال حاضر از مقدار پیش‌فرض استفاده می‌کند. با ذخیره تغییرات، یک نسخه سفارشی ایجاد خواهد
+                    شد.
+                </div>
+                <button class="btn btn-sm btn-outline" onclick="restoreDefault()" style="margin-right: auto;">
+                    <i class="fas fa-undo"></i>
+                    بارگذاری پیش‌فرض
+                </button>
+            </div>
+            {% endif %}
+
+            <div class="card">
+                <form id="textEditForm">
+                    <div class="form-group">
+                        <label class="form-label">
+                            <i class="fas fa-edit" style="color: var(--p-primary);"></i>
+                            محتوای متن
+                            <span style="color: var(--p-error);">*</span>
+                        </label>
+                        <textarea id="textContent" name="text_content" class="form-control" required
+                            placeholder="محتوای متن را وارد کنید..."
+                            style="min-height: 300px; font-family: monospace; line-height: 1.8;">{{ db_text.text_content if db_text else text_def.default }}</textarea>
+                        <div
+                            style="display: flex; justify-content: space-between; margin-top: var(--sp-xs); font-size: 0.8rem; color: var(--p-text-muted);">
+                            <span>
+                                <i class="fas fa-font"></i>
+                                <span id="charCount">0</span> کاراکتر
+                            </span>
+                            <span>می‌توانید از متغیرها در متن استفاده کنید</span>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: var(--sp-md); margin-top: var(--sp-lg);">
+                        <button type="submit" class="btn btn-primary" style="flex: 2;">
+                            <i class="fas fa-save"></i>
+                            ذخیره تغییرات
+                        </button>
+                        <button type="button" class="btn btn-success" onclick="testText()" style="flex: 1;">
+                            <i class="fas fa-vial"></i>
+                            تست
+                        </button>
+                        {% if db_text %}
+                        <button type="button" class="btn btn-error" onclick="deleteText()" style="flex: 1;">
+                            <i class="fas fa-trash"></i>
+                            حذف سفارشی‌سازی
+                        </button>
+                        {% endif %}
+                    </div>
+                </form>
+            </div>
+
+            <!-- Preview -->
+            <div class="card">
+                <div class="card-header"
+                    style="margin-bottom: var(--sp-md); padding-bottom: var(--sp-md); border-bottom: 1px solid var(--border-color);">
+                    <div style="font-weight: 800;">
+                        <i class="fas fa-eye" style="color: var(--p-info);"></i>
+                        پیش‌نمایش
+                    </div>
+                </div>
+                <div id="previewContent" style="white-space: pre-wrap; line-height: 1.8; color: var(--p-text-main);">
+                    {{ db_text.text_content if db_text else text_def.default }}
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar Info -->
+        <div style="display: flex; flex-direction: column; gap: var(--sp-md);">
+            <div class="card">
+                <div class="card-header"
+                    style="margin-bottom: var(--sp-md); padding-bottom: var(--sp-md); border-bottom: 1px solid var(--border-color);">
+                    <div style="font-weight: 800;">توضیحات</div>
+                </div>
+                <div style="color: var(--p-text-muted); line-height: 1.6;">
+                    {{ text_def.description or 'بدون توضیحات' }}
+                </div>
+            </div>
+
+            {% if text_def.variables %}
+            <div class="card">
+                <div class="card-header"
+                    style="margin-bottom: var(--sp-md); padding-bottom: var(--sp-md); border-bottom: 1px solid var(--border-color);">
+                    <div style="font-weight: 800;">متغیرهای قابل استفاده</div>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: var(--sp-sm);">
+                    {% for var in text_def.variables %}
+                    <div class="variable-item" onclick="insertVariable('{{ var }}')">
+                        <span style="font-family: monospace; color: var(--p-primary); font-weight: 700;">{ {{ var }}
+                            }</span>
+                        <button class="btn btn-sm btn-ghost"
+                            onclick="event.stopPropagation(); copyVariable('{{ var }}')">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div style="margin-top: var(--sp-md); font-size: 0.8rem; color: var(--p-text-muted);">
+                    برای درج متغیر در متن، روی آن کلیک کنید.
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<style>
+    @media (max-width: 992px) {
+        .grid-ticket-layout {
+            grid-template-columns: 1fr !important;
+        }
+    }
+
+    .variable-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: var(--sp-sm);
+        background: var(--p-bg-hover);
+        border-radius: var(--radius-md);
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border: 1px solid transparent;
+    }
+
+    .variable-item:hover {
+        border-color: var(--p-primary);
+        background: rgba(99, 102, 241, 0.1);
+    }
+</style>
+
+<script>
+    const textKey = '{{ text_key }}';
+    const defaultText = {{ (db_text.text_content if db_text else text_def.default)| tojson }};
+
+    document.getElementById('textContent').addEventListener('input', function () {
+        const charCount = this.value.length;
+        document.getElementById('charCount').textContent = charCount.toLocaleString('fa-IR');
+        updatePreview();
+    });
+
+    function updatePreview() {
+        const content = document.getElementById('textContent').value;
+        document.getElementById('previewContent').textContent = content;
+    }
+
+    function insertVariable(varName) {
+        const textarea = document.getElementById('textContent');
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const text = textarea.value;
+        const variable = '{' + varName + '}';
+
+        textarea.value = text.substring(0, start) + variable + text.substring(end);
+        textarea.focus();
+        textarea.setSelectionRange(start + variable.length, start + variable.length);
+
+        updatePreview();
+        document.getElementById('charCount').textContent = textarea.value.length.toLocaleString('fa-IR');
+    }
+
+    function copyVariable(varName) {
+        const variable = '{' + varName + '}';
+        navigator.clipboard.writeText(variable).then(() => {
+            showToast('متغیر کپی شد', 'success');
+        });
+    }
+
+    function restoreDefault() {
+        if (confirm('آیا مطمئن هستید که می‌خواهید متن پیش‌فرض را بازگردانید؟')) {
+            document.getElementById('textContent').value = defaultText;
+            updatePreview();
+            document.getElementById('charCount').textContent = defaultText.length.toLocaleString('fa-IR');
+        }
+    }
+
+    async function deleteText() {
+        if (!confirm('آیا مطمئن هستید که می‌خواهید این متن را حذف کنید و به پیش‌فرض بازگردید؟')) {
+            return;
+        }
+
+        try {
+            const response = await apiCall('/api/admin/texts/delete', {
+                method: 'POST',
+                body: JSON.stringify({
+                    text_key: textKey
+                })
+            });
+
+            if (response.success) {
+                showToast('متن با موفقیت به پیش‌فرض بازگشت', 'success');
+                setTimeout(() => {
+                    window.location.href = '/admin/texts';
+                }, 1000);
+            } else {
+                showToast(response.message || 'خطا در حذف متن', 'error');
+            }
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    document.getElementById('textEditForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+
+        const textContent = document.getElementById('textContent').value.trim();
+
+        if (!textContent) {
+            showToast('متن نمی‌تواند خالی باشد', 'error');
+            return;
+        }
+
+        try {
+            const response = await apiCall('/api/admin/texts/update', {
+                method: 'POST',
+                body: JSON.stringify({
+                    text_key: textKey,
+                    text_content: textContent
+                })
+            });
+
+            if (response.success) {
+                showToast('متن با موفقیت ذخیره شد', 'success');
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            } else {
+                showToast(response.message || 'خطا در ذخیره متن', 'error');
+            }
+        } catch (error) {
+            console.error(error);
+        }
+    });
+
+    // Initialize char count
+    document.getElementById('charCount').textContent = document.getElementById('textContent').value.length.toLocaleString('fa-IR');
+</script>
+{% endblock %}

@@ -1,0 +1,89 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}مدیریت محصولات{% endblock %}
+{% block page_subtitle %}انتخاب پنل برای مدیریت محصولات و دسته‌بندی‌ها{% endblock %}
+
+{% block content %}
+<div class="fade-in">
+    {% if panels %}
+    <div class="grid-3">
+        {% for panel in panels %}
+        <a href="/admin/products/panel/{{ panel.id }}" class="card panel-card"
+            style="text-decoration: none; color: inherit; transition: transform 0.2s ease, box-shadow 0.2s ease;">
+            <div class="card-header"
+                style="margin-bottom: var(--sp-md); border-bottom: 1px solid var(--border-color); padding-bottom: var(--sp-md);">
+                <div style="display: flex; gap: var(--sp-md); align-items: center;">
+                    <div style="position: relative;">
+                        <div
+                            style="width: 50px; height: 50px; border-radius: var(--radius-lg); background: var(--p-bg-hover); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; color: {% if panel.panel_type == 'marzban' %}var(--p-accent){% else %}var(--p-info){% endif %};">
+                            <i class="fas fa-server"></i>
+                        </div>
+                        <div
+                            style="position: absolute; bottom: -2px; right: -2px; width: 12px; height: 12px; border-radius: 50%; background: {% if panel.is_active %}var(--p-success){% else %}var(--p-error){% endif %}; border: 2px solid var(--p-bg-card);">
+                        </div>
+                    </div>
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="font-weight: 800; font-size: 1.1rem; margin-bottom: 2px;">{{ panel.name }}</div>
+                        <div style="display: flex; gap: var(--sp-xs);">
+                            <span
+                                class="badge {% if panel.panel_type == 'marzban' %}badge-info{% else %}badge-warning{% endif %}">
+                                {{ panel.panel_type|upper }}
+                            </span>
+                        </div>
+                    </div>
+                    <div
+                        style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; background: var(--p-bg-hover); border-radius: var(--radius-md); color: var(--p-text-muted);">
+                        <i class="fas fa-chevron-left"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: var(--sp-sm);">
+                <div
+                    style="display: flex; justify-content: space-between; align-items: center; padding: var(--sp-sm); background: var(--p-bg-hover); border-radius: var(--radius-md);">
+                    <div style="display: flex; align-items: center; gap: var(--sp-sm);">
+                        <i class="fas fa-link" style="color: var(--p-text-muted); font-size: 0.8rem;"></i>
+                        <span style="font-size: 0.8rem; color: var(--p-text-muted);">URL</span>
+                    </div>
+                    <span style="font-weight: 700; font-size: 0.9rem; direction: ltr;">{{ panel.url[:30] }}...</span>
+                </div>
+
+                <div
+                    style="display: flex; justify-content: space-between; align-items: center; padding: var(--sp-sm); background: var(--p-bg-hover); border-radius: var(--radius-md);">
+                    <div style="display: flex; align-items: center; gap: var(--sp-sm);">
+                        <i class="fas fa-dollar-sign" style="color: var(--p-text-muted); font-size: 0.8rem;"></i>
+                        <span style="font-size: 0.8rem; color: var(--p-text-muted);">قیمت پایه</span>
+                    </div>
+                    <span style="font-weight: 700; color: var(--p-success);">{{ "{:,}".format(panel.price_per_gb or 0)
+                        }} تومان</span>
+                </div>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="card" style="text-align: center; padding: var(--sp-3xl);">
+        <i class="fas fa-server" style="font-size: 3rem; color: var(--p-bg-active); margin-bottom: var(--sp-lg);"></i>
+        <h3 style="margin-bottom: var(--sp-sm);">هیچ پنلی وجود ندارد</h3>
+        <p class="text-muted" style="margin-bottom: var(--sp-xl);">برای مدیریت محصولات، ابتدا باید یک پنل اضافه کنید.
+        </p>
+        <a href="/admin/panels" class="btn btn-primary">
+            <i class="fas fa-plus"></i>
+            افزودن پنل
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+    .panel-card:hover {
+        transform: translateY(-5px);
+        box-shadow: var(--shadow-lg);
+        border-color: var(--p-primary);
+    }
+
+    .panel-card:hover .fa-chevron-left {
+        color: var(--p-primary);
+    }
+</style>
+{% endblock %}

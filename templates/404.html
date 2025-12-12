@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}404 - صفحه پیدا نشد{% endblock %}
+{% block page_title %}خطا 404{% endblock %}
+
+{% block content %}
+<div class="error-page">
+    <div class="error-container">
+        <div class="error-code">404</div>
+        <h1 class="error-title">صفحه مورد نظر یافت نشد</h1>
+        <p class="error-description">متأسفانه صفحه‌ای که به دنبال آن هستید وجود ندارد یا منتقل شده است.</p>
+        <div class="error-actions">
+            <a href="{{ url_for('dashboard') if user else url_for('index') }}" class="btn btn-primary btn-lg">
+                <i class="fas fa-home"></i>
+                بازگشت به صفحه اصلی
+            </a>
+            {% if user %}
+            <a href="{{ url_for('services') }}" class="btn btn-secondary btn-lg">
+                <i class="fas fa-server"></i>
+                سرویس‌های من
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+

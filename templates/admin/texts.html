@@ -1,0 +1,144 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}مدیریت متن‌های ربات{% endblock %}
+{% block page_subtitle %}شخصی‌سازی تمامی متن‌های ربات از این بخش{% endblock %}
+
+{% block content %}
+<div class="fade-in">
+    <!-- Actions Bar -->
+    <div class="card" style="margin-bottom: var(--sp-xl);">
+        <div
+            style="display: flex; flex-wrap: wrap; gap: var(--sp-md); justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: var(--sp-md);">
+                <div
+                    style="width: 40px; height: 40px; border-radius: var(--radius-lg); background: rgba(99, 102, 241, 0.1); color: var(--p-primary); display: flex; align-items: center; justify-content: center;">
+                    <i class="fas fa-file-alt"></i>
+                </div>
+                <div>
+                    <div style="font-weight: 700;">متن‌های ربات</div>
+                    <div style="font-size: 0.8rem; color: var(--p-text-muted);">متن‌های نمایش داده شده به کاربران را
+                        ویرایش کنید</div>
+                </div>
+            </div>
+
+            <button class="btn btn-primary" onclick="initializeTexts()">
+                <i class="fas fa-database"></i>
+                <span>ایجاد متن‌های پیش‌فرض</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Category Filters -->
+    <div class="card" style="margin-bottom: var(--sp-xl);">
+        <div style="display: flex; gap: var(--sp-sm); flex-wrap: wrap;">
+            <a href="/admin/texts"
+                class="btn btn-sm {% if not current_category %}btn-primary{% else %}btn-outline{% endif %}">
+                <i class="fas fa-list"></i>
+                همه دسته‌ها
+            </a>
+            {% for cat in categories %}
+            <a href="/admin/texts?category={{ cat }}"
+                class="btn btn-sm {% if current_category == cat %}btn-primary{% else %}btn-outline{% endif %}">
+                <i class="fas fa-folder"></i>
+                {{ cat }}
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Texts Grid -->
+    {% if texts_data %}
+    <div class="grid-2" style="gap: var(--sp-md);">
+        {% for text_key, text_data in texts_data.items() %}
+        <div class="card text-card" style="display: flex; flex-direction: column; gap: var(--sp-md); height: 100%;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div style="display: flex; gap: var(--sp-sm); align-items: center;">
+                    <div
+                        style="width: 40px; height: 40px; border-radius: var(--radius-lg); background: var(--p-bg-hover); display: flex; align-items: center; justify-content: center; color: var(--p-primary);">
+                        <i class="fas fa-hashtag"></i>
+                    </div>
+                    <div>
+                        <div style="font-weight: 800; font-size: 1rem; word-break: break-all;">{{ text_data.key }}</div>
+                        <span class="badge badge-secondary" style="font-size: 0.7rem;">{{ text_data.category }}</span>
+                    </div>
+                </div>
+                <div>
+                    {% if text_data.is_customized %}
+                    <span class="badge badge-success">سفارشی</span>
+                    {% else %}
+                    <span class="badge badge-warning">پیش‌فرض</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div style="flex: 1; display: flex; flex-direction: column; gap: var(--sp-sm);">
+                <div style="font-size: 0.9rem; color: var(--p-text-muted);">
+                    <i class="fas fa-info-circle" style="color: var(--p-primary); margin-left: 5px;"></i>
+                    {{ text_data.description }}
+                </div>
+
+                <div
+                    style="background: var(--p-bg-hover); padding: var(--sp-sm); border-radius: var(--radius-md); font-size: 0.85rem; color: var(--p-text-main); max-height: 100px; overflow: hidden; position: relative;">
+                    {{ text_data.content[:150] }}{% if text_data.content|length > 150 %}...{% endif %}
+                    <div
+                        style="position: absolute; bottom: 0; left: 0; width: 100%; height: 30px; background: linear-gradient(to top, var(--p-bg-hover), transparent);">
+                    </div>
+                </div>
+
+                {% if text_data.available_variables %}
+                <div style="display: flex; flex-wrap: wrap; gap: 5px;">
+                    {% for var in text_data.available_variables %}
+                    <span class="badge badge-outline" style="font-family: monospace;">{ {{ var }} }</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+
+            <a href="/admin/texts/{{ text_data.key }}" class="btn btn-outline btn-sm"
+                style="width: 100%; justify-content: center;">
+                <i class="fas fa-edit"></i>
+                ویرایش متن
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="card" style="text-align: center; padding: var(--sp-xl);">
+        <div style="font-size: 3rem; color: var(--p-text-muted); margin-bottom: var(--sp-md);">
+            <i class="fas fa-file-alt"></i>
+        </div>
+        <div style="font-weight: 700; font-size: 1.2rem; margin-bottom: var(--sp-sm);">متنی یافت نشد</div>
+        <div style="color: var(--p-text-muted);">برای شروع، متن‌های پیش‌فرض را ایجاد کنید.</div>
+        <button class="btn btn-primary" onclick="initializeTexts()" style="margin-top: var(--sp-md);">
+            <i class="fas fa-database"></i>
+            ایجاد متن‌های پیش‌فرض
+        </button>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+    async function initializeTexts() {
+        if (!confirm('آیا مطمئن هستید که می‌خواهید متن‌های پیش‌فرض را ایجاد کنید؟')) {
+            return;
+        }
+
+        try {
+            const response = await apiCall('/api/admin/texts/initialize', {
+                method: 'POST'
+            });
+
+            if (response.success) {
+                showToast(response.message, 'success');
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1500);
+            } else {
+                showToast(response.message || 'خطا در ایجاد متن‌ها', 'error');
+            }
+        } catch (error) {
+            console.error(error);
+        }
+    }
+</script>
+{% endblock %}

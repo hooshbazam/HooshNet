@@ -1,0 +1,629 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}مدیریت محصولات{% endblock %}
+{% block page_subtitle %}مدیریت دسته‌بندی‌ها و محصولات پنل {{ panel.name }}{% endblock %}
+
+{% block content %}
+<div class="fade-in">
+    <!-- Header Actions -->
+    <div class="card" style="margin-bottom: var(--sp-xl);">
+        <div
+            style="display: flex; flex-wrap: wrap; gap: var(--sp-md); justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: var(--sp-md);">
+                <a href="/admin/products" class="btn btn-sm btn-secondary">
+                    <i class="fas fa-arrow-right"></i>
+                </a>
+                <div style="display: flex; align-items: center; gap: var(--sp-sm);">
+                    <div
+                        style="width: 40px; height: 40px; border-radius: var(--radius-lg); background: rgba(99, 102, 241, 0.1); color: var(--p-info); display: flex; align-items: center; justify-content: center;">
+                        <i class="fas fa-server"></i>
+                    </div>
+                    <div>
+                        <div style="font-weight: 700;">{{ panel.name }}</div>
+                        <div style="font-size: 0.8rem; color: var(--p-text-muted);">{{ 'مرزبان' if panel.panel_type ==
+                            'marzban' else '3x-ui' }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: var(--sp-sm); flex-wrap: wrap;">
+                <button class="btn btn-secondary" onclick="showCopyProductsModal()">
+                    <i class="fas fa-copy"></i>
+                    <span>کپی از پنل دیگر</span>
+                </button>
+                <button class="btn btn-secondary" onclick="showAddCategoryModal()">
+                    <i class="fas fa-folder-plus"></i>
+                    <span>افزودن دسته‌بندی</span>
+                </button>
+                <button class="btn btn-primary" onclick="showAddProductModal()">
+                    <i class="fas fa-box-open"></i>
+                    <span>افزودن محصول</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Categories Section -->
+    <div style="margin-bottom: var(--sp-2xl);">
+        <div style="display: flex; align-items: center; gap: var(--sp-md); margin-bottom: var(--sp-lg);">
+            <i class="fas fa-folder" style="color: var(--p-primary); font-size: 1.2rem;"></i>
+            <h2 style="font-size: 1.2rem; font-weight: 800; margin: 0;">دسته‌بندی‌ها</h2>
+            <span class="badge badge-secondary">{{ categories|length }}</span>
+        </div>
+
+        {% if categories %}
+        <div class="grid-4">
+            {% for category in categories %}
+            <div class="card category-card" data-category-id="{{ category.id }}">
+                <div class="card-header"
+                    style="margin-bottom: var(--sp-md); padding-bottom: var(--sp-md); border-bottom: 1px solid var(--border-color);">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div style="font-weight: 800; font-size: 1rem;">{{ category.name }}</div>
+                        {% if category.is_active %}
+                        <span class="badge badge-success">فعال</span>
+                        {% else %}
+                        <span class="badge badge-error">غیرفعال</span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-sm);">
+                    <button class="btn btn-sm btn-outline"
+                        onclick="toggleCategory({{ category.id }}, {{ 'true' if category.is_active else 'false' }})">
+                        <i class="fas fa-{% if category.is_active %}toggle-on{% else %}toggle-off{% endif %}"></i>
+                        {% if category.is_active %}غیرفعال{% else %}فعال{% endif %}
+                    </button>
+                    <button class="btn btn-sm btn-outline"
+                        onclick="editCategory({{ category.id }}, '{{ category.name }}')">
+                        <i class="fas fa-edit"></i>
+                        ویرایش
+                    </button>
+                    <button class="btn btn-sm btn-outline"
+                        style="grid-column: 1 / -1; border-color: var(--p-error); color: var(--p-error);"
+                        onclick="deleteCategory({{ category.id }})">
+                        <i class="fas fa-trash"></i>
+                        حذف
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="card" style="text-align: center; padding: var(--sp-xl);">
+            <p class="text-muted">هیچ دسته‌بندی‌ای وجود ندارد.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Products by Category -->
+    {% for category in categories %}
+    <div style="margin-bottom: var(--sp-2xl);">
+        <div style="display: flex; align-items: center; gap: var(--sp-md); margin-bottom: var(--sp-lg);">
+            <i class="fas fa-box-open" style="color: var(--p-info); font-size: 1.2rem;"></i>
+            <h2 style="font-size: 1.2rem; font-weight: 800; margin: 0;">{{ category.name }}</h2>
+            <span class="badge badge-secondary">{{ products|selectattr('category_id', 'equalto',
+                category.id)|list|length }}</span>
+        </div>
+
+        <div class="grid-3">
+            {% set category_products = products|selectattr('category_id', 'equalto', category.id)|list %}
+            {% if category_products %}
+            {% for product in category_products %}
+            <div class="card product-card" data-product-id="{{ product.id }}">
+                <div class="card-header"
+                    style="margin-bottom: var(--sp-md); padding-bottom: var(--sp-md); border-bottom: 1px solid var(--border-color);">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div style="display: flex; gap: var(--sp-sm); align-items: center;">
+                            <div
+                                style="width: 40px; height: 40px; border-radius: var(--radius-lg); background: var(--p-bg-hover); display: flex; align-items: center; justify-content: center; color: {% if product.is_active %}var(--p-success){% else %}var(--p-text-muted){% endif %};">
+                                <i class="fas fa-box"></i>
+                            </div>
+                            <div>
+                                <div class="product-name" style="font-weight: 800; font-size: 1rem;">{{ product.name or
+                                    product.name_product }}</div>
+                                <div style="font-size: 0.8rem; color: var(--p-text-muted);">
+                                    {% if product.is_active %}
+                                    <span class="text-success">فعال</span>
+                                    {% else %}
+                                    <span class="text-muted">غیرفعال</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: var(--sp-sm); margin-bottom: var(--sp-md);">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; padding: var(--sp-sm); background: var(--p-bg-hover); border-radius: var(--radius-md);">
+                        <span style="font-size: 0.8rem; color: var(--p-text-muted);">حجم</span>
+                        <span class="product-volume" style="font-weight: 700;">{{ product.volume_gb }} GB</span>
+                    </div>
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; padding: var(--sp-sm); background: var(--p-bg-hover); border-radius: var(--radius-md);">
+                        <span style="font-size: 0.8rem; color: var(--p-text-muted);">مدت</span>
+                        <span class="product-duration" style="font-weight: 700;">{{ product.duration_days }} روز</span>
+                    </div>
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; padding: var(--sp-sm); background: var(--p-bg-hover); border-radius: var(--radius-md);">
+                        <span style="font-size: 0.8rem; color: var(--p-text-muted);">قیمت</span>
+                        <span class="product-price" data-price="{{ product.price }}"
+                            style="font-weight: 700; color: var(--p-success);">{{ "{:,}".format(product.price) }}
+                            تومان</span>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-sm);">
+                    <button class="btn btn-sm btn-outline"
+                        onclick="toggleProduct({{ product.id }}, {{ 'true' if product.is_active else 'false' }})">
+                        <i class="fas fa-{% if product.is_active %}toggle-on{% else %}toggle-off{% endif %}"></i>
+                        {% if product.is_active %}غیرفعال{% else %}فعال{% endif %}
+                    </button>
+                    <button class="btn btn-sm btn-outline" onclick="editProduct({{ product.id }})">
+                        <i class="fas fa-edit"></i>
+                        ویرایش
+                    </button>
+                    <button class="btn btn-sm btn-outline"
+                        style="grid-column: 1 / -1; border-color: var(--p-error); color: var(--p-error);"
+                        onclick="deleteProduct({{ product.id }})">
+                        <i class="fas fa-trash"></i>
+                        حذف
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div class="card" style="grid-column: 1 / -1; text-align: center; padding: var(--sp-xl);">
+                <p class="text-muted">هیچ محصولی در این دسته‌بندی وجود ندارد.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+
+    <!-- Products without Category -->
+    <div style="margin-bottom: var(--sp-2xl);">
+        <div style="display: flex; align-items: center; gap: var(--sp-md); margin-bottom: var(--sp-lg);">
+            <i class="fas fa-box" style="color: var(--p-warning); font-size: 1.2rem;"></i>
+            <h2 style="font-size: 1.2rem; font-weight: 800; margin: 0;">محصولات بدون دسته‌بندی</h2>
+            <span class="badge badge-secondary">{{ products|selectattr('category_id', 'none')|list|length }}</span>
+        </div>
+
+        <div class="grid-3">
+            {% set products_without_category = products|selectattr('category_id', 'none')|list %}
+            {% if products_without_category %}
+            {% for product in products_without_category %}
+            <div class="card product-card" data-product-id="{{ product.id }}">
+                <div class="card-header"
+                    style="margin-bottom: var(--sp-md); padding-bottom: var(--sp-md); border-bottom: 1px solid var(--border-color);">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div style="display: flex; gap: var(--sp-sm); align-items: center;">
+                            <div
+                                style="width: 40px; height: 40px; border-radius: var(--radius-lg); background: var(--p-bg-hover); display: flex; align-items: center; justify-content: center; color: {% if product.is_active %}var(--p-success){% else %}var(--p-text-muted){% endif %};">
+                                <i class="fas fa-box"></i>
+                            </div>
+                            <div>
+                                <div class="product-name" style="font-weight: 800; font-size: 1rem;">{{ product.name or
+                                    product.name_product }}</div>
+                                <div style="font-size: 0.8rem; color: var(--p-text-muted);">
+                                    {% if product.is_active %}
+                                    <span class="text-success">فعال</span>
+                                    {% else %}
+                                    <span class="text-muted">غیرفعال</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: var(--sp-sm); margin-bottom: var(--sp-md);">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; padding: var(--sp-sm); background: var(--p-bg-hover); border-radius: var(--radius-md);">
+                        <span style="font-size: 0.8rem; color: var(--p-text-muted);">حجم</span>
+                        <span class="product-volume" style="font-weight: 700;">{{ product.volume_gb }} GB</span>
+                    </div>
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; padding: var(--sp-sm); background: var(--p-bg-hover); border-radius: var(--radius-md);">
+                        <span style="font-size: 0.8rem; color: var(--p-text-muted);">مدت</span>
+                        <span class="product-duration" style="font-weight: 700;">{{ product.duration_days }} روز</span>
+                    </div>
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; padding: var(--sp-sm); background: var(--p-bg-hover); border-radius: var(--radius-md);">
+                        <span style="font-size: 0.8rem; color: var(--p-text-muted);">قیمت</span>
+                        <span class="product-price" data-price="{{ product.price }}"
+                            style="font-weight: 700; color: var(--p-success);">{{ "{:,}".format(product.price) }}
+                            تومان</span>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-sm);">
+                    <button class="btn btn-sm btn-outline"
+                        onclick="toggleProduct({{ product.id }}, {{ 'true' if product.is_active else 'false' }})">
+                        <i class="fas fa-{% if product.is_active %}toggle-on{% else %}toggle-off{% endif %}"></i>
+                        {% if product.is_active %}غیرفعال{% else %}فعال{% endif %}
+                    </button>
+                    <button class="btn btn-sm btn-outline" onclick="editProduct({{ product.id }})">
+                        <i class="fas fa-edit"></i>
+                        ویرایش
+                    </button>
+                    <button class="btn btn-sm btn-outline"
+                        style="grid-column: 1 / -1; border-color: var(--p-error); color: var(--p-error);"
+                        onclick="deleteProduct({{ product.id }})">
+                        <i class="fas fa-trash"></i>
+                        حذف
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div class="card" style="grid-column: 1 / -1; text-align: center; padding: var(--sp-xl);">
+                <p class="text-muted">هیچ محصولی بدون دسته‌بندی وجود ندارد.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Modals -->
+<!-- Add Category Modal -->
+<div id="addCategoryModal" class="modal-overlay">
+    <div class="modal-card">
+        <div class="card-header">
+            <div class="card-title">
+                <i class="fas fa-folder-plus" style="color: var(--p-primary);"></i>
+                افزودن دسته‌بندی
+            </div>
+            <button onclick="closeModal('addCategoryModal')" class="close-btn"><i class="fas fa-times"></i></button>
+        </div>
+        <form onsubmit="addCategory(event)">
+            <div class="form-group">
+                <label class="form-label">نام دسته‌بندی</label>
+                <input type="text" name="name" class="form-control" required placeholder="مثال: پلن‌های ماهانه">
+            </div>
+            <div style="display: flex; gap: var(--sp-md); margin-top: var(--sp-lg);">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('addCategoryModal')"
+                    style="flex: 1;">لغو</button>
+                <button type="submit" class="btn btn-primary" style="flex: 2;">افزودن</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Add Product Modal -->
+<div id="addProductModal" class="modal-overlay">
+    <div class="modal-card" style="max-width: 600px;">
+        <div class="card-header">
+            <div class="card-title">
+                <i class="fas fa-box-open" style="color: var(--p-success);"></i>
+                افزودن محصول
+            </div>
+            <button onclick="closeModal('addProductModal')" class="close-btn"><i class="fas fa-times"></i></button>
+        </div>
+        <form onsubmit="addProduct(event)">
+            <div class="form-group">
+                <label class="form-label">نام محصول</label>
+                <input type="text" name="name" class="form-control" required placeholder="مثال: پلن پایه">
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-md);">
+                <div class="form-group">
+                    <label class="form-label">حجم (گیگابایت)</label>
+                    <input type="number" name="volume_gb" class="form-control" required min="1" placeholder="100">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">مدت زمان (روز)</label>
+                    <input type="number" name="duration_days" class="form-control" required min="1" placeholder="30">
+                </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-md);">
+                <div class="form-group">
+                    <label class="form-label">قیمت (تومان)</label>
+                    <input type="number" name="price" class="form-control" required min="0" placeholder="50000">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">دسته‌بندی</label>
+                    <select name="category_id" class="form-control">
+                        <option value="">بدون دسته‌بندی</option>
+                        {% for category in categories %}
+                        <option value="{{ category.id }}">{{ category.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div style="display: flex; gap: var(--sp-md); margin-top: var(--sp-lg);">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('addProductModal')"
+                    style="flex: 1;">لغو</button>
+                <button type="submit" class="btn btn-primary" style="flex: 2;">افزودن</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Edit Product Modal -->
+<div id="editProductModal" class="modal-overlay">
+    <div class="modal-card" style="max-width: 600px;">
+        <div class="card-header">
+            <div class="card-title">
+                <i class="fas fa-edit" style="color: var(--p-warning);"></i>
+                ویرایش محصول
+            </div>
+            <button onclick="closeModal('editProductModal')" class="close-btn"><i class="fas fa-times"></i></button>
+        </div>
+        <form id="editProductForm" onsubmit="updateProduct(event)">
+            <input type="hidden" name="product_id">
+            <div class="form-group">
+                <label class="form-label">نام محصول</label>
+                <input type="text" name="name" class="form-control" required>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-md);">
+                <div class="form-group">
+                    <label class="form-label">حجم (گیگابایت)</label>
+                    <input type="number" name="volume_gb" class="form-control" required min="1">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">مدت زمان (روز)</label>
+                    <input type="number" name="duration_days" class="form-control" required min="1">
+                </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-md);">
+                <div class="form-group">
+                    <label class="form-label">قیمت (تومان)</label>
+                    <input type="number" name="price" class="form-control" required min="0">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">وضعیت</label>
+                    <select name="is_active" class="form-control" required>
+                        <option value="1">فعال</option>
+                        <option value="0">غیرفعال</option>
+                    </select>
+                </div>
+            </div>
+            <div style="display: flex; gap: var(--sp-md); margin-top: var(--sp-lg);">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('editProductModal')"
+                    style="flex: 1;">لغو</button>
+                <button type="submit" class="btn btn-primary" style="flex: 2;">ذخیره</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Copy Products Modal -->
+<div id="copyProductsModal" class="modal-overlay">
+    <div class="modal-card">
+        <div class="card-header">
+            <div class="card-title">
+                <i class="fas fa-copy" style="color: var(--p-info);"></i>
+                کپی محصولات
+            </div>
+            <button onclick="closeModal('copyProductsModal')" class="close-btn"><i class="fas fa-times"></i></button>
+        </div>
+        <form onsubmit="copyProducts(event)">
+            <div class="form-group">
+                <label class="form-label">انتخاب پنل مبدا</label>
+                <select name="source_panel_id" class="form-control" required>
+                    <option value="">-- انتخاب پنل --</option>
+                    {% if source_panels %}
+                    {% for source_panel in source_panels %}
+                    <option value="{{ source_panel.id }}">{{ source_panel.name }} ({{ 'مرزبان' if
+                        source_panel.panel_type == 'marzban' else '3x-ui' }})</option>
+                    {% endfor %}
+                    {% else %}
+                    <option value="" disabled>هیچ پنل دیگری موجود نیست</option>
+                    {% endif %}
+                </select>
+                <p class="text-muted" style="font-size: 0.8rem; margin-top: 5px;">
+                    تمام دسته‌بندی‌ها و محصولات از پنل انتخاب شده به این پنل کپی می‌شوند.
+                </p>
+            </div>
+            <div style="display: flex; gap: var(--sp-md); margin-top: var(--sp-lg);">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('copyProductsModal')"
+                    style="flex: 1;">لغو</button>
+                <button type="submit" class="btn btn-primary" style="flex: 2;">کپی</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    // Modal Functions
+    function showAddCategoryModal() {
+        document.getElementById('addCategoryModal').style.display = 'flex';
+    }
+
+    function showAddProductModal() {
+        document.getElementById('addProductModal').style.display = 'flex';
+    }
+
+    function showCopyProductsModal() {
+        document.getElementById('copyProductsModal').style.display = 'flex';
+    }
+
+    function closeModal(id) {
+        document.getElementById(id).style.display = 'none';
+    }
+
+    window.onclick = function (event) {
+        if (event.target.classList.contains('modal-overlay')) {
+            event.target.style.display = 'none';
+        }
+    }
+
+    // API Actions
+    async function addCategory(event) {
+        event.preventDefault();
+        const form = event.target;
+        const name = form.name.value;
+
+        try {
+            await apiCall('/api/admin/products/categories', {
+                method: 'POST',
+                body: JSON.stringify({ name: name, panel_id: {{ panel.id }} })
+    });
+    showToast('دسته‌بندی با موفقیت ایجاد شد', 'success');
+    setTimeout(() => window.location.reload(), 1000);
+        } catch (error) {
+        console.error(error);
+    }
+    }
+
+    async function addProduct(event) {
+        event.preventDefault();
+        const form = event.target;
+        const data = {
+            panel_id: {{ panel.id }
+    },
+    name: form.name.value,
+        volume_gb: parseInt(form.volume_gb.value),
+            duration_days: parseInt(form.duration_days.value),
+                price: parseInt(form.price.value),
+                    category_id: form.category_id.value ? parseInt(form.category_id.value) : null
+        };
+
+    try {
+        await apiCall('/api/admin/products', {
+            method: 'POST',
+            body: JSON.stringify(data)
+        });
+        showToast('محصول با موفقیت ایجاد شد', 'success');
+        setTimeout(() => window.location.reload(), 1000);
+    } catch (error) {
+        console.error(error);
+    }
+    }
+
+    async function toggleCategory(id, isActive) {
+        try {
+            await apiCall(`/api/admin/products/categories/${id}`, {
+                method: 'PUT',
+                body: JSON.stringify({ is_active: !isActive })
+            });
+            showToast('وضعیت دسته‌بندی تغییر کرد', 'success');
+            setTimeout(() => window.location.reload(), 500);
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    async function deleteCategory(id) {
+        if (!confirm('آیا از حذف این دسته‌بندی اطمینان دارید؟ محصولات داخل آن حذف نخواهند شد.')) return;
+
+        try {
+            await apiCall(`/api/admin/products/categories/${id}`, {
+                method: 'DELETE'
+            });
+            showToast('دسته‌بندی حذف شد', 'success');
+            setTimeout(() => window.location.reload(), 1000);
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    async function editCategory(id, name) {
+        const newName = prompt('نام جدید دسته‌بندی را وارد کنید:', name);
+        if (newName && newName !== name) {
+            try {
+                await apiCall(`/api/admin/products/categories/${id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ name: newName })
+                });
+                showToast('نام دسته‌بندی تغییر کرد', 'success');
+                setTimeout(() => window.location.reload(), 500);
+            } catch (error) {
+                console.error(error);
+            }
+        }
+    }
+
+    async function toggleProduct(id, isActive) {
+        try {
+            await apiCall(`/api/admin/products/${id}`, {
+                method: 'PUT',
+                body: JSON.stringify({ is_active: !isActive })
+            });
+            showToast('وضعیت محصول تغییر کرد', 'success');
+            setTimeout(() => window.location.reload(), 500);
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    async function deleteProduct(id) {
+        if (!confirm('آیا از حذف این محصول اطمینان دارید؟')) return;
+
+        try {
+            await apiCall(`/api/admin/products/${id}`, {
+                method: 'DELETE'
+            });
+            showToast('محصول حذف شد', 'success');
+            setTimeout(() => window.location.reload(), 1000);
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    function editProduct(id) {
+        // Fetch product details and populate modal
+        // This part requires fetching product data first or passing it via data attributes
+        // For simplicity, I'll assume we can get data from the card
+        const card = document.querySelector(`.product-card[data-product-id="${id}"]`);
+        if (!card) return;
+
+        const form = document.getElementById('editProductForm');
+        form.product_id.value = id;
+        form.name.value = card.querySelector('.product-name').textContent.trim();
+        form.volume_gb.value = parseInt(card.querySelector('.product-volume').textContent);
+        form.duration_days.value = parseInt(card.querySelector('.product-duration').textContent);
+        form.price.value = parseInt(card.querySelector('.product-price').getAttribute('data-price'));
+
+        // Check for text-success class to determine if active
+        const isActive = card.querySelector('.text-success') !== null;
+        form.is_active.value = isActive ? '1' : '0';
+
+        document.getElementById('editProductModal').style.display = 'flex';
+    }
+
+    async function updateProduct(event) {
+        event.preventDefault();
+        const form = event.target;
+        const id = form.product_id.value;
+        const data = {
+            name: form.name.value,
+            volume_gb: parseInt(form.volume_gb.value),
+            duration_days: parseInt(form.duration_days.value),
+            price: parseInt(form.price.value),
+            is_active: form.is_active.value === '1'
+        };
+
+        try {
+            await apiCall(`/api/admin/products/${id}`, {
+                method: 'PUT',
+                body: JSON.stringify(data)
+            });
+            showToast('محصول با موفقیت ویرایش شد', 'success');
+            setTimeout(() => window.location.reload(), 1000);
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    async function copyProducts(event) {
+        event.preventDefault();
+        const form = event.target;
+        const sourcePanelId = form.source_panel_id.value;
+
+        try {
+            await apiCall('/api/admin/products/copy', {
+                method: 'POST',
+                body: JSON.stringify({
+                    source_panel_id: parseInt(sourcePanelId),
+                    target_panel_id: {{ panel.id }}
+                })
+    });
+    showToast('محصولات با موفقیت کپی شدند', 'success');
+    setTimeout(() => window.location.reload(), 1000);
+        } catch (error) {
+        console.error(error);
+    }
+    }
+</script>
+{% endblock %}

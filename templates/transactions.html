@@ -1,0 +1,380 @@
+{% extends "base.html" %}
+
+{% block title %}تراکنش‌ها - پنل کاربری{% endblock %}
+
+{% block content %}
+<style>
+    :root {
+        --glass-bg: rgba(18, 18, 18, 0.8);
+        --glass-border: rgba(255, 255, 255, 0.08);
+        --neon-primary: #E50914;
+        --neon-success: #10b981;
+        --neon-danger: #ef4444;
+        --neon-info: #3b82f6;
+        --card-radius: 24px;
+
+        --text-secondary: #a1a1aa;
+        --text-tertiary: #71717a;
+    }
+
+    .transactions-page-container {
+        padding-bottom: 100px;
+        max-width: 800px;
+        margin: 0 auto;
+    }
+
+    /* Hero */
+    .transactions-hero {
+        position: relative;
+        background: radial-gradient(circle at 50% 0%, rgba(229, 9, 20, 0.15) 0%, transparent 70%);
+        padding: 2rem 1.5rem 3rem;
+        text-align: center;
+        margin-bottom: 1rem;
+    }
+
+    .hero-icon-box {
+        width: 80px;
+        height: 80px;
+        background: rgba(229, 9, 20, 0.1);
+        border-radius: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2.5rem;
+        color: var(--neon-primary);
+        margin: 0 auto 1.5rem;
+        box-shadow: 0 0 30px rgba(229, 9, 20, 0.2);
+        border: 1px solid rgba(229, 9, 20, 0.2);
+    }
+
+    .hero-title {
+        font-size: 1.75rem;
+        font-weight: 900;
+        color: white;
+        margin-bottom: 0.5rem;
+    }
+
+    /* Stats Cards */
+    .stats-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        padding: 0 1.5rem;
+        margin-bottom: 2rem;
+    }
+
+    .stat-card {
+        background: var(--glass-bg);
+        border: 1px solid var(--glass-border);
+        border-radius: 20px;
+        padding: 1.25rem;
+        text-align: center;
+        backdrop-filter: blur(10px);
+    }
+
+    .stat-value {
+        font-size: 1.25rem;
+        font-weight: 800;
+        color: white;
+        margin-bottom: 0.25rem;
+    }
+
+    .stat-label {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+    }
+
+    /* List */
+    .transactions-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        padding: 0 1.5rem;
+    }
+
+    .transaction-card {
+        background: var(--glass-bg);
+        border: 1px solid var(--glass-border);
+        border-radius: 20px;
+        padding: 1.25rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        transition: transform 0.2s;
+        backdrop-filter: blur(10px);
+    }
+
+    .transaction-card:active {
+        transform: scale(0.98);
+    }
+
+    .trans-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+        flex-shrink: 0;
+    }
+
+    .trans-icon.positive {
+        background: rgba(16, 185, 129, 0.1);
+        color: var(--neon-success);
+        border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+
+    .trans-icon.negative {
+        background: rgba(239, 68, 68, 0.1);
+        color: var(--neon-danger);
+        border: 1px solid rgba(239, 68, 68, 0.2);
+    }
+
+    .trans-info {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .trans-title {
+        font-weight: 700;
+        color: white;
+        margin-bottom: 0.25rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .trans-date {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+
+    .trans-amount {
+        text-align: left;
+        flex-shrink: 0;
+    }
+
+    .amount-val {
+        font-weight: 800;
+        font-size: 1.1rem;
+        display: block;
+    }
+
+    .amount-val.positive {
+        color: var(--neon-success);
+    }
+
+    .amount-val.negative {
+        color: var(--neon-danger);
+    }
+
+    .amount-unit {
+        font-size: 0.75rem;
+        color: var(--text-tertiary);
+    }
+
+    /* Pagination */
+    .pagination {
+        display: flex;
+        justify-content: center;
+        gap: 0.5rem;
+        margin-top: 2rem;
+        padding-bottom: 2rem;
+    }
+
+    .page-btn {
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        background: var(--glass-bg);
+        border: 1px solid var(--glass-border);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .page-btn.active {
+        background: var(--neon-primary);
+        border-color: var(--neon-primary);
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    }
+
+    .page-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    /* Empty State */
+    .empty-state {
+        text-align: center;
+        padding: 3rem 1.5rem;
+        color: var(--text-secondary);
+    }
+
+    .empty-icon {
+        font-size: 3.5rem;
+        margin-bottom: 1rem;
+        opacity: 0.3;
+    }
+
+    .btn-add {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: var(--neon-primary);
+        color: white;
+        padding: 0.75rem 1.5rem;
+        border-radius: 14px;
+        text-decoration: none;
+        font-weight: 700;
+        margin-top: 1.5rem;
+    }
+</style>
+
+<div class="transactions-page-container">
+    <!-- Hero -->
+    <div class="transactions-hero">
+        <div class="hero-icon-box">
+            <i class="fas fa-history"></i>
+        </div>
+        <h1 class="hero-title">تراکنش‌ها</h1>
+        <p style="color: var(--text-secondary);">تاریخچه مالی حساب کاربری شما</p>
+    </div>
+
+    {% if transactions %}
+    <!-- Stats -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-value" style="color: var(--neon-info);">{{ transactions|length }}</div>
+            <div class="stat-label">تعداد تراکنش</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" style="color: var(--neon-success);">{{ "{:,}".format(user.balance or 0) }}</div>
+            <div class="stat-label">موجودی (تومان)</div>
+        </div>
+    </div>
+
+    <!-- List -->
+    <div class="transactions-list" id="transactionsList">
+        <!-- Populated by JS -->
+    </div>
+
+    <!-- Pagination -->
+    <div class="pagination" id="pagination">
+        <!-- Populated by JS -->
+    </div>
+
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-icon"><i class="fas fa-receipt"></i></div>
+        <h3>تراکنشی یافت نشد</h3>
+        <p>هنوز هیچ تراکنشی در حساب شما ثبت نشده است</p>
+        <a href="{{ url_for('recharge') }}" class="btn-add">
+            <i class="fas fa-plus"></i>
+            افزایش موجودی
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+    const transactions = {{ transactions| tojson | safe }};
+    const itemsPerPage = 10;
+    let currentPage = 1;
+
+    function renderTransactions(page) {
+        const container = document.getElementById('transactionsList');
+        if (!container) return;
+
+        const start = (page - 1) * itemsPerPage;
+        const end = start + itemsPerPage;
+        const pageItems = transactions.slice(start, end);
+
+        container.innerHTML = pageItems.map(tx => {
+            const isPositive = tx.amount > 0;
+            const iconClass = isPositive ? 'positive' : 'negative';
+            const icon = isPositive ? 'fa-arrow-down' : 'fa-arrow-up';
+            const sign = isPositive ? '+' : '';
+
+            return `
+                <div class="transaction-card">
+                    <div class="trans-icon ${iconClass}">
+                        <i class="fas ${icon}"></i>
+                    </div>
+                    <div class="trans-info">
+                        <div class="trans-title">${tx.description || 'تراکنش'}</div>
+                        <div class="trans-date">
+                            <i class="far fa-clock"></i>
+                            ${tx.created_at ? tx.created_at.substring(0, 16) : 'نامشخص'}
+                        </div>
+                    </div>
+                    <div class="trans-amount">
+                        <span class="amount-val ${iconClass}">${sign}${parseInt(tx.amount).toLocaleString()}</span>
+                        <span class="amount-unit">تومان</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function renderPagination() {
+        const container = document.getElementById('pagination');
+        if (!container) return;
+
+        const totalPages = Math.ceil(transactions.length / itemsPerPage);
+        if (totalPages <= 1) {
+            container.style.display = 'none';
+            return;
+        }
+
+        let html = `
+            <button class="page-btn" onclick="changePage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>
+                <i class="fas fa-chevron-right"></i>
+            </button>
+        `;
+
+        for (let i = 1; i <= totalPages; i++) {
+            if (i === 1 || i === totalPages || (i >= currentPage - 1 && i <= currentPage + 1)) {
+                html += `
+                    <button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="changePage(${i})">
+                        ${i}
+                    </button>
+                `;
+            } else if (i === currentPage - 2 || i === currentPage + 2) {
+                html += `<span style="color: var(--text-tertiary); align-self: center;">...</span>`;
+            }
+        }
+
+        html += `
+            <button class="page-btn" onclick="changePage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}>
+                <i class="fas fa-chevron-left"></i>
+            </button>
+        `;
+
+        container.innerHTML = html;
+    }
+
+    function changePage(page) {
+        const totalPages = Math.ceil(transactions.length / itemsPerPage);
+        if (page < 1 || page > totalPages) return;
+
+        currentPage = page;
+        renderTransactions(currentPage);
+        renderPagination();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // Init
+    if (transactions && transactions.length > 0) {
+        renderTransactions(1);
+        renderPagination();
+    }
+</script>
+{% endblock %}

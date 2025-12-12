@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+
+{% block title %}پروفایل کاربری{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet"
+    href="{{ url_for('static', filename='css/profile-ultra-modern.css') }}?v={{ range(1, 10000) | random }}">
+{% endblock %}
+
+{% block content %}
+<div class="profile-page-container">
+
+    <!-- Hero Section -->
+    <div class="profile-hero fade-in-up">
+        <div class="profile-avatar-wrapper">
+            {% if photo_url %}
+            <img src="{{ bot_url_for('user_photo') }}" alt="Profile" class="profile-avatar"
+                onerror="this.parentElement.innerHTML='<div class=\'profile-avatar-placeholder\'>{{ (user.first_name or 'U')[0]|upper }}</div>'">
+            {% else %}
+            <div class="profile-avatar-placeholder">{{ (user.first_name or 'U')[0]|upper }}</div>
+            {% endif %}
+            <div class="profile-badge">
+                <i class="fas fa-check"></i>
+            </div>
+        </div>
+        <h1 class="profile-name">{{ user.first_name or 'کاربر' }} {{ user.last_name or '' }}</h1>
+        <div class="profile-id-badge">
+            <i class="fas fa-fingerprint"></i>
+            <span>ID: {{ user.telegram_id }}</span>
+        </div>
+    </div>
+
+    <!-- Wallet Card -->
+    <div class="wallet-card-premium fade-in-up delay-1">
+        <div class="wallet-label">موجودی کیف پول</div>
+        <div class="wallet-balance-wrapper">
+            <span class="wallet-balance">{{ "{:,}".format(user.balance or 0) }}</span>
+            <span class="wallet-currency">تومان</span>
+        </div>
+        <div class="wallet-actions">
+            <a href="{{ add_bot_prefix('/recharge') }}" class="btn-add-funds">
+                <i class="fas fa-plus-circle"></i>
+                افزایش موجودی
+            </a>
+        </div>
+    </div>
+
+    <!-- Stats Grid -->
+    <div class="stats-grid-modern fade-in-up delay-2">
+        <div class="stat-card">
+            <div class="stat-icon">
+                <i class="fas fa-server"></i>
+            </div>
+            <div class="stat-value">{{ user.services|length }}</div>
+            <div class="stat-label">سرویس‌های فعال</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">
+                <i class="fas fa-calendar-alt"></i>
+            </div>
+            <div class="stat-value">{{ user.created_at_persian or 'نامشخص' }}</div>
+            <div class="stat-label">تاریخ عضویت</div>
+        </div>
+    </div>
+
+    <!-- Referral Section -->
+    <div class="referral-box fade-in-up delay-3">
+        <div class="referral-header">
+            <i class="fas fa-gift referral-icon"></i>
+            <div>
+                <h3 class="referral-title">دعوت از دوستان</h3>
+                <div style="font-size: 0.75rem; color: var(--profile-success);">کسب درآمد دائمی</div>
+            </div>
+        </div>
+
+        <p class="referral-desc">
+            با دعوت دوستان خود، درصدی از هر خرید آن‌ها را به عنوان پاداش نقدی دریافت کنید.
+        </p>
+
+        {% if referral_link %}
+        <div class="referral-link-container">
+            <div class="referral-link">{{ referral_link }}</div>
+            <button onclick="copyToClipboard('{{ referral_link }}')" class="btn-copy">
+                <i class="fas fa-copy"></i>
+            </button>
+        </div>
+        {% endif %}
+
+        <div style="display: flex; gap: 10px; margin-top: 16px;">
+            <div
+                style="flex: 1; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 12px; text-align: center;">
+                <div style="font-weight: 800; color: white;">{{ user.total_referrals or 0 }}</div>
+                <div style="font-size: 0.7rem; color: var(--profile-text-muted);">دعوت‌ها</div>
+            </div>
+            <div
+                style="flex: 1; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 12px; text-align: center;">
+                <div style="font-weight: 800; color: var(--profile-success);">{{
+                    "{:,}".format(user.total_referral_earnings or 0) }}</div>
+                <div style="font-size: 0.7rem; color: var(--profile-text-muted);">درآمد (تومان)</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Transactions -->
+    <div class="transactions-section fade-in-up delay-4">
+        <div class="section-header">
+            <h3 class="section-title">تراکنش‌های اخیر</h3>
+            <a href="{{ url_for('transactions') }}" class="link-view-all">مشاهده همه</a>
+        </div>
+
+        {% if transactions %}
+        <div class="transaction-list">
+            {% for transaction in transactions[:5] %}
+            <div class="transaction-item">
+                <div style="display: flex; align-items: center;">
+                    <div class="t-icon-wrapper {% if transaction.amount > 0 %}t-icon-in{% else %}t-icon-out{% endif %}">
+                        <i class="fas {% if transaction.amount > 0 %}fa-arrow-down{% else %}fa-arrow-up{% endif %}"></i>
+                    </div>
+                    <div class="t-info">
+                        <div class="t-title">{{ transaction.description or 'تراکنش' }}</div>
+                        <div class="t-date">{{ transaction.created_at }}</div>
+                    </div>
+                </div>
+                <div class="t-amount {% if transaction.amount > 0 %}amount-pos{% else %}amount-neg{% endif %}">
+                    {% if transaction.amount > 0 %}+{% endif %}{{ "{:,}".format(transaction.amount) }}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div
+            style="text-align: center; padding: 30px; color: var(--profile-text-muted); background: var(--profile-card); border-radius: 16px; border: 1px dashed var(--profile-border);">
+            <i class="fas fa-receipt" style="font-size: 2rem; margin-bottom: 10px; opacity: 0.5;"></i>
+            <p>هنوز تراکنشی ثبت نشده است</p>
+        </div>
+        {% endif %}
+    </div>
+
+</div>
+{% endblock %}

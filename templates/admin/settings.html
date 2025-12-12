@@ -1,0 +1,152 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}تنظیمات سیستم{% endblock %}
+{% block page_subtitle %}مدیریت تنظیمات کلی و پیکربندی سیستم{% endblock %}
+
+{% block content %}
+<div class="fade-in">
+    <div class="grid-2" style="gap: var(--sp-xl);">
+        <!-- General Settings -->
+        <div class="card">
+            <div class="card-header"
+                style="margin-bottom: var(--sp-md); padding-bottom: var(--sp-md); border-bottom: 1px solid var(--border-color);">
+                <div style="font-weight: 800; display: flex; align-items: center; gap: var(--sp-sm);">
+                    <i class="fas fa-cog" style="color: var(--p-primary);"></i>
+                    تنظیمات عمومی
+                </div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: var(--sp-md);">
+                <div class="setting-item">
+                    <div style="display: flex; gap: var(--sp-md); align-items: center;">
+                        <div
+                            style="width: 40px; height: 40px; border-radius: var(--radius-md); background: var(--p-bg-hover); display: flex; align-items: center; justify-content: center; color: var(--p-text-muted);">
+                            <i class="fas fa-robot"></i>
+                        </div>
+                        <div>
+                            <div style="font-weight: 700;">نام ربات</div>
+                            <div style="font-size: 0.8rem; color: var(--p-text-muted);">نام نمایشی ربات در تلگرام</div>
+                        </div>
+                    </div>
+                    <div style="font-family: monospace; font-weight: 700;">{{ bot_username or 'نامشخص' }}</div>
+                </div>
+
+                <div class="setting-item">
+                    <div style="display: flex; gap: var(--sp-md); align-items: center;">
+                        <div
+                            style="width: 40px; height: 40px; border-radius: var(--radius-md); background: var(--p-bg-hover); display: flex; align-items: center; justify-content: center; color: var(--p-text-muted);">
+                            <i class="fas fa-user-shield"></i>
+                        </div>
+                        <div>
+                            <div style="font-weight: 700;">آیدی ادمین</div>
+                            <div style="font-size: 0.8rem; color: var(--p-text-muted);">آیدی تلگرام ادمین اصلی</div>
+                        </div>
+                    </div>
+                    <div style="font-family: monospace; font-weight: 700;">{{ admin_id or 'نامشخص' }}</div>
+                </div>
+
+                <div class="setting-item">
+                    <div style="display: flex; gap: var(--sp-md); align-items: center;">
+                        <div
+                            style="width: 40px; height: 40px; border-radius: var(--radius-md); background: var(--p-bg-hover); display: flex; align-items: center; justify-content: center; color: var(--p-text-muted);">
+                            <i class="fas fa-globe"></i>
+                        </div>
+                        <div>
+                            <div style="font-weight: 700;">آدرس وب اپلیکیشن</div>
+                            <div style="font-size: 0.8rem; color: var(--p-text-muted);">آدرس اصلی وب اپلیکیشن</div>
+                        </div>
+                    </div>
+                    <div style="font-family: monospace; font-weight: 700; direction: ltr;">{{ webapp_url or 'تنظیم نشده'
+                        }}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Database Settings -->
+        <div class="card">
+            <div class="card-header"
+                style="margin-bottom: var(--sp-md); padding-bottom: var(--sp-md); border-bottom: 1px solid var(--border-color);">
+                <div style="font-weight: 800; display: flex; align-items: center; gap: var(--sp-sm);">
+                    <i class="fas fa-database" style="color: var(--p-info);"></i>
+                    تنظیمات دیتابیس
+                </div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: var(--sp-md);">
+                <div class="setting-item">
+                    <div style="display: flex; gap: var(--sp-md); align-items: center;">
+                        <div
+                            style="width: 40px; height: 40px; border-radius: var(--radius-md); background: var(--p-bg-hover); display: flex; align-items: center; justify-content: center; color: var(--p-text-muted);">
+                            <i class="fas fa-plug"></i>
+                        </div>
+                        <div>
+                            <div style="font-weight: 700;">وضعیت اتصال</div>
+                            <div style="font-size: 0.8rem; color: var(--p-text-muted);">وضعیت اتصال به دیتابیس</div>
+                        </div>
+                    </div>
+                    <span class="badge badge-success">متصل</span>
+                </div>
+
+                <div class="setting-item">
+                    <div style="display: flex; gap: var(--sp-md); align-items: center;">
+                        <div
+                            style="width: 40px; height: 40px; border-radius: var(--radius-md); background: var(--p-bg-hover); display: flex; align-items: center; justify-content: center; color: var(--p-text-muted);">
+                            <i class="fas fa-save"></i>
+                        </div>
+                        <div>
+                            <div style="font-weight: 700;">بکاپ خودکار</div>
+                            <div style="font-size: 0.8rem; color: var(--p-text-muted);">بکاپ‌گیری روزانه از دیتابیس
+                            </div>
+                        </div>
+                    </div>
+                    <span class="badge badge-success">فعال</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- System Info -->
+        <div class="card">
+            <div class="card-header"
+                style="margin-bottom: var(--sp-md); padding-bottom: var(--sp-md); border-bottom: 1px solid var(--border-color);">
+                <div style="font-weight: 800; display: flex; align-items: center; gap: var(--sp-sm);">
+                    <i class="fas fa-info-circle" style="color: var(--p-warning);"></i>
+                    اطلاعات سیستم
+                </div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: var(--sp-md);">
+                <div class="setting-item">
+                    <div style="display: flex; gap: var(--sp-md); align-items: center;">
+                        <div
+                            style="width: 40px; height: 40px; border-radius: var(--radius-md); background: var(--p-bg-hover); display: flex; align-items: center; justify-content: center; color: var(--p-text-muted);">
+                            <i class="fas fa-code-branch"></i>
+                        </div>
+                        <div>
+                            <div style="font-weight: 700;">نسخه پنل</div>
+                            <div style="font-size: 0.8rem; color: var(--p-text-muted);">نسخه فعلی پنل مدیریت</div>
+                        </div>
+                    </div>
+                    <span class="badge badge-secondary">v1.0.0</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .setting-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: var(--sp-sm);
+        background: var(--p-bg-hover);
+        border-radius: var(--radius-lg);
+        border: 1px solid transparent;
+        transition: border-color 0.2s ease;
+    }
+
+    .setting-item:hover {
+        border-color: var(--border-color);
+    }
+</style>
+{% endblock %}
