@@ -75,9 +75,16 @@ def main():
     if not is_git_repo():
         print_warning("No git repository found. Initializing new repository...")
         run_command("git init")
-        print_success("Initialized empty Git repository.")
+        # FORCE BRANCH TO MAIN
+        run_command("git branch -M main")
+        print_success("Initialized empty Git repository and set branch to 'main'.")
     else:
         print_step("Git repository already exists.")
+        # Ensure we are on main or rename current to main if it is master
+        current_branch = run_command("git branch --show-current")
+        if current_branch == "master":
+             print_step("Renaming 'master' branch to 'main'...")
+             run_command("git branch -M main")
 
     # 3. Configure Remote
     current_remote = get_remote_url()
