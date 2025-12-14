@@ -1,0 +1,484 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}جزئیات کاربر{% endblock %}
+{% block page_subtitle %}مدیریت و مشاهده اطلاعات کامل کاربر{% endblock %}
+
+{% block content %}
+<div class="fade-in">
+    <!-- Header & Actions -->
+    <div
+        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--sp-xl); flex-wrap: wrap; gap: var(--sp-md);">
+        <div style="display: flex; align-items: center; gap: var(--sp-md);">
+            <a href="/admin/users" class="btn btn-outline"
+                style="width: 40px; height: 40px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%;">
+                <i class="fas fa-arrow-right"></i>
+            </a>
+            <h2 style="font-size: 1.5rem; font-weight: 800; margin: 0; color: var(--p-text-main);">پروفایل کاربر</h2>
+        </div>
+
+        <div style="display: flex; gap: var(--sp-sm);">
+            <button onclick="loginAsUser({{ user.id }})" class="btn btn-primary">
+                <i class="fas fa-sign-in-alt"></i>
+                <span>ورود به پنل کاربر</span>
+            </button>
+            <button onclick="toggleUserBan({{ user.id }}, {{ 'false' if user.is_banned else 'true' }})"
+                class="btn {% if user.is_banned %}btn-success{% else %}btn-warning{% endif %}">
+                <i class="fas {% if user.is_banned %}fa-unlock{% else %}fa-ban{% endif %}"></i>
+                <span>{% if user.is_banned %}رفع مسدودیت{% else %}مسدود کردن{% endif %}</span>
+            </button>
+            <button onclick="deleteUser({{ user.id }})" class="btn btn-outline"
+                style="color: var(--p-error); border-color: var(--p-error);">
+                <i class="fas fa-trash"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- User Hero -->
+    <div class="card" style="margin-bottom: var(--sp-xl); position: relative; overflow: hidden;">
+        <div
+            style="position: absolute; top: 0; left: 0; width: 100%; height: 4px; background: linear-gradient(90deg, var(--p-primary), var(--p-accent));">
+        </div>
+
+        <div style="display: flex; flex-wrap: wrap; gap: var(--sp-xl); padding: var(--sp-xl);">
+            <!-- Avatar & Basic Info -->
+            <div style="display: flex; gap: var(--sp-lg); align-items: center; flex: 1; min-width: 300px;">
+                <div style="position: relative;">
+                    <div
+                        style="width: 100px; height: 100px; border-radius: 50%; background: var(--p-bg-hover); display: flex; align-items: center; justify-content: center; font-size: 2.5rem; color: var(--p-text-muted); overflow: hidden; border: 3px solid var(--p-bg-card); box-shadow: 0 0 0 2px var(--p-primary);">
+                        {% if user.has_photo %}
+                        <img src="{{ url_for('serve_user_photo', user_id=user.id) }}" alt="Avatar"
+                            style="width: 100%; height: 100%; object-fit: cover;">
+                        {% else %}
+                        <i class="fas fa-user"></i>
+                        {% endif %}
+                    </div>
+                    <div
+                        style="position: absolute; bottom: 5px; right: 5px; width: 20px; height: 20px; border-radius: 50%; background: {% if user.is_banned %}var(--p-error){% else %}var(--p-success){% endif %}; border: 3px solid var(--p-bg-card);">
+                    </div>
+                </div>
+
+                <div>
+                    <h1
+                        style="font-size: 1.5rem; font-weight: 900; margin-bottom: var(--sp-xs); color: var(--p-text-main);">
+                        {{ user.first_name or '' }} {{ user.last_name or '' }}</h1>
+                    <div style="display: flex; flex-direction: column; gap: var(--sp-xs);">
+                        <div
+                            style="display: flex; align-items: center; gap: var(--sp-xs); color: var(--p-text-muted); font-size: 0.9rem;">
+                            <i class="fas fa-at" style="color: var(--p-primary);"></i>
+                            <span>{{ user.username or 'بدون نام کاربری' }}</span>
+                        </div>
+                        <div
+                            style="display: flex; align-items: center; gap: var(--sp-xs); color: var(--p-text-muted); font-size: 0.9rem;">
+                            <i class="fas fa-id-card" style="color: var(--p-text-muted);"></i>
+                            <span>{{ user.telegram_id }}</span>
+                        </div>
+                        <div
+                            style="display: flex; align-items: center; gap: var(--sp-xs); color: var(--p-text-muted); font-size: 0.9rem;">
+                            <i class="fas fa-calendar-alt" style="color: var(--p-text-muted);"></i>
+                            <span>عضویت: {{ user.created_at.strftime('%Y-%m-%d') if user.created_at else '-' }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Balance Actions -->
+            <div
+                style="display: flex; flex-direction: column; justify-content: center; gap: var(--sp-md); min-width: 250px;">
+                <div
+                    style="text-align: left; background: var(--p-bg-hover); padding: var(--sp-md); border-radius: var(--radius-lg); border: 1px solid var(--border-color);">
+                    <div style="font-size: 0.85rem; color: var(--p-text-muted); margin-bottom: var(--sp-xs);">موجودی کیف
+                        پول</div>
+                    <div
+                        style="font-size: 1.75rem; font-weight: 900; color: var(--p-success); display: flex; align-items: center; gap: var(--sp-xs);">
+                        <span id="balanceDisplay">{{ "{:,}".format(user.balance or 0) }}</span>
+                        <span style="font-size: 0.9rem; font-weight: 400; color: var(--p-text-muted);">تومان</span>
+                    </div>
+                </div>
+                <div style="display: flex; gap: var(--sp-sm);">
+                    <button onclick="showAddBalanceModal()" class="btn btn-success" style="flex: 1;">
+                        <i class="fas fa-plus"></i>
+                        افزایش
+                    </button>
+                    <button onclick="showSubtractBalanceModal()" class="btn btn-outline"
+                        style="flex: 1; color: var(--p-error); border-color: var(--p-error);">
+                        <i class="fas fa-minus"></i>
+                        کاهش
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats Grid -->
+    <div class="grid-4" style="margin-bottom: var(--sp-xl);">
+        <div class="card" style="padding: var(--sp-lg); display: flex; align-items: center; gap: var(--sp-md);">
+            <div
+                style="width: 48px; height: 48px; border-radius: var(--radius-lg); background: rgba(16, 185, 129, 0.1); color: var(--p-success); display: flex; align-items: center; justify-content: center; font-size: 1.25rem;">
+                <i class="fas fa-shopping-cart"></i>
+            </div>
+            <div>
+                <div style="font-size: 1.5rem; font-weight: 800; color: var(--p-text-main);">{{
+                    "{:,}".format(stats.total_spent or 0) }}</div>
+                <div style="font-size: 0.8rem; color: var(--p-text-muted);">کل خرید (تومان)</div>
+            </div>
+        </div>
+
+        <div class="card" style="padding: var(--sp-lg); display: flex; align-items: center; gap: var(--sp-md);">
+            <div
+                style="width: 48px; height: 48px; border-radius: var(--radius-lg); background: rgba(59, 130, 246, 0.1); color: var(--p-info); display: flex; align-items: center; justify-content: center; font-size: 1.25rem;">
+                <i class="fas fa-network-wired"></i>
+            </div>
+            <div>
+                <div style="font-size: 1.5rem; font-weight: 800; color: var(--p-text-main);">{{ services|length }}</div>
+                <div style="font-size: 0.8rem; color: var(--p-text-muted);">سرویس‌های فعال</div>
+            </div>
+        </div>
+
+        <div class="card" style="padding: var(--sp-lg); display: flex; align-items: center; gap: var(--sp-md);">
+            <div
+                style="width: 48px; height: 48px; border-radius: var(--radius-lg); background: rgba(245, 158, 11, 0.1); color: var(--p-warning); display: flex; align-items: center; justify-content: center; font-size: 1.25rem;">
+                <i class="fas fa-receipt"></i>
+            </div>
+            <div>
+                <div style="font-size: 1.5rem; font-weight: 800; color: var(--p-text-main);">{{ transactions|length }}
+                </div>
+                <div style="font-size: 0.8rem; color: var(--p-text-muted);">تعداد تراکنش‌ها</div>
+            </div>
+        </div>
+
+        <div class="card" style="padding: var(--sp-lg); display: flex; align-items: center; gap: var(--sp-md);">
+            <div
+                style="width: 48px; height: 48px; border-radius: var(--radius-lg); background: rgba(99, 102, 241, 0.1); color: var(--p-primary); display: flex; align-items: center; justify-content: center; font-size: 1.25rem;">
+                <i class="fas fa-ticket-alt"></i>
+            </div>
+            <div>
+                <div style="font-size: 1.5rem; font-weight: 800; color: var(--p-text-main);">{{ stats.total_tickets or 0
+                    }}</div>
+                <div style="font-size: 0.8rem; color: var(--p-text-muted);">تیکت‌های پشتیبانی</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Content Sections -->
+    <div class="grid-1" style="gap: var(--sp-xl);">
+
+        <!-- Services -->
+        <div>
+            <div
+                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--sp-md);">
+                <h3
+                    style="font-size: 1.2rem; font-weight: 800; margin: 0; display: flex; align-items: center; gap: var(--sp-sm);">
+                    <i class="fas fa-server" style="color: var(--p-primary);"></i>
+                    سرویس‌ها
+                </h3>
+            </div>
+
+            {% if services %}
+            <div class="grid-2">
+                {% for service in services %}
+                <div class="card service-card" style="position: relative; overflow: hidden;">
+                    <div
+                        style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: {% if service.is_active %}var(--p-success){% else %}var(--p-error){% endif %};">
+                    </div>
+
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--sp-md);">
+                        <div>
+                            <div style="font-weight: 800; font-size: 1.1rem; margin-bottom: var(--sp-xs);">{{
+                                service.client_name }}</div>
+                            <div style="font-size: 0.8rem; color: var(--p-text-muted);">{{ service.panel_name }}</div>
+                        </div>
+                        <div class="badge {% if service.is_active %}badge-success{% else %}badge-error{% endif %}">
+                            {{ 'فعال' if service.is_active else 'غیرفعال' }}
+                        </div>
+                    </div>
+
+                    <div
+                        style="background: var(--p-bg-hover); border-radius: var(--radius-md); padding: var(--sp-sm); margin-bottom: var(--sp-md);">
+                        <div
+                            style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 4px;">
+                            <span style="color: var(--p-text-muted);">مصرف حجم</span>
+                            <span style="font-weight: 700;">{{ service.used_gb or 0 }} / {{ service.total_gb }}
+                                GB</span>
+                        </div>
+                        <div
+                            style="width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
+                            {% set percent = (service.used_gb / service.total_gb * 100) if service.total_gb > 0 else 0
+                            %}
+                            <div
+                                style="width: {{ percent }}%; height: 100%; background: var(--p-primary); border-radius: 3px;">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: var(--sp-sm);">
+                        <a href="/admin/services/{{ service.id }}" class="btn btn-sm btn-outline" style="flex: 1;">
+                            <i class="fas fa-cog"></i>
+                            مدیریت
+                        </a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="card" style="text-align: center; padding: var(--sp-xl);">
+                <div style="color: var(--p-text-muted);">هیچ سرویسی یافت نشد</div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Transactions -->
+        <div>
+            <div
+                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--sp-md);">
+                <h3
+                    style="font-size: 1.2rem; font-weight: 800; margin: 0; display: flex; align-items: center; gap: var(--sp-sm);">
+                    <i class="fas fa-history" style="color: var(--p-warning);"></i>
+                    تراکنش‌های اخیر
+                </h3>
+            </div>
+
+            {% if transactions %}
+            <div class="card" style="overflow: hidden;">
+                <div style="display: flex; flex-direction: column;">
+                    {% for trans in transactions %}
+                    <div
+                        style="display: flex; align-items: center; padding: var(--sp-md); border-bottom: 1px solid var(--border-color); gap: var(--sp-md);">
+                        <div style="width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; 
+                            background: {% if trans.amount > 0 %}rgba(16, 185, 129, 0.1){% else %}rgba(239, 68, 68, 0.1){% endif %};
+                            color: {% if trans.amount > 0 %}var(--p-success){% else %}var(--p-error){% endif %};">
+                            <i class="fas {% if trans.amount > 0 %}fa-arrow-down{% else %}fa-arrow-up{% endif %}"></i>
+                        </div>
+
+                        <div style="flex: 1;">
+                            <div style="font-weight: 700; margin-bottom: 2px;">{{ trans.description or 'تراکنش مالی' }}
+                            </div>
+                            <div style="font-size: 0.75rem; color: var(--p-text-muted);">{{
+                                trans.created_at.strftime('%Y-%m-%d %H:%M:%S') if trans.created_at else '-' }}</div>
+                        </div>
+
+                        <div
+                            style="font-weight: 800; font-size: 1rem; color: {% if trans.amount > 0 %}var(--p-success){% else %}var(--p-error){% endif %};">
+                            {{ "{:,}".format(trans.amount) }} تومان
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% else %}
+            <div class="card" style="text-align: center; padding: var(--sp-xl);">
+                <div style="color: var(--p-text-muted);">هیچ تراکنشی یافت نشد</div>
+            </div>
+            {% endif %}
+        </div>
+
+    </div>
+</div>
+
+<!-- Add Balance Modal -->
+<div id="addBalanceModal" class="modal-overlay">
+    <div class="modal-card">
+        <div class="card-header">
+            <div class="card-title">
+                <i class="fas fa-plus-circle" style="color: var(--p-success);"></i>
+                افزایش موجودی
+            </div>
+            <button onclick="closeModal('addBalanceModal')" class="close-btn"><i class="fas fa-times"></i></button>
+        </div>
+        <form onsubmit="addBalance(event)">
+            <div class="form-group">
+                <label class="form-label">مبلغ (تومان)</label>
+                <input type="number" name="amount" class="form-control" required min="1000" step="1000"
+                    placeholder="مثال: 100000">
+            </div>
+            <div class="form-group">
+                <label class="form-label">توضیحات</label>
+                <input type="text" name="description" class="form-control" placeholder="افزایش موجودی توسط ادمین">
+            </div>
+            <div style="display: flex; gap: var(--sp-md); margin-top: var(--sp-lg);">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('addBalanceModal')"
+                    style="flex: 1;">لغو</button>
+                <button type="submit" class="btn btn-success" style="flex: 2;">افزایش موجودی</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Subtract Balance Modal -->
+<div id="subtractBalanceModal" class="modal-overlay">
+    <div class="modal-card">
+        <div class="card-header">
+            <div class="card-title">
+                <i class="fas fa-minus-circle" style="color: var(--p-error);"></i>
+                کاهش موجودی
+            </div>
+            <button onclick="closeModal('subtractBalanceModal')" class="close-btn"><i class="fas fa-times"></i></button>
+        </div>
+        <form onsubmit="subtractBalance(event)">
+            <div class="form-group">
+                <label class="form-label">مبلغ (تومان)</label>
+                <input type="number" name="amount" class="form-control" required min="1000" step="1000"
+                    placeholder="مثال: 50000">
+            </div>
+            <div class="form-group">
+                <label class="form-label">توضیحات</label>
+                <input type="text" name="description" class="form-control" placeholder="کاهش موجودی توسط ادمین">
+            </div>
+            <div style="display: flex; gap: var(--sp-md); margin-top: var(--sp-lg);">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('subtractBalanceModal')"
+                    style="flex: 1;">لغو</button>
+                <button type="submit" class="btn btn-outline"
+                    style="flex: 2; color: var(--p-error); border-color: var(--p-error);">کاهش موجودی</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+    /* Modal Styles */
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+        backdrop-filter: blur(5px);
+    }
+
+    .modal-card {
+        background: var(--p-bg-main);
+        border-radius: var(--radius-xl);
+        width: 100%;
+        max-width: 400px;
+        padding: var(--sp-xl);
+        border: 1px solid var(--border-color);
+        box-shadow: var(--shadow-xl);
+        animation: modalSlideIn 0.3s ease;
+    }
+
+    @keyframes modalSlideIn {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const userId = {{ user.id }};
+
+    function showAddBalanceModal() {
+        document.getElementById('addBalanceModal').style.display = 'flex';
+    }
+
+    function showSubtractBalanceModal() {
+        document.getElementById('subtractBalanceModal').style.display = 'flex';
+    }
+
+    function closeModal(id) {
+        document.getElementById(id).style.display = 'none';
+    }
+
+    window.onclick = function (event) {
+        if (event.target.classList.contains('modal-overlay')) {
+            event.target.style.display = 'none';
+        }
+    }
+
+    async function addBalance(event) {
+        event.preventDefault();
+        const form = event.target;
+        const amount = parseInt(form.amount.value);
+        const description = form.description.value || 'افزایش موجودی توسط ادمین';
+
+        try {
+            await apiCall(`/api/admin/users/${userId}/balance`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    amount: amount,
+                    description: description,
+                    type: 'add'
+                })
+            });
+            showToast('موجودی با موفقیت افزایش یافت', 'success');
+            setTimeout(() => window.location.reload(), 1000);
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    async function subtractBalance(event) {
+        event.preventDefault();
+        const form = event.target;
+        const amount = parseInt(form.amount.value);
+        const description = form.description.value || 'کاهش موجودی توسط ادمین';
+
+        try {
+            await apiCall(`/api/admin/users/${userId}/balance`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    amount: amount,
+                    description: description,
+                    type: 'subtract'
+                })
+            });
+            showToast('موجودی با موفقیت کاهش یافت', 'success');
+            setTimeout(() => window.location.reload(), 1000);
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    async function toggleUserBan(id, shouldBan) {
+        if (!confirm(shouldBan ? 'آیا از مسدود کردن این کاربر اطمینان دارید؟' : 'آیا از رفع مسدودیت این کاربر اطمینان دارید؟')) return;
+
+        try {
+            await apiCall(`/api/admin/users/${id}/ban`, {
+                method: 'PUT',
+                body: JSON.stringify({ is_banned: shouldBan })
+            });
+            showToast(shouldBan ? 'کاربر مسدود شد' : 'رفع مسدودیت انجام شد', 'success');
+            setTimeout(() => window.location.reload(), 1000);
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    async function deleteUser(id) {
+        if (!confirm('آیا از حذف کامل این کاربر و تمام سرویس‌های او اطمینان دارید؟ این عملیات غیرقابل بازگشت است.')) return;
+
+        try {
+            await apiCall(`/api/admin/users/${id}`, {
+                method: 'DELETE'
+            });
+            showToast('کاربر با موفقیت حذف شد', 'success');
+            setTimeout(() => window.location.href = '/admin/users', 1000);
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    async function loginAsUser(id) {
+        try {
+            const response = await apiCall(`/api/admin/users/${id}/login`, { method: 'POST' });
+            if (response.redirect_url) {
+                window.open(response.redirect_url, '_blank');
+            }
+        } catch (error) {
+            console.error(error);
+        }
+    }
+</script>
+{% endblock %}

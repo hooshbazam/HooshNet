@@ -1,0 +1,779 @@
+{% extends "base.html" %}
+
+{% block title %}جزئیات سرویس - پنل کاربری{% endblock %}
+
+{% block content %}
+<style>
+    :root {
+        --glass-bg: rgba(15, 23, 42, 0.6);
+        --glass-border: rgba(255, 255, 255, 0.08);
+        --glass-highlight: rgba(255, 255, 255, 0.03);
+        --neon-primary: #6366f1;
+        --neon-secondary: #ec4899;
+        --neon-accent: #8b5cf6;
+        --neon-success: #10b981;
+        --neon-warning: #f59e0b;
+        --neon-danger: #ef4444;
+        --card-radius: 28px;
+        --btn-radius: 20px;
+    }
+
+    /* Page Layout */
+    .service-page-container {
+        padding-bottom: 100px;
+        max-width: 600px;
+        margin: 0 auto;
+    }
+
+    /* Hero Section */
+    .hero-section {
+        position: relative;
+        padding: 2rem 1.5rem 4rem;
+        background: radial-gradient(circle at 50% 0%, rgba(99, 102, 241, 0.15) 0%, transparent 70%);
+        text-align: center;
+        margin-bottom: -2rem;
+    }
+
+    .hero-status-ring {
+        position: relative;
+        width: 100px;
+        height: 100px;
+        margin: 0 auto 1.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .status-ring-bg {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        border: 2px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .status-ring-glow {
+        position: absolute;
+        inset: -5px;
+        border-radius: 50%;
+        background: conic-gradient(from 0deg, transparent 0%, var(--neon-primary) 50%, transparent 100%);
+        animation: rotate 3s linear infinite;
+        opacity: 0.5;
+        filter: blur(10px);
+    }
+
+    .status-icon-box {
+        width: 80px;
+        height: 80px;
+        background: var(--bg-surface);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2.5rem;
+        color: white;
+        position: relative;
+        z-index: 2;
+        box-shadow: 0 0 30px rgba(0, 0, 0, 0.3);
+        border: 1px solid var(--glass-border);
+    }
+
+    .service-title {
+        font-size: 1.75rem;
+        font-weight: 900;
+        color: white;
+        margin-bottom: 0.5rem;
+        text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        letter-spacing: -0.5px;
+    }
+
+    .service-id {
+        font-family: monospace;
+        color: var(--text-tertiary);
+        background: rgba(255, 255, 255, 0.05);
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 0.9rem;
+        display: inline-block;
+        margin-bottom: 1rem;
+    }
+
+    .status-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 16px;
+        background: rgba(16, 185, 129, 0.1);
+        border: 1px solid rgba(16, 185, 129, 0.2);
+        border-radius: 50px;
+        color: #10b981;
+        font-weight: 700;
+        font-size: 0.9rem;
+        backdrop-filter: blur(10px);
+    }
+
+    .status-chip.offline {
+        background: rgba(239, 68, 68, 0.1);
+        border-color: rgba(239, 68, 68, 0.2);
+        color: #ef4444;
+    }
+
+    .status-dot {
+        width: 8px;
+        height: 8px;
+        background: currentColor;
+        border-radius: 50%;
+        box-shadow: 0 0 10px currentColor;
+        animation: pulse 2s infinite;
+    }
+
+    /* Content Cards */
+    .content-wrapper {
+        padding: 0 1.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+
+    .glass-card {
+        background: var(--glass-bg);
+        border: 1px solid var(--glass-border);
+        border-radius: var(--card-radius);
+        padding: 1.5rem;
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .glass-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    }
+
+    /* Circular Progress */
+    .usage-section {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1.5rem;
+    }
+
+    .circular-progress {
+        position: relative;
+        width: 120px;
+        height: 120px;
+        flex-shrink: 0;
+    }
+
+    .circular-progress svg {
+        width: 100%;
+        height: 100%;
+        transform: rotate(-90deg);
+    }
+
+    .circular-progress circle {
+        fill: none;
+        stroke-width: 8;
+        stroke-linecap: round;
+    }
+
+    .progress-bg {
+        stroke: rgba(255, 255, 255, 0.05);
+    }
+
+    .progress-value {
+        stroke: var(--neon-primary);
+        stroke-dasharray: 283;
+        stroke-dashoffset: 283;
+        transition: stroke-dashoffset 1.5s ease-in-out;
+        filter: drop-shadow(0 0 4px var(--neon-primary));
+    }
+
+    .progress-text-center {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+    }
+
+    .progress-percentage {
+        font-size: 1.25rem;
+        font-weight: 800;
+        color: white;
+    }
+
+    .progress-label {
+        font-size: 0.7rem;
+        color: var(--text-secondary);
+    }
+
+    .usage-details {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .usage-stat-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .usage-stat-row:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+    }
+
+    .stat-label {
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .stat-value {
+        color: white;
+        font-weight: 700;
+        font-family: monospace;
+        font-size: 1rem;
+    }
+
+    /* Config Link Card */
+    .config-card {
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
+        border: 1px solid rgba(99, 102, 241, 0.2);
+    }
+
+    .config-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+
+    .config-title {
+        font-weight: 700;
+        color: white;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .config-link-box {
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 16px;
+        padding: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        border: 1px dashed rgba(255, 255, 255, 0.1);
+    }
+
+    .config-link-box:active {
+        transform: scale(0.98);
+        background: rgba(0, 0, 0, 0.3);
+    }
+
+    .link-text {
+        flex: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        color: var(--text-secondary);
+        font-family: monospace;
+        font-size: 0.9rem;
+        direction: ltr;
+    }
+
+    .copy-icon {
+        width: 36px;
+        height: 36px;
+        background: var(--neon-primary);
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    }
+
+    /* Action Grid */
+    .action-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+    }
+
+    .action-card {
+        background: var(--bg-surface);
+        border: 1px solid var(--glass-border);
+        border-radius: 24px;
+        padding: 1.25rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 0.75rem;
+        text-decoration: none;
+        transition: all 0.3s;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .action-card::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(circle at center, rgba(255, 255, 255, 0.05) 0%, transparent 70%);
+        opacity: 0;
+        transition: opacity 0.3s;
+    }
+
+    .action-card:active {
+        transform: scale(0.96);
+    }
+
+    .action-card:active::after {
+        opacity: 1;
+    }
+
+    .action-icon {
+        width: 56px;
+        height: 56px;
+        border-radius: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        margin-bottom: 0.25rem;
+    }
+
+    .action-title {
+        font-weight: 700;
+        color: var(--text-primary);
+        font-size: 0.95rem;
+    }
+
+    .action-desc {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+    }
+
+    /* Info Grid */
+    .info-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+    }
+
+    .info-box {
+        background: rgba(255, 255, 255, 0.02);
+        border-radius: 18px;
+        padding: 1rem;
+        text-align: center;
+    }
+
+    .info-box-label {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+        margin-bottom: 0.5rem;
+    }
+
+    .info-box-value {
+        font-size: 1rem;
+        font-weight: 700;
+        color: white;
+    }
+
+    /* Modals */
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.8);
+        backdrop-filter: blur(10px);
+        z-index: 2000;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5rem;
+        opacity: 0;
+        transition: opacity 0.3s;
+    }
+
+    .modal-overlay.visible {
+        opacity: 1;
+    }
+
+    .modal-content {
+        background: #1e293b;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 32px;
+        width: 100%;
+        max-width: 360px;
+        padding: 2rem;
+        text-align: center;
+        transform: scale(0.9);
+        transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    }
+
+    .modal-overlay.visible .modal-content {
+        transform: scale(1);
+    }
+
+    .qr-box {
+        background: white;
+        padding: 1rem;
+        border-radius: 20px;
+        margin: 1.5rem auto;
+        width: fit-content;
+        box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
+    }
+
+    @keyframes rotate {
+        from {
+            transform: rotate(0deg);
+        }
+
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    @keyframes pulse {
+        0% {
+            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+        }
+
+        70% {
+            box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+        }
+
+        100% {
+            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+        }
+    }
+</style>
+
+<div class="service-page-container">
+    <!-- Hero Section -->
+    <div class="hero-section">
+        <div class="hero-status-ring">
+            <div class="status-ring-bg"></div>
+            {% if service.is_online %}
+            <div class="status-ring-glow"></div>
+            {% endif %}
+            <div class="status-icon-box">
+                <i class="fas fa-shield-alt"></i>
+            </div>
+        </div>
+
+        <h1 class="service-title">{{ service.client_name or 'سرویس VPN' }}</h1>
+        <div class="service-id">ID: #{{ service.id }}</div>
+
+        <div>
+            <div class="status-chip {% if not service.is_online %}offline{% endif %}">
+                <span class="status-dot"></span>
+                <span>{% if service.is_online %}سرویس فعال{% else %}سرویس غیرفعال{% endif %}</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="content-wrapper">
+        <!-- Usage Card -->
+        <div class="glass-card">
+            <div class="usage-section">
+                <div class="circular-progress">
+                    <svg>
+                        <circle class="progress-bg" cx="60" cy="60" r="45"></circle>
+                        <circle class="progress-value" cx="60" cy="60" r="45" id="usageCircle"></circle>
+                    </svg>
+                    <div class="progress-text-center">
+                        <div class="progress-percentage">{{ service.usage_percentage|default(0)|int }}%</div>
+                        <div class="progress-label">مصرف</div>
+                    </div>
+                </div>
+
+                <div class="usage-details">
+                    <div class="usage-stat-row">
+                        <div class="stat-label"><i class="fas fa-download"></i> مصرف شده</div>
+                        <div class="stat-value">{{ "%.2f"|format(service.used_gb|default(0)|float) }} <span
+                                style="font-size:0.8rem; opacity:0.7">GB</span></div>
+                    </div>
+                    <div class="usage-stat-row">
+                        <div class="stat-label"><i class="fas fa-database"></i> کل حجم</div>
+                        <div class="stat-value">{{ "%.2f"|format(service.total_gb|default(0)|float) }} <span
+                                style="font-size:0.8rem; opacity:0.7">GB</span></div>
+                    </div>
+                    <div class="usage-stat-row">
+                        <div class="stat-label"><i class="fas fa-chart-pie"></i> باقیمانده</div>
+                        <div class="stat-value" style="color: var(--neon-primary);">{{
+                            "%.2f"|format(service.remaining_gb|default(0)|float) }} <span
+                                style="font-size:0.8rem; opacity:0.7">GB</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Info Grid -->
+        <div class="info-grid">
+            <div class="info-box">
+                <div class="info-box-label"><i class="fas fa-hourglass-half mb-1"></i> زمان باقیمانده</div>
+                <div class="info-box-value">
+                    {% if service.remaining_days is not none %}
+                    {% if service.remaining_days > 0 %}
+                    {{ service.remaining_days }} روز
+                    {% else %}
+                    <span style="color: var(--neon-danger)">منقضی</span>
+                    {% endif %}
+                    {% else %}
+                    نامحدود
+                    {% endif %}
+                </div>
+            </div>
+            <div class="info-box">
+                <div class="info-box-label"><i class="fas fa-calendar-alt mb-1"></i> انقضا</div>
+                <div class="info-box-value" style="font-size: 0.9rem;">{{ service.expiry_date or 'نامحدود' }}</div>
+            </div>
+        </div>
+
+        <!-- Connection Card -->
+        <div class="glass-card config-card">
+            <div class="config-header">
+                <div class="config-title">
+                    <i class="fas fa-link"></i>
+                    <span>لینک اتصال</span>
+                </div>
+                <button class="btn-nav" onclick="showQR()"
+                    style="width: 40px; height: 40px; padding: 0; background: rgba(255,255,255,0.1); border-radius: 12px; color: white; border: none;">
+                    <i class="fas fa-qrcode"></i>
+                </button>
+            </div>
+
+            {% if service.subscription_link %}
+            <div class="config-link-box" onclick="copyConfig()">
+                <div class="link-text">{{ service.subscription_link }}</div>
+                <div class="copy-icon">
+                    <i class="fas fa-copy"></i>
+                </div>
+            </div>
+            <div
+                style="text-align: center; margin-top: 0.5rem; font-size: 0.75rem; color: var(--text-secondary); opacity: 0.7;">
+                برای کپی کردن ضربه بزنید
+            </div>
+            {% else %}
+            <div class="text-center text-muted py-3">
+                لینک اتصال موجود نیست
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Actions Grid -->
+        <div class="action-grid">
+            {% if service.product_id %}
+            <a href="{{ url_for('renew_service', service_id=service.id) }}" class="action-card">
+                <div class="action-icon" style="background: rgba(16, 185, 129, 0.1); color: #10b981;">
+                    <i class="fas fa-sync-alt"></i>
+                </div>
+                <div class="action-title">تمدید سرویس</div>
+                <div class="action-desc">افزایش زمان سرویس</div>
+            </a>
+            {% else %}
+            <a href="{{ url_for('add_volume', service_id=service.id) }}" class="action-card">
+                <div class="action-icon" style="background: rgba(16, 185, 129, 0.1); color: #10b981;">
+                    <i class="fas fa-plus-circle"></i>
+                </div>
+                <div class="action-title">افزایش حجم</div>
+                <div class="action-desc">خرید گیگ اضافه</div>
+            </a>
+            {% endif %}
+
+            <a href="javascript:void(0)" onclick="showChangePanelModal()" class="action-card">
+                <div class="action-icon" style="background: rgba(59, 130, 246, 0.1); color: #3b82f6;">
+                    <i class="fas fa-globe"></i>
+                </div>
+                <div class="action-title">تغییر لوکیشن</div>
+                <div class="action-desc">تغییر سرور سرویس</div>
+            </a>
+        </div>
+
+        <a href="{{ url_for('services') }}"
+            style="text-align: center; color: var(--text-secondary); padding: 1rem; text-decoration: none; font-size: 0.9rem;">
+            <i class="fas fa-arrow-right ms-1"></i> بازگشت به لیست سرویس‌ها
+        </a>
+    </div>
+</div>
+
+<!-- QR Modal -->
+<div id="qrModal" class="modal-overlay" onclick="closeQR()">
+    <div class="modal-content" onclick="event.stopPropagation()">
+        <h3 style="font-weight: 800; color: white; margin-bottom: 1rem;">QR Code اتصال</h3>
+        <div id="qrcode" class="qr-box"></div>
+        <p style="color: var(--text-secondary); font-size: 0.9rem;">برای اتصال اسکن کنید</p>
+        <button onclick="closeQR()"
+            style="margin-top: 1.5rem; width: 100%; padding: 1rem; background: rgba(255,255,255,0.1); border: none; border-radius: 16px; color: white; font-weight: 700;">بستن</button>
+    </div>
+</div>
+
+<!-- Change Panel Modal -->
+<div id="changePanelModal" class="modal-overlay" onclick="closeChangePanelModal()">
+    <div class="modal-content" onclick="event.stopPropagation()">
+        <h3 style="font-weight: 800; color: white; margin-bottom: 1rem;">تغییر لوکیشن</h3>
+        <div id="changePanelContent" style="max-height: 300px; overflow-y: auto; text-align: right;">
+            <div class="text-center py-4">
+                <i class="fas fa-spinner fa-spin fa-2x text-primary mb-3"></i>
+                <p>در حال بارگذاری...</p>
+            </div>
+        </div>
+        <button onclick="closeChangePanelModal()"
+            style="margin-top: 1.5rem; width: 100%; padding: 1rem; background: rgba(255,255,255,0.1); border: none; border-radius: 16px; color: white; font-weight: 700;">انصراف</button>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script>
+    const configLink = '{{ service.subscription_link }}';
+    const usagePercentage = {{ service.usage_percentage|default (0) | int }};
+
+    document.addEventListener('DOMContentLoaded', () => {
+        // Animate Circular Progress
+        const circle = document.getElementById('usageCircle');
+        const radius = circle.r.baseVal.value;
+        const circumference = radius * 2 * Math.PI;
+
+        circle.style.strokeDasharray = `${circumference} ${circumference}`;
+        circle.style.strokeDashoffset = circumference;
+
+        const offset = circumference - (usagePercentage / 100) * circumference;
+
+        // Set color based on usage
+        if (usagePercentage > 90) {
+            circle.style.stroke = 'var(--neon-danger)';
+            circle.style.filter = 'drop-shadow(0 0 4px var(--neon-danger))';
+        } else if (usagePercentage > 75) {
+            circle.style.stroke = 'var(--neon-warning)';
+            circle.style.filter = 'drop-shadow(0 0 4px var(--neon-warning))';
+        }
+
+        setTimeout(() => {
+            circle.style.strokeDashoffset = offset;
+        }, 500);
+    });
+
+    function copyConfig() {
+        if (!configLink) return;
+        navigator.clipboard.writeText(configLink).then(() => {
+            showToast('لینک کپی شد', 'success');
+            // Haptic feedback if available
+            if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback) {
+                window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+            }
+        }).catch(() => {
+            showToast('خطا در کپی', 'error');
+        });
+    }
+
+    function showQR() {
+        const modal = document.getElementById('qrModal');
+        const container = document.getElementById('qrcode');
+        modal.style.display = 'flex';
+        // Force reflow
+        modal.offsetHeight;
+        modal.classList.add('visible');
+
+        container.innerHTML = '';
+        new QRCode(container, {
+            text: configLink,
+            width: 200,
+            height: 200,
+            colorDark: "#000000",
+            colorLight: "#ffffff",
+            correctLevel: QRCode.CorrectLevel.H
+        });
+    }
+
+    function closeQR() {
+        const modal = document.getElementById('qrModal');
+        modal.classList.remove('visible');
+        setTimeout(() => {
+            modal.style.display = 'none';
+        }, 300);
+    }
+
+    function showChangePanelModal() {
+        const modal = document.getElementById('changePanelModal');
+        const content = document.getElementById('changePanelContent');
+        modal.style.display = 'flex';
+        modal.offsetHeight;
+        modal.classList.add('visible');
+
+        fetch(`/api/service/{{ service.id }}/compatible-panels`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    let html = '<div class="d-flex flex-column gap-2">';
+                    data.panels.forEach(panel => {
+                        html += `
+                            <div class="p-3 border border-secondary rounded-3 d-flex justify-content-between align-items-center cursor-pointer" 
+                                 style="background: rgba(255,255,255,0.05);"
+                                 onclick="selectPanel(${panel.id})">
+                                <div>
+                                    <div class="fw-bold text-white">${panel.name}</div>
+                                    <div class="small text-muted">${panel.price_per_gb} تومان/GB</div>
+                                </div>
+                                <i class="fas fa-chevron-left text-muted"></i>
+                            </div>
+                        `;
+                    });
+                    html += '</div>';
+                    content.innerHTML = html;
+                } else {
+                    content.innerHTML = `<p class="text-danger text-center">${data.message}</p>`;
+                }
+            })
+            .catch(err => {
+                content.innerHTML = '<p class="text-danger text-center">خطا در دریافت اطلاعات</p>';
+            });
+    }
+
+    function closeChangePanelModal() {
+        const modal = document.getElementById('changePanelModal');
+        modal.classList.remove('visible');
+        setTimeout(() => {
+            modal.style.display = 'none';
+        }, 300);
+    }
+
+    function selectPanel(panelId) {
+        if (confirm('آیا از تغییر لوکیشن اطمینان دارید؟')) {
+            fetch(`/api/service/{{ service.id }}/change-panel`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ panel_id: panelId })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        showToast('تغییر لوکیشن انجام شد', 'success');
+                        location.reload();
+                    } else {
+                        showToast(data.message, 'error');
+                    }
+                });
+        }
+    }
+</script>
+{% endblock %}

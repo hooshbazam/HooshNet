@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}تیکت #{{ ticket.id }} - پنل کاربری{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tickets-ultra-modern.css') }}">
+
+<div class="chat-container-modern">
+    <!-- Header -->
+    <div class="tickets-page-header"
+        style="padding: 20px 20px 0; margin-bottom: 0; background: var(--bg-app); position: sticky; top: 0; z-index: 90;">
+        <div style="display: flex; align-items: center; gap: 12px; width: 100%;">
+            <a href="{{ url_for('tickets') }}"
+                style="width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: white; background: var(--bg-card); border: 1px solid var(--border-light); flex-shrink: 0;">
+                <i class="fas fa-arrow-right"></i>
+            </a>
+            <div style="flex: 1; min-width: 0;">
+                <h1 class="page-title-large"
+                    style="font-size: 1.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{
+                    ticket.subject }}</h1>
+                <div
+                    style="display: flex; align-items: center; gap: 8px; font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
+                    <span style="font-family: monospace;">#{{ ticket.id }}</span>
+                    <span>•</span>
+                    <span
+                        style="color: {% if ticket.status == 'open' %}#10b981{% else %}#a1a1aa{% endif %}; font-weight: 600;">
+                        {% if ticket.status == 'open' %}باز{% else %}بسته شده{% endif %}
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Messages -->
+    <div class="chat-messages-area" id="chatMessages">
+        {% for reply in replies %}
+        <div class="message-wrapper {% if reply.is_admin_reply %}admin{% else %}user{% endif %}">
+            {% if reply.is_admin_reply %}
+            <div class="message-avatar-modern"
+                style="background: var(--bg-card); border: 1px solid var(--border-light); color: var(--primary);">
+                <i class="fas fa-headset"></i>
+            </div>
+            {% endif %}
+
+            <div style="display: flex; flex-direction: column; max-width: 100%;">
+                <div class="message-bubble-modern">
+                    {{ reply.message|nl2br|safe }}
+                </div>
+                <div class="message-time-modern">
+                    {{ reply.created_at.strftime('%H:%M') if reply.created_at else '' }}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+
+        {% if ticket.status != 'open' %}
+        <div
+            style="text-align: center; padding: 16px; background: rgba(255,255,255,0.03); border-radius: 12px; margin: 20px 0; color: var(--text-secondary); font-size: 0.9rem;">
+            <i class="fas fa-lock" style="margin-bottom: 8px; display: block; font-size: 1.2rem;"></i>
+            این تیکت بسته شده است و امکان ارسال پاسخ وجود ندارد.
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Input Area -->
+    {% if ticket.status == 'open' %}
+    <div class="chat-input-wrapper">
+        <form id="replyForm" onsubmit="sendReply(event)" class="chat-form">
+            <input type="hidden" name="ticket_id" value="{{ ticket.id }}">
+            <textarea id="messageInput" name="message" class="chat-input-field" placeholder="پیام خود را بنویسید..."
+                rows="1" required></textarea>
+            <button type="submit" class="chat-send-btn" id="sendBtn">
+                <i class="fas fa-paper-plane"></i>
+            </button>
+        </form>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+    // Auto-resize textarea
+    const textarea = document.getElementById('messageInput');
+    if (textarea) {
+        textarea.addEventListener('input', function () {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+        });
+    }
+
+    // Scroll to bottom on load
+    const chatContainer = document.getElementById('chatMessages');
+    if (chatContainer) {
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    async function sendReply(event) {
+        event.preventDefault();
+
+        const form = event.target;
+        const input = document.getElementById('messageInput');
+        const btn = document.getElementById('sendBtn');
+        const message = input.value.trim();
+
+        if (!message) return;
+
+        // Optimistic UI Update
+        const tempId = Date.now();
+        const messageHtml = `
+            <div class="message-wrapper user" id="msg-${tempId}" style="opacity: 0.7">
+                <div style="display: flex; flex-direction: column; max-width: 100%;">
+                    <div class="message-bubble-modern">
+                        ${message.replace(/\n/g, '<br>')}
+                    </div>
+                    <div class="message-time-modern">در حال ارسال...</div>
+                </div>
+            </div>
+        `;
+        chatContainer.insertAdjacentHTML('beforeend', messageHtml);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+
+        input.value = '';
+        input.style.height = 'auto';
+        btn.disabled = true;
+
+        try {
+            const response = await fetch(fixUrl('/api/tickets/reply'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ticket_id: form.ticket_id.value,
+                    message: message
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                // Reload to get server timestamp and proper formatting
+                location.reload();
+            } else {
+                const tempMsg = document.getElementById(`msg-${tempId}`);
+                if (tempMsg) tempMsg.remove();
+                input.value = message;
+                showToast(data.message || 'خطا در ارسال', 'error');
+                btn.disabled = false;
+            }
+        } catch (e) {
+            const tempMsg = document.getElementById(`msg-${tempId}`);
+            if (tempMsg) tempMsg.remove();
+            input.value = message;
+            showToast('خطا در ارتباط با سرور', 'error');
+            btn.disabled = false;
+        }
+    }
+</script>
+{% endblock %}

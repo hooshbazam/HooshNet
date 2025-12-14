@@ -1,0 +1,163 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}لاگ‌های سیستم{% endblock %}
+{% block page_subtitle %}بررسی و نظارت بر رخدادهای سیستم{% endblock %}
+
+{% block content %}
+<div class="fade-in">
+    <!-- Actions Bar -->
+    <div class="card" style="margin-bottom: var(--sp-xl);">
+        <div
+            style="display: flex; flex-wrap: wrap; gap: var(--sp-md); justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: var(--sp-md);">
+                <div
+                    style="width: 48px; height: 48px; border-radius: var(--radius-lg); background: rgba(99, 102, 241, 0.1); color: var(--p-info); display: flex; align-items: center; justify-content: center; font-size: 1.25rem;">
+                    <i class="fas fa-clipboard-list"></i>
+                </div>
+                <div>
+                    <div style="font-weight: 800; font-size: 1.1rem; color: var(--p-text-main);">لاگ‌های سیستم</div>
+                    <div style="font-size: 0.85rem; color: var(--p-text-muted);">رخدادها و خطاهای سیستم را بررسی کنید
+                    </div>
+                </div>
+            </div>
+
+            <div class="filter-wrapper" style="position: relative; min-width: 200px;">
+                <select id="logLevelFilter" onchange="filterLogs()" class="form-control"
+                    style="padding-right: 40px; cursor: pointer;">
+                    <option value="">همه سطح‌ها</option>
+                    <option value="INFO">اطلاعات (Info)</option>
+                    <option value="WARNING">هشدار (Warning)</option>
+                    <option value="ERROR">خطا (Error)</option>
+                </select>
+                <i class="fas fa-filter"
+                    style="position: absolute; right: 15px; top: 50%; transform: translateY(-50%); color: var(--p-primary); pointer-events: none;"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- Logs List -->
+    <div class="logs-list" style="display: flex; flex-direction: column; gap: var(--sp-md);">
+        {% if logs %}
+        {% for log in logs %}
+        <div class="card log-card"
+            style="padding: var(--sp-md); transition: all 0.3s ease; border-right: 4px solid {% if log.level == 'ERROR' %}var(--p-error){% elif log.level == 'WARNING' %}var(--p-warning){% else %}var(--p-info){% endif %};">
+            <div style="display: flex; align-items: flex-start; gap: var(--sp-md);">
+                <!-- Icon -->
+                <div style="flex-shrink: 0;">
+                    <div
+                        style="width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; 
+                            background: {% if log.level == 'ERROR' %}rgba(239, 68, 68, 0.1){% elif log.level == 'WARNING' %}rgba(245, 158, 11, 0.1){% else %}rgba(59, 130, 246, 0.1){% endif %};
+                            color: {% if log.level == 'ERROR' %}var(--p-error){% elif log.level == 'WARNING' %}var(--p-warning){% else %}var(--p-info){% endif %};">
+                        <i
+                            class="fas {% if log.level == 'ERROR' %}fa-exclamation-circle{% elif log.level == 'WARNING' %}fa-exclamation-triangle{% else %}fa-info-circle{% endif %}"></i>
+                    </div>
+                </div>
+
+                <!-- Content -->
+                <div style="flex: 1; min-width: 0;">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: var(--sp-sm); margin-bottom: var(--sp-xs);">
+                        <div style="font-weight: 700; color: var(--p-text-main); font-size: 0.95rem; line-height: 1.5;">
+                            {{ log.message }}
+                        </div>
+                        <div
+                            style="font-size: 0.75rem; color: var(--p-text-muted); white-space: nowrap; background: var(--p-bg-hover); padding: 2px 8px; border-radius: var(--radius-sm);">
+                            <i class="fas fa-clock" style="margin-left: 4px;"></i>
+                            {{ log.created_at }}
+                        </div>
+                    </div>
+
+                    <div style="display: flex; align-items: center; gap: var(--sp-md); flex-wrap: wrap;">
+                        <div
+                            style="display: flex; align-items: center; gap: var(--sp-xs); font-size: 0.8rem; color: var(--p-text-secondary);">
+                            <i class="fas fa-cube" style="color: var(--p-text-muted);"></i>
+                            <span>ماژول:</span>
+                            <span style="font-weight: 600; color: var(--p-text-main);">{{ log.module or 'System'
+                                }}</span>
+                        </div>
+
+                        {% if log.level == 'ERROR' %}
+                        <div
+                            style="display: flex; align-items: center; gap: var(--sp-xs); font-size: 0.8rem; color: var(--p-error);">
+                            <i class="fas fa-bug"></i>
+                            <span>خطای سیستمی</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="card" style="text-align: center; padding: var(--sp-2xl);">
+            <div
+                style="width: 80px; height: 80px; margin: 0 auto var(--sp-lg); background: var(--p-bg-hover); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--p-text-muted); font-size: 2.5rem;">
+                <i class="fas fa-check-circle"></i>
+            </div>
+            <h3 style="font-weight: 800; color: var(--p-text-main); margin-bottom: var(--sp-sm);">هیچ لاگی یافت نشد</h3>
+            <p style="color: var(--p-text-muted);">در حال حاضر هیچ رخدادی با این مشخصات ثبت نشده است.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Pagination -->
+    {% if total_pages > 1 %}
+    <div class="card"
+        style="margin-top: var(--sp-xl); padding: var(--sp-md); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--sp-md);">
+        <div style="font-size: 0.85rem; color: var(--p-text-muted);">
+            نمایش <span style="font-weight: 700; color: var(--p-text-main);">{{ ((page - 1) * 10) + 1 }}</span> تا <span
+                style="font-weight: 700; color: var(--p-text-main);">{{ [page * 10, total]|min }}</span> از <span
+                style="font-weight: 700; color: var(--p-text-main);">{{ total }}</span> رخداد
+        </div>
+
+        <div style="display: flex; gap: var(--sp-xs);">
+            {% if page > 1 %}
+            <a href="?page={{ page - 1 }}" class="btn btn-sm btn-outline"
+                style="width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-chevron-right"></i>
+            </a>
+            {% endif %}
+
+            {% for p in range(1, total_pages + 1) %}
+            {% if p == page %}
+            <span class="btn btn-sm btn-primary"
+                style="width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; pointer-events: none;">{{
+                p }}</span>
+            {% elif p == 1 or p == total_pages or (p >= page - 2 and p <= page + 2) %} <a href="?page={{ p }}"
+                class="btn btn-sm btn-outline"
+                style="width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center;">
+                {{ p }}</a>
+                {% elif p == page - 3 or p == page + 3 %}
+                <span
+                    style="display: flex; align-items: center; justify-content: center; width: 36px; color: var(--p-text-muted);">...</span>
+                {% endif %}
+                {% endfor %}
+
+                {% if page < total_pages %} <a href="?page={{ page + 1 }}" class="btn btn-sm btn-outline"
+                    style="width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center;">
+                    <i class="fas fa-chevron-left"></i>
+                    </a>
+                    {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+    .log-card:hover {
+        transform: translateX(-4px);
+        box-shadow: var(--shadow-md);
+        background: var(--p-bg-hover);
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    async function filterLogs() {
+        const level = document.getElementById('logLevelFilter').value;
+        const url = level ? fixUrl(`/api/admin/logs?level=${level}`) : fixUrl('/api/admin/logs');
+        window.location.href = url; // Simple reload for now to keep pagination working correctly with filters
+    }
+</script>
+{% endblock %}

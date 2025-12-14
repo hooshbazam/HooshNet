@@ -1,0 +1,569 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}چینش منوی اصلی{% endblock %}
+{% block page_subtitle %}مدیریت و تنظیم دکمه‌های منوی ربات تلگرام{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="fade-in">
+    <!-- Actions Bar -->
+    <div class="card" style="margin-bottom: var(--sp-xl);">
+        <div
+            style="display: flex; flex-wrap: wrap; gap: var(--sp-md); justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: var(--sp-md);">
+                <div
+                    style="width: 40px; height: 40px; border-radius: var(--radius-lg); background: rgba(99, 102, 241, 0.1); color: var(--p-info); display: flex; align-items: center; justify-content: center;">
+                    <i class="fas fa-th"></i>
+                </div>
+                <div>
+                    <div style="font-weight: 700;">مدیریت منو</div>
+                    <div style="font-size: 0.8rem; color: var(--p-text-muted);">دکمه‌ها را بکشید و رها کنید</div>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: var(--sp-sm);">
+                <button class="btn btn-primary" onclick="showAddButtonModal()">
+                    <i class="fas fa-plus"></i>
+                    <span>افزودن دکمه جدید</span>
+                </button>
+                <button class="btn btn-success" onclick="saveLayout()">
+                    <i class="fas fa-save"></i>
+                    <span>ذخیره چینش</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 350px; gap: var(--sp-xl);">
+        <!-- Menu Preview (Left Column) -->
+        <div style="display: flex; flex-direction: column; gap: var(--sp-xl);">
+            <div class="card">
+                <div class="card-header"
+                    style="margin-bottom: var(--sp-md); padding-bottom: var(--sp-md); border-bottom: 1px solid var(--border-color);">
+                    <div style="font-weight: 800; font-size: 1.1rem;">پیش‌نمایش منو</div>
+                </div>
+
+                <div id="menuGrid" class="menu-grid">
+                    <!-- Rows will be added here dynamically -->
+                </div>
+
+                <div class="text-muted" style="margin-top: var(--sp-md); font-size: 0.9rem; text-align: center;">
+                    <i class="fas fa-info-circle"></i>
+                    برای تغییر چیدمان، دکمه‌ها را بکشید و رها کنید.
+                </div>
+            </div>
+
+            <!-- Current Buttons List -->
+            <div class="card">
+                <div class="card-header"
+                    style="margin-bottom: var(--sp-md); padding-bottom: var(--sp-md); border-bottom: 1px solid var(--border-color);">
+                    <div style="font-weight: 800; font-size: 1.1rem;">لیست دکمه‌های فعال</div>
+                </div>
+
+                <div id="buttonsList" class="grid-2">
+                    {% for button in buttons %}
+                    <div class="card button-card" data-button-key="{{ button.button_key }}"
+                        data-display-order="{{ button.display_order }}" style="background: var(--p-bg-hover);">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--sp-sm);">
+                            <div style="display: flex; gap: var(--sp-sm); align-items: center;">
+                                <div
+                                    style="width: 32px; height: 32px; border-radius: var(--radius-md); background: var(--p-bg-card); display: flex; align-items: center; justify-content: center; color: var(--p-primary);">
+                                    <i class="fas fa-square"></i>
+                                </div>
+                                <div>
+                                    <div style="font-weight: 700;">{{ button.button_text }}</div>
+                                    <div style="font-size: 0.7rem; color: var(--p-text-muted); font-family: monospace;">
+                                        {{ button.callback_data }}</div>
+                                </div>
+                            </div>
+                            <div class="badge {% if button.is_active %}badge-success{% else %}badge-error{% endif %}">
+                                {{ 'فعال' if button.is_active else 'غیرفعال' }}
+                            </div>
+                        </div>
+
+                        <div style="display: flex; gap: var(--sp-xs); margin-top: var(--sp-sm);">
+                            <button class="btn btn-sm btn-outline" onclick="editButton('{{ button.button_key }}')"
+                                style="flex: 1;">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline" onclick="toggleButton('{{ button.button_key }}')"
+                                style="flex: 1;">
+                                <i class="fas fa-power-off"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline" onclick="deleteButton('{{ button.button_key }}')"
+                                style="flex: 1; color: var(--p-error); border-color: var(--p-error);">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Available Buttons (Right Column) -->
+        <div style="display: flex; flex-direction: column; gap: var(--sp-xl);">
+            <div class="card">
+                <div class="card-header"
+                    style="margin-bottom: var(--sp-md); padding-bottom: var(--sp-md); border-bottom: 1px solid var(--border-color);">
+                    <div style="font-weight: 800; font-size: 1.1rem;">دکمه‌های آماده</div>
+                </div>
+
+                <div class="available-buttons-list" style="display: flex; flex-direction: column; gap: var(--sp-sm);">
+                    {% for button in available_buttons %}
+                    <div class="available-button-item" data-button-key="{{ button.key }}">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div style="font-weight: 700;">{{ button.text }}</div>
+                            <button class="btn btn-sm btn-primary" onclick="addButtonFromTemplate('{{ button.key }}')">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
+                        <div style="font-size: 0.8rem; color: var(--p-text-muted); margin-top: 2px;">{{
+                            button.description }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Button Modal -->
+<div id="addButtonModal" class="modal-overlay">
+    <div class="modal-card">
+        <div class="card-header">
+            <div class="card-title">
+                <i class="fas fa-plus-circle" style="color: var(--p-primary);"></i>
+                افزودن دکمه جدید
+            </div>
+            <button onclick="closeModal('addButtonModal')" class="close-btn"><i class="fas fa-times"></i></button>
+        </div>
+        <form onsubmit="addButton(event)">
+            <div class="form-group">
+                <label class="form-label">کلید دکمه (یکتا)</label>
+                <input type="text" name="button_key" class="form-control" required placeholder="مثال: custom_button">
+            </div>
+            <div class="form-group">
+                <label class="form-label">متن دکمه</label>
+                <input type="text" name="button_text" class="form-control" required placeholder="مثال: 🔵 دکمه سفارشی">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Callback Data</label>
+                <input type="text" name="callback_data" class="form-control" required placeholder="مثال: custom_action">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">نوع دکمه</label>
+                    <select name="button_type" class="form-control">
+                        <option value="callback">Callback</option>
+                        <option value="webapp">Web App</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">URL وب اپ</label>
+                    <input type="url" name="web_app_url" class="form-control" placeholder="https://example.com">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">ردیف</label>
+                    <input type="number" name="row_position" class="form-control" value="0" min="0">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">ستون</label>
+                    <input type="number" name="column_position" class="form-control" value="0" min="0">
+                </div>
+            </div>
+            <div style="display: flex; gap: var(--sp-md); margin-top: var(--sp-lg);">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('addButtonModal')"
+                    style="flex: 1;">لغو</button>
+                <button type="submit" class="btn btn-primary" style="flex: 2;">افزودن</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Edit Button Modal -->
+<div id="editButtonModal" class="modal-overlay">
+    <div class="modal-card">
+        <div class="card-header">
+            <div class="card-title">
+                <i class="fas fa-edit" style="color: var(--p-warning);"></i>
+                ویرایش دکمه
+            </div>
+            <button onclick="closeModal('editButtonModal')" class="close-btn"><i class="fas fa-times"></i></button>
+        </div>
+        <form id="editButtonForm" onsubmit="updateButton(event)">
+            <input type="hidden" name="button_key">
+            <div class="form-group">
+                <label class="form-label">متن دکمه</label>
+                <input type="text" name="button_text" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Callback Data</label>
+                <input type="text" name="callback_data" class="form-control" required>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">نوع دکمه</label>
+                    <select name="button_type" class="form-control">
+                        <option value="callback">Callback</option>
+                        <option value="webapp">Web App</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">URL وب اپ</label>
+                    <input type="url" name="web_app_url" class="form-control">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">ردیف</label>
+                    <input type="number" name="row_position" class="form-control" min="0">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">ستون</label>
+                    <input type="number" name="column_position" class="form-control" min="0">
+                </div>
+            </div>
+            <div style="display: flex; gap: var(--sp-md); margin-top: var(--sp-lg);">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('editButtonModal')"
+                    style="flex: 1;">لغو</button>
+                <button type="submit" class="btn btn-primary" style="flex: 2;">ذخیره</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+    .menu-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        background: var(--p-bg-main);
+        padding: 15px;
+        border-radius: var(--radius-lg);
+        min-height: 200px;
+    }
+
+    .menu-row {
+        display: flex;
+        gap: 10px;
+        background: var(--p-bg-card);
+        padding: 10px;
+        border-radius: var(--radius-md);
+        border: 1px dashed var(--border-color);
+        min-height: 50px;
+    }
+
+    .menu-button-preview {
+        background: var(--p-primary);
+        color: white;
+        padding: 10px 15px;
+        border-radius: var(--radius-md);
+        cursor: move;
+        font-weight: 700;
+        font-size: 0.9rem;
+        flex: 1;
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+
+    .available-button-item {
+        background: var(--p-bg-hover);
+        padding: 10px;
+        border-radius: var(--radius-md);
+        border: 1px solid var(--border-color);
+    }
+
+    .sortable-ghost {
+        opacity: 0.5;
+        background: var(--p-bg-hover);
+    }
+
+    /* Modal Styles */
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+        backdrop-filter: blur(5px);
+    }
+
+    .modal-card {
+        background: var(--p-bg-main);
+        border-radius: var(--radius-xl);
+        width: 100%;
+        max-width: 500px;
+        padding: var(--sp-xl);
+        border: 1px solid var(--border-color);
+        box-shadow: var(--shadow-xl);
+        animation: modalSlideIn 0.3s ease;
+    }
+
+    @keyframes modalSlideIn {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>
+
+<script>
+    // Initialize Sortable
+    document.addEventListener('DOMContentLoaded', function () {
+        renderMenuGrid();
+        initSortable();
+    });
+
+    let buttons = {{ buttons| tojson }};
+    const availableButtons = {{ available_buttons| tojson }};
+
+    function renderMenuGrid() {
+        const grid = document.getElementById('menuGrid');
+        grid.innerHTML = '';
+
+        // Group buttons by row
+        const rows = {};
+        buttons.forEach(btn => {
+            if (!rows[btn.row_position]) rows[btn.row_position] = [];
+            rows[btn.row_position].push(btn);
+        });
+
+        // Sort rows
+        const sortedRowKeys = Object.keys(rows).sort((a, b) => parseInt(a) - parseInt(b));
+
+        // Create rows
+        sortedRowKeys.forEach(rowKey => {
+            const rowDiv = document.createElement('div');
+            rowDiv.className = 'menu-row';
+            rowDiv.dataset.row = rowKey;
+
+            // Sort buttons in row
+            rows[rowKey].sort((a, b) => a.column_position - b.column_position);
+
+            rows[rowKey].forEach(btn => {
+                const btnDiv = document.createElement('div');
+                btnDiv.className = 'menu-button-preview';
+                btnDiv.textContent = btn.button_text;
+                btnDiv.dataset.key = btn.button_key;
+                rowDiv.appendChild(btnDiv);
+            });
+
+            grid.appendChild(rowDiv);
+        });
+
+        // Add an empty row at the end for dropping
+        const emptyRow = document.createElement('div');
+        emptyRow.className = 'menu-row';
+        emptyRow.dataset.row = sortedRowKeys.length > 0 ? parseInt(sortedRowKeys[sortedRowKeys.length - 1]) + 1 : 0;
+        grid.appendChild(emptyRow);
+    }
+
+    function initSortable() {
+        const rows = document.querySelectorAll('.menu-row');
+        rows.forEach(row => {
+            new Sortable(row, {
+                group: 'menu',
+                animation: 150,
+                ghostClass: 'sortable-ghost',
+                onEnd: function (evt) {
+                    updateButtonPositions();
+                }
+            });
+        });
+    }
+
+    function updateButtonPositions() {
+        const rows = document.querySelectorAll('.menu-row');
+        const newButtons = [];
+
+        rows.forEach((row, rowIndex) => {
+            const btns = row.querySelectorAll('.menu-button-preview');
+            btns.forEach((btn, colIndex) => {
+                const key = btn.dataset.key;
+                const originalBtn = buttons.find(b => b.button_key === key);
+                if (originalBtn) {
+                    originalBtn.row_position = rowIndex;
+                    originalBtn.column_position = colIndex;
+                    newButtons.push(originalBtn);
+                }
+            });
+        });
+
+        buttons = newButtons;
+        // Re-render to clean up empty rows logic if needed, or just keep as is
+    }
+
+    async function saveLayout() {
+        updateButtonPositions();
+        try {
+            await apiCall('/api/admin/menu-layout/save', {
+                method: 'POST',
+                body: JSON.stringify({ buttons: buttons })
+            });
+            showToast('چینش منو با موفقیت ذخیره شد', 'success');
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    // Modal Functions
+    function showAddButtonModal() {
+        document.getElementById('addButtonModal').style.display = 'flex';
+    }
+
+    function closeModal(id) {
+        document.getElementById(id).style.display = 'none';
+    }
+
+    window.onclick = function (event) {
+        if (event.target.classList.contains('modal-overlay')) {
+            event.target.style.display = 'none';
+        }
+    }
+
+    async function addButton(event) {
+        event.preventDefault();
+        const form = event.target;
+        const data = {
+            button_key: form.button_key.value,
+            button_text: form.button_text.value,
+            callback_data: form.callback_data.value,
+            button_type: form.button_type.value,
+            web_app_url: form.web_app_url.value,
+            row_position: parseInt(form.row_position.value),
+            column_position: parseInt(form.column_position.value),
+            is_visible_for_admin: true,
+            is_visible_for_users: true
+        };
+
+        try {
+            await apiCall('/api/admin/menu-layout/button', {
+                method: 'POST',
+                body: JSON.stringify(data)
+            });
+            showToast('دکمه با موفقیت اضافه شد', 'success');
+            setTimeout(() => window.location.reload(), 1000);
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    async function addButtonFromTemplate(key) {
+        const template = availableButtons.find(b => b.key === key);
+        if (!template) return;
+
+        const data = {
+            button_key: key,
+            button_text: template.text,
+            callback_data: template.callback,
+            button_type: 'callback',
+            row_position: 0,
+            column_position: 0,
+            is_visible_for_admin: true,
+            is_visible_for_users: true
+        };
+
+        try {
+            await apiCall('/api/admin/menu-layout/button', {
+                method: 'POST',
+                body: JSON.stringify(data)
+            });
+            showToast('دکمه با موفقیت اضافه شد', 'success');
+            setTimeout(() => window.location.reload(), 1000);
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    async function deleteButton(key) {
+        if (!confirm('آیا از حذف این دکمه اطمینان دارید؟')) return;
+
+        try {
+            await apiCall(`/api/admin/menu-layout/button/${key}`, {
+                method: 'DELETE'
+            });
+            showToast('دکمه حذف شد', 'success');
+            setTimeout(() => window.location.reload(), 1000);
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    async function toggleButton(key) {
+        const btn = buttons.find(b => b.button_key === key);
+        if (!btn) return;
+
+        try {
+            await apiCall(`/api/admin/menu-layout/button/${key}`, {
+                method: 'PUT',
+                body: JSON.stringify({ is_active: !btn.is_active })
+            });
+            showToast('وضعیت دکمه تغییر کرد', 'success');
+            setTimeout(() => window.location.reload(), 500);
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    function editButton(key) {
+        const btn = buttons.find(b => b.button_key === key);
+        if (!btn) return;
+
+        const form = document.getElementById('editButtonForm');
+        form.button_key.value = key;
+        form.button_text.value = btn.button_text;
+        form.callback_data.value = btn.callback_data;
+        form.button_type.value = btn.button_type || 'callback';
+        form.web_app_url.value = btn.web_app_url || '';
+        form.row_position.value = btn.row_position;
+        form.column_position.value = btn.column_position;
+
+        document.getElementById('editButtonModal').style.display = 'flex';
+    }
+
+    async function updateButton(event) {
+        event.preventDefault();
+        const form = event.target;
+        const key = form.button_key.value;
+        const data = {
+            button_text: form.button_text.value,
+            callback_data: form.callback_data.value,
+            button_type: form.button_type.value,
+            web_app_url: form.web_app_url.value,
+            row_position: parseInt(form.row_position.value),
+            column_position: parseInt(form.column_position.value)
+        };
+
+        try {
+            await apiCall(`/api/admin/menu-layout/button/${key}`, {
+                method: 'PUT',
+                body: JSON.stringify(data)
+            });
+            showToast('دکمه با موفقیت ویرایش شد', 'success');
+            setTimeout(() => window.location.reload(), 1000);
+        } catch (error) {
+            console.error(error);
+        }
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}تیکت جدید - پنل کاربری{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tickets-ultra-modern.css') }}">
+
+<div class="tickets-page-container" style="max-width: 600px;">
+    <div class="tickets-page-header">
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <a href="{{ url_for('tickets') }}"
+                style="width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: white; background: var(--bg-card); border: 1px solid var(--border-light);">
+                <i class="fas fa-arrow-right"></i>
+            </a>
+            <h1 class="page-title-large">تیکت جدید</h1>
+        </div>
+    </div>
+
+    <form id="ticketForm" onsubmit="createTicket(event)" class="form-card-modern">
+        <div class="modern-input-group">
+            <label class="modern-label">موضوع</label>
+            <input type="text" name="subject" class="modern-input" placeholder="عنوان مشکل یا درخواست..." required>
+        </div>
+
+        <div class="modern-input-group">
+            <label class="modern-label">اولویت</label>
+            <div class="priority-selector">
+                <label class="priority-option">
+                    <input type="radio" name="priority" value="low" class="priority-option-input">
+                    <div class="priority-option-card">
+                        <i class="fas fa-arrow-down priority-icon"></i>
+                        <span class="priority-label">پایین</span>
+                    </div>
+                </label>
+                <label class="priority-option">
+                    <input type="radio" name="priority" value="normal" checked class="priority-option-input">
+                    <div class="priority-option-card">
+                        <i class="fas fa-minus priority-icon"></i>
+                        <span class="priority-label">عادی</span>
+                    </div>
+                </label>
+                <label class="priority-option">
+                    <input type="radio" name="priority" value="high" class="priority-option-input">
+                    <div class="priority-option-card">
+                        <i class="fas fa-arrow-up priority-icon"></i>
+                        <span class="priority-label">بالا</span>
+                    </div>
+                </label>
+            </div>
+        </div>
+
+        <div class="modern-input-group">
+            <label class="modern-label">پیام شما</label>
+            <textarea name="message" class="modern-input modern-textarea" placeholder="توضیحات کامل را اینجا بنویسید..."
+                required></textarea>
+        </div>
+
+        <button type="submit" class="btn-primary" id="submitBtn" style="width: 100%; margin-top: 10px;">
+            <span>ارسال تیکت</span>
+            <i class="fas fa-paper-plane"></i>
+        </button>
+    </form>
+</div>
+
+<script>
+    async function createTicket(event) {
+        event.preventDefault();
+
+        const form = event.target;
+        const btn = document.getElementById('submitBtn');
+        const originalContent = btn.innerHTML;
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> در حال ارسال...';
+
+        const formData = new FormData(form);
+        const data = {
+            subject: formData.get('subject'),
+            priority: formData.get('priority'),
+            message: formData.get('message')
+        };
+
+        try {
+            const response = await fetch(fixUrl('/api/tickets/create'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                showToast('تیکت با موفقیت ثبت شد', 'success');
+                setTimeout(() => {
+                    window.location.href = fixUrl('/tickets/' + result.ticket_id);
+                }, 1000);
+            } else {
+                showToast(result.message || 'خطا در ثبت تیکت', 'error');
+                btn.disabled = false;
+                btn.innerHTML = originalContent;
+            }
+        } catch (e) {
+            showToast('خطا در ارتباط با سرور', 'error');
+            btn.disabled = false;
+            btn.innerHTML = originalContent;
+        }
+    }
+</script>
+{% endblock %}

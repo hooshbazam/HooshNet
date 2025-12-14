@@ -1,0 +1,333 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}تیکت #{{ ticket.id }}{% endblock %}
+{% block page_subtitle %}{{ ticket.subject }}{% endblock %}
+
+{% block content %}
+<div class="fade-in">
+    <!-- Actions Bar -->
+    <div class="card" style="margin-bottom: var(--sp-xl);">
+        <div
+            style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--sp-md);">
+            <a href="/admin/tickets" class="btn btn-outline">
+                <i class="fas fa-arrow-right"></i>
+                بازگشت به لیست
+            </a>
+
+            <div style="display: flex; gap: var(--sp-sm);">
+                {% if ticket.status == 'open' %}
+                <button onclick="closeTicket({{ ticket.id }})" class="btn btn-error">
+                    <i class="fas fa-lock"></i>
+                    بستن تیکت
+                </button>
+                {% else %}
+                <button onclick="reopenTicket({{ ticket.id }})" class="btn btn-success">
+                    <i class="fas fa-unlock"></i>
+                    باز کردن تیکت
+                </button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="grid-ticket-layout" style="display: grid; grid-template-columns: 300px 1fr; gap: var(--sp-xl);">
+        <!-- Sidebar Info -->
+        <div style="display: flex; flex-direction: column; gap: var(--sp-md);">
+            <div class="card">
+                <div class="card-header"
+                    style="margin-bottom: var(--sp-md); padding-bottom: var(--sp-md); border-bottom: 1px solid var(--border-color);">
+                    <div style="font-weight: 800;">اطلاعات تیکت</div>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: var(--sp-md);">
+                    <div class="info-item">
+                        <div class="info-label">وضعیت</div>
+                        <div class="info-value">
+                            {% if ticket.status == 'open' %}
+                            <span class="badge badge-success">باز</span>
+                            {% else %}
+                            <span class="badge badge-secondary">بسته شده</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="info-item">
+                        <div class="info-label">اولویت</div>
+                        <div class="info-value">
+                            {% if ticket.priority == 'high' %}
+                            <span class="badge badge-error">بالا</span>
+                            {% elif ticket.priority == 'low' %}
+                            <span class="badge badge-secondary">پایین</span>
+                            {% else %}
+                            <span class="badge badge-info">عادی</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="info-item">
+                        <div class="info-label">تاریخ ایجاد</div>
+                        <div class="info-value" style="direction: ltr;">
+                            {{ ticket.created_at.strftime('%Y/%m/%d %H:%M') if ticket.created_at else 'نامشخص' }}
+                        </div>
+                    </div>
+
+                    {% if ticket.updated_at %}
+                    <div class="info-item">
+                        <div class="info-label">آخرین بروزرسانی</div>
+                        <div class="info-value" style="direction: ltr;">
+                            {{ ticket.updated_at.strftime('%Y/%m/%d %H:%M') }}
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"
+                    style="margin-bottom: var(--sp-md); padding-bottom: var(--sp-md); border-bottom: 1px solid var(--border-color);">
+                    <div style="font-weight: 800;">اطلاعات کاربر</div>
+                </div>
+
+                <div
+                    style="display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--sp-sm);">
+                    <div
+                        style="width: 80px; height: 80px; border-radius: 50%; background: var(--p-bg-hover); display: flex; align-items: center; justify-content: center; font-size: 2rem; color: var(--p-primary); margin-bottom: var(--sp-xs);">
+                        {{ (ticket.first_name or ticket.username or 'U')[0]|upper }}
+                    </div>
+                    <div style="font-weight: 800; font-size: 1.1rem;">{{ ticket.first_name or 'کاربر' }}</div>
+                    <div style="color: var(--p-text-muted); direction: ltr;">@{{ ticket.username or ticket.telegram_id
+                        }}</div>
+                    <a href="/admin/users/{{ ticket.user_id }}" class="btn btn-sm btn-outline"
+                        style="width: 100%; margin-top: var(--sp-sm);">
+                        <i class="fas fa-user"></i>
+                        مشاهده پروفایل
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat Area -->
+        <div style="display: flex; flex-direction: column; gap: var(--sp-md);">
+            <div class="card" style="flex: 1; display: flex; flex-direction: column;">
+                <div class="card-header"
+                    style="margin-bottom: var(--sp-md); padding-bottom: var(--sp-md); border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+                    <div style="font-weight: 800;">
+                        <i class="fas fa-comments" style="color: var(--p-primary); margin-left: 5px;"></i>
+                        گفتگو
+                    </div>
+                    <span class="badge badge-primary">{{ replies|length }} پیام</span>
+                </div>
+
+                <div class="chat-messages"
+                    style="display: flex; flex-direction: column; gap: var(--sp-md); margin-bottom: var(--sp-xl);">
+                    {% for reply in replies %}
+                    <div
+                        class="message-bubble {% if reply.is_admin_reply %}message-admin{% else %}message-user{% endif %}">
+                        <div class="message-avatar">
+                            {% if reply.is_admin_reply %}
+                            <div class="avatar-icon admin-avatar"><i class="fas fa-user-shield"></i></div>
+                            {% else %}
+                            <div class="avatar-icon user-avatar"><i class="fas fa-user"></i></div>
+                            {% endif %}
+                        </div>
+                        <div class="message-content">
+                            <div class="message-header">
+                                <span class="message-author">
+                                    {% if reply.is_admin_reply %}پشتیبانی{% else %}{{ reply.first_name or 'کاربر' }}{%
+                                    endif %}
+                                </span>
+                                <span class="message-time">
+                                    {{ reply.created_at.strftime('%Y/%m/%d %H:%M') if reply.created_at else 'نامشخص' }}
+                                </span>
+                            </div>
+                            <div class="message-text">
+                                {{ reply.message|nl2br|safe }}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                {% if ticket.status == 'open' %}
+                <div class="reply-area"
+                    style="margin-top: auto; padding-top: var(--sp-md); border-top: 1px solid var(--border-color);">
+                    <form id="replyForm" onsubmit="addReply(event)">
+                        <input type="hidden" name="ticket_id" value="{{ ticket.id }}">
+                        <div class="form-group">
+                            <label class="form-label">پاسخ شما</label>
+                            <textarea id="replyMessage" name="message" class="form-control" rows="5" required
+                                placeholder="پاسخ خود را بنویسید..."></textarea>
+                        </div>
+                        <div style="display: flex; justify-content: flex-end;">
+                            <button type="submit" class="btn btn-primary" id="replyBtn">
+                                <i class="fas fa-paper-plane"></i>
+                                ارسال پاسخ
+                            </button>
+                        </div>
+                    </form>
+                </div>
+                {% else %}
+                <div class="alert alert-warning" style="margin-top: auto; text-align: center;">
+                    <i class="fas fa-lock"></i>
+                    این تیکت بسته شده است. برای ارسال پاسخ، ابتدا تیکت را باز کنید.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    @media (max-width: 992px) {
+        .grid-ticket-layout {
+            grid-template-columns: 1fr !important;
+        }
+    }
+
+    .info-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: var(--sp-sm) 0;
+        border-bottom: 1px dashed var(--border-color);
+    }
+
+    .info-item:last-child {
+        border-bottom: none;
+    }
+
+    .info-label {
+        font-size: 0.9rem;
+        color: var(--p-text-muted);
+    }
+
+    .info-value {
+        font-weight: 700;
+    }
+
+    .message-bubble {
+        display: flex;
+        gap: var(--sp-md);
+        max-width: 85%;
+    }
+
+    .message-user {
+        align-self: flex-start;
+        flex-direction: row-reverse;
+    }
+
+    .message-admin {
+        align-self: flex-end;
+        flex-direction: row;
+    }
+
+    .message-content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+    }
+
+    .message-header {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.8rem;
+        color: var(--p-text-muted);
+    }
+
+    .message-text {
+        padding: var(--sp-md);
+        border-radius: var(--radius-lg);
+        line-height: 1.6;
+        position: relative;
+    }
+
+    .message-user .message-text {
+        background: var(--p-bg-hover);
+        border-top-right-radius: 0;
+    }
+
+    .message-admin .message-text {
+        background: rgba(99, 102, 241, 0.1);
+        border: 1px solid rgba(99, 102, 241, 0.2);
+        border-top-left-radius: 0;
+    }
+
+    .avatar-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+    }
+
+    .user-avatar {
+        background: var(--p-bg-hover);
+        color: var(--p-text-muted);
+    }
+
+    .admin-avatar {
+        background: var(--p-primary);
+    }
+</style>
+
+<script>
+    async function addReply(event) {
+        event.preventDefault();
+        const form = event.target;
+        const replyBtn = document.getElementById('replyBtn');
+        const originalText = replyBtn.innerHTML;
+        const message = form.message.value;
+
+        if (!message.trim()) return;
+
+        replyBtn.disabled = true;
+        replyBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> در حال ارسال...';
+
+        try {
+            await apiCall('/api/admin/tickets/reply', {
+                method: 'POST',
+                body: JSON.stringify({
+                    ticket_id: {{ ticket.id }},
+                message: message
+                })
+    });
+    showToast('پاسخ با موفقیت ارسال شد', 'success');
+    setTimeout(() => window.location.reload(), 500);
+        } catch (error) {
+        console.error(error);
+    } finally {
+        replyBtn.disabled = false;
+        replyBtn.innerHTML = originalText;
+    }
+    }
+
+    async function closeTicket(id) {
+        if (!confirm('آیا از بستن این تیکت اطمینان دارید؟')) return;
+
+        try {
+            await apiCall(`/api/admin/tickets/${id}/close`, {
+                method: 'POST'
+            });
+            showToast('تیکت بسته شد', 'success');
+            setTimeout(() => window.location.reload(), 500);
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    async function reopenTicket(id) {
+        try {
+            await apiCall(`/api/admin/tickets/${id}/reopen`, {
+                method: 'POST'
+            });
+            showToast('تیکت باز شد', 'success');
+            setTimeout(() => window.location.reload(), 500);
+        } catch (error) {
+            console.error(error);
+        }
+    }
+</script>
+{% endblock %}

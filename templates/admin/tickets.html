@@ -1,0 +1,231 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}مدیریت تیکت‌های پشتیبانی{% endblock %}
+{% block page_subtitle %}مشاهده و مدیریت تمام تیکت‌های کاربران{% endblock %}
+
+{% block content %}
+<div class="fade-in">
+    <!-- Stats Grid -->
+    <div class="grid-4" style="margin-bottom: var(--sp-xl);">
+        <div class="card stat-card">
+            <div class="stat-icon" style="background: rgba(99, 102, 241, 0.1); color: var(--p-primary);">
+                <i class="fas fa-ticket-alt"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">{{ stats.total }}</div>
+                <div class="stat-label">کل تیکت‌ها</div>
+            </div>
+        </div>
+
+        <div class="card stat-card">
+            <div class="stat-icon" style="background: rgba(16, 185, 129, 0.1); color: var(--p-success);">
+                <i class="fas fa-check-circle"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">{{ stats.open }}</div>
+                <div class="stat-label">تیکت‌های باز</div>
+            </div>
+        </div>
+
+        <div class="card stat-card">
+            <div class="stat-icon" style="background: rgba(107, 114, 128, 0.1); color: var(--p-text-muted);">
+                <i class="fas fa-lock"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">{{ stats.closed }}</div>
+                <div class="stat-label">بسته شده</div>
+            </div>
+        </div>
+
+        <div class="card stat-card">
+            <div class="stat-icon" style="background: rgba(251, 191, 36, 0.1); color: var(--p-warning);">
+                <i class="fas fa-hourglass-half"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">{{ stats.waiting_admin }}</div>
+                <div class="stat-label">در انتظار پاسخ</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="card" style="margin-bottom: var(--sp-xl);">
+        <div style="display: flex; gap: var(--sp-sm); flex-wrap: wrap;">
+            <a href="/admin/tickets"
+                class="btn btn-sm {% if not request.args.get('status') and not request.args.get('waiting') %}btn-primary{% else %}btn-outline{% endif %}">
+                <i class="fas fa-list"></i>
+                همه
+            </a>
+            <a href="/admin/tickets?waiting=true"
+                class="btn btn-sm {% if request.args.get('waiting') == 'true' %}btn-warning{% else %}btn-outline{% endif %}">
+                <i class="fas fa-clock"></i>
+                منتظر پاسخ
+                {% if stats.waiting_admin > 0 %}
+                <span class="badge badge-warning" style="margin-right: 5px; background: rgba(0,0,0,0.2);">{{
+                    stats.waiting_admin }}</span>
+                {% endif %}
+            </a>
+            <a href="/admin/tickets?status=open"
+                class="btn btn-sm {% if request.args.get('status') == 'open' and not request.args.get('waiting') %}btn-success{% else %}btn-outline{% endif %}">
+                <i class="fas fa-envelope-open"></i>
+                باز
+            </a>
+            <a href="/admin/tickets?status=closed"
+                class="btn btn-sm {% if request.args.get('status') == 'closed' %}btn-secondary{% else %}btn-outline{% endif %}">
+                <i class="fas fa-check"></i>
+                بسته شده
+            </a>
+        </div>
+    </div>
+
+    <!-- Tickets List -->
+    {% if tickets %}
+    <div class="grid-1" style="gap: var(--sp-md);">
+        {% for ticket in tickets %}
+        <div class="card ticket-card"
+            style="border-left: 4px solid {% if ticket.status == 'open' %}var(--p-success){% else %}var(--p-text-muted){% endif %}; {% if ticket.status == 'open' and (not ticket.last_reply_by or ticket.last_reply_by == ticket.user_id) %}background: rgba(251, 191, 36, 0.05); border-color: var(--p-warning);{% endif %}">
+            <div
+                style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: var(--sp-md);">
+                <div style="display: flex; gap: var(--sp-md); align-items: flex-start;">
+                    <div
+                        style="width: 50px; height: 50px; border-radius: var(--radius-lg); background: var(--p-bg-hover); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; color: var(--p-primary); flex-shrink: 0;">
+                        {{ (ticket.first_name or ticket.username or 'U')[0]|upper }}
+                    </div>
+                    <div>
+                        <div
+                            style="display: flex; align-items: center; gap: var(--sp-sm); margin-bottom: var(--sp-xs);">
+                            <span style="font-weight: 800; font-size: 1.1rem;">{{ ticket.subject }}</span>
+                            <span style="font-size: 0.8rem; color: var(--p-text-muted);">#{{ ticket.id }}</span>
+                            {% if ticket.status == 'open' and (not ticket.last_reply_by or ticket.last_reply_by ==
+                            ticket.user_id) %}
+                            <span class="badge badge-warning">منتظر پاسخ</span>
+                            {% endif %}
+                        </div>
+                        <div style="font-size: 0.9rem; color: var(--p-text-muted); margin-bottom: var(--sp-xs);">
+                            <i class="fas fa-user" style="margin-left: 5px;"></i>
+                            {{ ticket.first_name or 'کاربر' }} (@{{ ticket.username or ticket.telegram_id }})
+                        </div>
+                        <div style="font-size: 0.8rem; color: var(--p-text-muted);">
+                            <i class="fas fa-clock" style="margin-left: 5px;"></i>
+                            {{ ticket.created_at.strftime('%Y/%m/%d %H:%M') if ticket.created_at else 'نامشخص' }}
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: flex; flex-direction: column; align-items: flex-end; gap: var(--sp-sm);">
+                    <div style="display: flex; gap: var(--sp-xs);">
+                        {% if ticket.status == 'open' %}
+                        <span class="badge badge-success">باز</span>
+                        {% else %}
+                        <span class="badge badge-secondary">بسته شده</span>
+                        {% endif %}
+
+                        {% if ticket.priority == 'high' %}
+                        <span class="badge badge-error">اولویت بالا</span>
+                        {% elif ticket.priority == 'low' %}
+                        <span class="badge badge-secondary">اولویت پایین</span>
+                        {% else %}
+                        <span class="badge badge-info">اولویت عادی</span>
+                        {% endif %}
+                    </div>
+                    <a href="/admin/tickets/{{ ticket.id }}" class="btn btn-sm btn-primary">
+                        <i class="fas fa-eye"></i>
+                        مشاهده و پاسخ
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Pagination -->
+    {% if total_pages > 1 %}
+    <div style="display: flex; justify-content: center; margin-top: var(--sp-xl);">
+        <div class="pagination">
+            {% if current_page > 1 %}
+            <a href="/admin/tickets?page={{ current_page - 1 }}{% if request.args.get('status') %}&status={{ request.args.get('status') }}{% endif %}{% if request.args.get('waiting') %}&waiting={{ request.args.get('waiting') }}{% endif %}"
+                class="btn btn-sm btn-outline">
+                <i class="fas fa-chevron-right"></i>
+            </a>
+            {% endif %}
+
+            <span class="btn btn-sm btn-primary" style="pointer-events: none;">
+                صفحه {{ current_page }} از {{ total_pages }}
+            </span>
+
+            {% if current_page < total_pages %} <a
+                href="/admin/tickets?page={{ current_page + 1 }}{% if request.args.get('status') %}&status={{ request.args.get('status') }}{% endif %}{% if request.args.get('waiting') %}&waiting={{ request.args.get('waiting') }}{% endif %}"
+                class="btn btn-sm btn-outline">
+                <i class="fas fa-chevron-left"></i>
+                </a>
+                {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="card" style="text-align: center; padding: var(--sp-xl);">
+        <div style="font-size: 3rem; color: var(--p-text-muted); margin-bottom: var(--sp-md);">
+            <i class="fas fa-inbox"></i>
+        </div>
+        <div style="font-weight: 700; font-size: 1.2rem; margin-bottom: var(--sp-sm);">هیچ تیکتی یافت نشد</div>
+        <div style="color: var(--p-text-muted);">
+            {% if request.args.get('waiting') == 'true' %}
+            فیلتر "منتظر پاسخ" فعال است.
+            {% else %}
+            در حال حاضر هیچ تیکتی وجود ندارد.
+            {% endif %}
+        </div>
+        {% if request.args.get('waiting') == 'true' %}
+        <a href="/admin/tickets" class="btn btn-primary" style="margin-top: var(--sp-md);">
+            مشاهده همه تیکت‌ها
+        </a>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+
+<style>
+    .stat-card {
+        display: flex;
+        align-items: center;
+        gap: var(--sp-md);
+        padding: var(--sp-md);
+    }
+
+    .stat-icon {
+        width: 50px;
+        height: 50px;
+        border-radius: var(--radius-lg);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+    }
+
+    .stat-content {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .stat-value {
+        font-size: 1.5rem;
+        font-weight: 800;
+        line-height: 1.2;
+    }
+
+    .stat-label {
+        font-size: 0.8rem;
+        color: var(--p-text-muted);
+    }
+
+    .ticket-card {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .ticket-card:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-lg);
+    }
+</style>
+{% endblock %}

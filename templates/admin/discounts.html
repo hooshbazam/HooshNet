@@ -1,0 +1,413 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}کدهای تخفیف و هدیه{% endblock %}
+{% block page_subtitle %}مدیریت کدهای تخفیف و کدهای هدیه{% endblock %}
+
+{% block content %}
+<div class="fade-in">
+    <!-- Actions Bar -->
+    <div class="card" style="margin-bottom: var(--sp-xl);">
+        <div
+            style="display: flex; flex-wrap: wrap; gap: var(--sp-md); justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: var(--sp-md);">
+                <div
+                    style="width: 40px; height: 40px; border-radius: var(--radius-lg); background: rgba(99, 102, 241, 0.1); color: var(--p-info); display: flex; align-items: center; justify-content: center;">
+                    <i class="fas fa-tags"></i>
+                </div>
+                <div>
+                    <div style="font-weight: 700;">مدیریت تخفیف‌ها</div>
+                    <div style="font-size: 0.8rem; color: var(--p-text-muted);">کدهای تخفیف و هدیه را مدیریت کنید</div>
+                </div>
+            </div>
+
+            <button class="btn btn-primary" onclick="showAddDiscountModal()">
+                <i class="fas fa-plus"></i>
+                <span>افزودن کد تخفیف</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Discount Codes Section -->
+    <div style="margin-bottom: var(--sp-xl);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--sp-md);">
+            <h2 style="font-size: 1.2rem; font-weight: 800; margin: 0;">
+                <i class="fas fa-percent" style="color: var(--p-primary); margin-left: var(--sp-sm);"></i>
+                کدهای تخفیف
+                <span class="badge badge-primary" style="margin-right: var(--sp-sm);">{{ discount_codes|length }}</span>
+            </h2>
+        </div>
+
+        {% if discount_codes %}
+        <div class="grid-3">
+            {% for code in discount_codes %}
+            <div class="card discount-card" style="position: relative; overflow: hidden;">
+                <div
+                    style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: {% if code.is_active %}var(--p-success){% else %}var(--p-error){% endif %};">
+                </div>
+
+                <div
+                    style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--sp-md);">
+                    <div style="display: flex; gap: var(--sp-sm); align-items: center;">
+                        <div
+                            style="width: 40px; height: 40px; border-radius: var(--radius-lg); background: var(--p-bg-hover); display: flex; align-items: center; justify-content: center; color: var(--p-primary);">
+                            <i class="fas fa-tag"></i>
+                        </div>
+                        <div>
+                            <div
+                                style="font-weight: 800; font-size: 1.1rem; font-family: monospace; letter-spacing: 1px;">
+                                {{ code.code }}</div>
+                            <div style="font-size: 0.8rem; color: var(--p-text-muted);">
+                                {% if code.is_active %}
+                                <span class="text-success">فعال</span>
+                                {% else %}
+                                <span class="text-error">غیرفعال</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: var(--sp-sm); margin-bottom: var(--sp-md);">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; padding: var(--sp-sm); background: var(--p-bg-hover); border-radius: var(--radius-md);">
+                        <span style="font-size: 0.8rem; color: var(--p-text-muted);">نوع</span>
+                        <span style="font-weight: 700;">
+                            {% if code.discount_type == 'percentage' %}درصدی{% else %}مبلغ ثابت{% endif %}
+                        </span>
+                    </div>
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; padding: var(--sp-sm); background: var(--p-bg-hover); border-radius: var(--radius-md);">
+                        <span style="font-size: 0.8rem; color: var(--p-text-muted);">مقدار</span>
+                        <span style="font-weight: 700; color: var(--p-success);">
+                            {{ code.discount_value }}{% if code.discount_type == 'percentage' %}%{% else %} تومان{%
+                            endif %}
+                        </span>
+                    </div>
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; padding: var(--sp-sm); background: var(--p-bg-hover); border-radius: var(--radius-md);">
+                        <span style="font-size: 0.8rem; color: var(--p-text-muted);">استفاده</span>
+                        <span style="font-weight: 700;">
+                            {{ code.used_count }} / {{ code.max_uses if code.max_uses > 0 else '∞' }}
+                        </span>
+                    </div>
+                    {% if code.max_discount_amount %}
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; padding: var(--sp-sm); background: var(--p-bg-hover); border-radius: var(--radius-md);">
+                        <span style="font-size: 0.8rem; color: var(--p-text-muted);">سقف تخفیف</span>
+                        <span style="font-weight: 700;">{{ "{:,}".format(code.max_discount_amount) }} تومان</span>
+                    </div>
+                    {% endif %}
+                    {% if code.min_purchase_amount and code.min_purchase_amount > 0 %}
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; padding: var(--sp-sm); background: var(--p-bg-hover); border-radius: var(--radius-md);">
+                        <span style="font-size: 0.8rem; color: var(--p-text-muted);">حداقل خرید</span>
+                        <span style="font-weight: 700;">{{ "{:,}".format(code.min_purchase_amount) }} تومان</span>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div style="display: flex; gap: var(--sp-sm);">
+                    <button class="btn btn-sm btn-outline"
+                        onclick="toggleDiscount({{ code.id }}, {{ 'false' if code.is_active else 'true' }})"
+                        style="flex: 1;">
+                        <i class="fas fa-power-off"></i>
+                        {% if code.is_active %}غیرفعال{% else %}فعال{% endif %}
+                    </button>
+                    <button class="btn btn-sm btn-outline" onclick="deleteDiscount({{ code.id }})"
+                        style="flex: 1; color: var(--p-error); border-color: var(--p-error);">
+                        <i class="fas fa-trash"></i>
+                        حذف
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="card" style="text-align: center; padding: var(--sp-xl);">
+            <div style="font-size: 3rem; color: var(--p-text-muted); margin-bottom: var(--sp-md);">
+                <i class="fas fa-percent"></i>
+            </div>
+            <div style="font-weight: 700; font-size: 1.2rem; margin-bottom: var(--sp-sm);">هیچ کد تخفیفی وجود ندارد
+            </div>
+            <div style="color: var(--p-text-muted);">برای شروع، یک کد تخفیف جدید ایجاد کنید.</div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Gift Codes Section -->
+    <div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--sp-md);">
+            <h2 style="font-size: 1.2rem; font-weight: 800; margin: 0;">
+                <i class="fas fa-gift" style="color: var(--p-success); margin-left: var(--sp-sm);"></i>
+                کدهای هدیه
+                <span class="badge badge-success" style="margin-right: var(--sp-sm);">{{ gift_codes|length }}</span>
+            </h2>
+        </div>
+
+        {% if gift_codes %}
+        <div class="grid-3">
+            {% for code in gift_codes %}
+            <div class="card discount-card" style="position: relative; overflow: hidden;">
+                <div
+                    style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: {% if code.is_active %}var(--p-success){% else %}var(--p-error){% endif %};">
+                </div>
+
+                <div
+                    style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--sp-md);">
+                    <div style="display: flex; gap: var(--sp-sm); align-items: center;">
+                        <div
+                            style="width: 40px; height: 40px; border-radius: var(--radius-lg); background: var(--p-bg-hover); display: flex; align-items: center; justify-content: center; color: var(--p-success);">
+                            <i class="fas fa-gift"></i>
+                        </div>
+                        <div>
+                            <div
+                                style="font-weight: 800; font-size: 1.1rem; font-family: monospace; letter-spacing: 1px;">
+                                {{ code.code }}</div>
+                            <div style="font-size: 0.8rem; color: var(--p-text-muted);">
+                                {% if code.is_active %}
+                                <span class="text-success">فعال</span>
+                                {% else %}
+                                <span class="text-error">غیرفعال</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: var(--sp-sm); margin-bottom: var(--sp-md);">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; padding: var(--sp-sm); background: var(--p-bg-hover); border-radius: var(--radius-md);">
+                        <span style="font-size: 0.8rem; color: var(--p-text-muted);">مبلغ</span>
+                        <span style="font-weight: 700; color: var(--p-success);">{{ "{:,}".format(code.amount) }}
+                            تومان</span>
+                    </div>
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; padding: var(--sp-sm); background: var(--p-bg-hover); border-radius: var(--radius-md);">
+                        <span style="font-size: 0.8rem; color: var(--p-text-muted);">استفاده</span>
+                        <span style="font-weight: 700;">
+                            {{ code.used_count }} / {{ code.max_uses if code.max_uses > 0 else '∞' }}
+                        </span>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: var(--sp-sm);">
+                    <button class="btn btn-sm btn-outline"
+                        onclick="toggleGiftCode({{ code.id }}, {{ 'false' if code.is_active else 'true' }})"
+                        style="flex: 1;">
+                        <i class="fas fa-power-off"></i>
+                        {% if code.is_active %}غیرفعال{% else %}فعال{% endif %}
+                    </button>
+                    <button class="btn btn-sm btn-outline" onclick="deleteGiftCode({{ code.id }})"
+                        style="flex: 1; color: var(--p-error); border-color: var(--p-error);">
+                        <i class="fas fa-trash"></i>
+                        حذف
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="card" style="text-align: center; padding: var(--sp-xl);">
+            <div style="font-size: 3rem; color: var(--p-text-muted); margin-bottom: var(--sp-md);">
+                <i class="fas fa-gift"></i>
+            </div>
+            <div style="font-weight: 700; font-size: 1.2rem; margin-bottom: var(--sp-sm);">هیچ کد هدیه‌ای وجود ندارد
+            </div>
+            <div style="color: var(--p-text-muted);">کدهای هدیه از طریق API یا پنل مدیریت اضافه می‌شوند.</div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Add Discount Modal -->
+<div id="addDiscountModal" class="modal-overlay">
+    <div class="modal-card">
+        <div class="card-header">
+            <div class="card-title">
+                <i class="fas fa-plus-circle" style="color: var(--p-primary);"></i>
+                افزودن کد تخفیف
+            </div>
+            <button onclick="closeModal('addDiscountModal')" class="close-btn"><i class="fas fa-times"></i></button>
+        </div>
+        <form id="addDiscountForm" onsubmit="addDiscount(event)">
+            <div class="form-group">
+                <label class="form-label">کد تخفیف</label>
+                <input type="text" name="code" class="form-control" required placeholder="مثال: DISCOUNT20">
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">نوع تخفیف</label>
+                    <select name="discount_type" class="form-control" required>
+                        <option value="percentage">درصدی</option>
+                        <option value="fixed">مبلغ ثابت</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">مقدار</label>
+                    <input type="number" name="discount_value" class="form-control" required step="0.01"
+                        placeholder="20">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">سقف تخفیف (تومان)</label>
+                    <input type="number" name="max_discount_amount" class="form-control" placeholder="50000">
+                    <div class="form-text">اختیاری</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">حداقل خرید (تومان)</label>
+                    <input type="number" name="min_purchase_amount" class="form-control" value="0" min="0"
+                        placeholder="0">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">تعداد استفاده (0 = نامحدود)</label>
+                <input type="number" name="max_uses" class="form-control" value="0" min="0" placeholder="0">
+            </div>
+
+            <div style="display: flex; gap: var(--sp-md); margin-top: var(--sp-lg);">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('addDiscountModal')"
+                    style="flex: 1;">لغو</button>
+                <button type="submit" class="btn btn-primary" style="flex: 2;">افزودن</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+    /* Modal Styles */
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+        backdrop-filter: blur(5px);
+    }
+
+    .modal-card {
+        background: var(--p-bg-main);
+        border-radius: var(--radius-xl);
+        width: 100%;
+        max-width: 500px;
+        padding: var(--sp-xl);
+        border: 1px solid var(--border-color);
+        box-shadow: var(--shadow-xl);
+        animation: modalSlideIn 0.3s ease;
+    }
+
+    @keyframes modalSlideIn {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>
+
+<script>
+    function showAddDiscountModal() {
+        document.getElementById('addDiscountModal').style.display = 'flex';
+    }
+
+    function closeModal(id) {
+        document.getElementById(id).style.display = 'none';
+    }
+
+    window.onclick = function (event) {
+        if (event.target.classList.contains('modal-overlay')) {
+            event.target.style.display = 'none';
+        }
+    }
+
+    async function addDiscount(event) {
+        event.preventDefault();
+        const form = event.target;
+        const data = {
+            code: form.code.value,
+            discount_type: form.discount_type.value,
+            discount_value: parseFloat(form.discount_value.value),
+            max_discount_amount: form.max_discount_amount.value ? parseFloat(form.max_discount_amount.value) : null,
+            min_purchase_amount: parseFloat(form.min_purchase_amount.value) || 0,
+            max_uses: parseInt(form.max_uses.value) || 0
+        };
+
+        try {
+            await apiCall('/api/admin/discounts', {
+                method: 'POST',
+                body: JSON.stringify(data)
+            });
+            showToast('کد تخفیف با موفقیت ایجاد شد', 'success');
+            setTimeout(() => window.location.reload(), 1000);
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    async function toggleDiscount(id, active) {
+        try {
+            await apiCall(`/api/admin/discounts/${id}`, {
+                method: 'PUT',
+                body: JSON.stringify({ is_active: active })
+            });
+            showToast('وضعیت کد تخفیف تغییر کرد', 'success');
+            setTimeout(() => window.location.reload(), 500);
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    async function deleteDiscount(id) {
+        if (!confirm('آیا از حذف این کد تخفیف اطمینان دارید؟')) return;
+
+        try {
+            await apiCall(`/api/admin/discounts/${id}`, {
+                method: 'DELETE'
+            });
+            showToast('کد تخفیف حذف شد', 'success');
+            setTimeout(() => window.location.reload(), 1000);
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    async function toggleGiftCode(id, active) {
+        try {
+            await apiCall(`/api/admin/gift-codes/${id}`, {
+                method: 'PUT',
+                body: JSON.stringify({ is_active: active })
+            });
+            showToast('وضعیت کد هدیه تغییر کرد', 'success');
+            setTimeout(() => window.location.reload(), 500);
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    async function deleteGiftCode(id) {
+        if (!confirm('آیا از حذف این کد هدیه اطمینان دارید؟')) return;
+
+        try {
+            await apiCall(`/api/admin/gift-codes/${id}`, {
+                method: 'DELETE'
+            });
+            showToast('کد هدیه حذف شد', 'success');
+            setTimeout(() => window.location.reload(), 1000);
+        } catch (error) {
+            console.error(error);
+        }
+    }
+</script>
+{% endblock %}

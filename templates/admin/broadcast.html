@@ -1,0 +1,141 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}همگانی{% endblock %}
+{% block page_subtitle %}ارسال پیام به تمام کاربران ربات{% endblock %}
+
+{% block content %}
+<div class="fade-in">
+    <div class="card" style="max-width: 800px; margin: 0 auto;">
+        <div class="card-header"
+            style="margin-bottom: var(--sp-lg); padding-bottom: var(--sp-md); border-bottom: 1px solid var(--border-color);">
+            <div style="display: flex; gap: var(--sp-md); align-items: center;">
+                <div
+                    style="width: 48px; height: 48px; border-radius: var(--radius-lg); background: rgba(99, 102, 241, 0.1); color: var(--p-primary); display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">
+                    <i class="fas fa-paper-plane"></i>
+                </div>
+                <div>
+                    <div style="font-weight: 800; font-size: 1.2rem;">ارسال پیام همگانی</div>
+                    <div style="font-size: 0.9rem; color: var(--p-text-muted);">پیام شما به تمام کاربران فعال ربات ارسال
+                        خواهد شد</div>
+                </div>
+            </div>
+        </div>
+
+        <form id="broadcastForm" onsubmit="sendBroadcast(event)">
+            <div class="form-group">
+                <label class="form-label">
+                    <i class="fas fa-edit" style="color: var(--p-primary);"></i>
+                    متن پیام
+                    <span style="color: var(--p-error);">*</span>
+                </label>
+                <textarea id="broadcastMessage" name="message" class="form-control" rows="8" required
+                    placeholder="پیام خود را اینجا بنویسید..." style="min-height: 200px; line-height: 1.8;"></textarea>
+                <div
+                    style="display: flex; justify-content: space-between; margin-top: var(--sp-xs); font-size: 0.8rem; color: var(--p-text-muted);">
+                    <span>
+                        <i class="fas fa-font"></i>
+                        <span id="charCount">0</span> کاراکتر
+                    </span>
+                    <span>پیام به صورت HTML ارسال می‌شود</span>
+                </div>
+            </div>
+
+            <!-- Preview Section -->
+            <div
+                style="background: var(--p-bg-hover); border-radius: var(--radius-lg); padding: var(--sp-md); margin-bottom: var(--sp-lg); border: 1px solid var(--border-color);">
+                <div
+                    style="font-weight: 700; margin-bottom: var(--sp-sm); display: flex; align-items: center; gap: var(--sp-sm);">
+                    <i class="fas fa-eye" style="color: var(--p-info);"></i>
+                    پیش‌نمایش پیام
+                </div>
+                <div id="previewContent" style="white-space: pre-wrap; line-height: 1.8; color: var(--p-text-main);">
+                    پیام شما اینجا نمایش داده می‌شود...
+                </div>
+            </div>
+
+            <!-- Warning -->
+            <div class="alert alert-warning" style="margin-bottom: var(--sp-lg);">
+                <i class="fas fa-exclamation-triangle"></i>
+                <div>
+                    <strong>هشدار:</strong>
+                    این پیام به تمام کاربران فعال ربات ارسال خواهد شد. لطفاً قبل از ارسال، محتوای پیام را با دقت بررسی
+                    کنید.
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end;">
+                <button type="submit" class="btn btn-primary" id="sendBtn" style="min-width: 200px;">
+                    <i class="fas fa-paper-plane"></i>
+                    <span>ارسال به تمام کاربران</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    // Update character count and preview
+    document.getElementById('broadcastMessage').addEventListener('input', function () {
+        const charCount = this.value.length;
+        document.getElementById('charCount').textContent = charCount.toLocaleString('fa-IR');
+        updatePreview();
+    });
+
+    function updatePreview() {
+        const content = document.getElementById('broadcastMessage').value;
+        document.getElementById('previewContent').textContent = content || 'پیام شما اینجا نمایش داده می‌شود...';
+    }
+
+    async function sendBroadcast(event) {
+        event.preventDefault();
+        const form = event.target;
+        const sendBtn = document.getElementById('sendBtn');
+        const originalText = sendBtn.innerHTML;
+
+        const formData = new FormData(form);
+        const message = formData.get('message');
+
+        if (!message || !message.trim()) {
+            showToast('پیام نمی‌تواند خالی باشد', 'error');
+            return;
+        }
+
+        if (!confirm('آیا از ارسال پیام به تمام کاربران اطمینان دارید؟\n\nاین عمل قابل بازگشت نیست و پیام به تمام کاربران فعال ارسال خواهد شد.')) {
+            return;
+        }
+
+        sendBtn.disabled = true;
+        sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>در حال ارسال...</span>';
+
+        try {
+            showToast('در حال ارسال پیام...', 'info');
+
+            const response = await apiCall('/api/admin/broadcast', {
+                method: 'POST',
+                body: JSON.stringify({
+                    message: message.trim(),
+                    type: 'message'
+                })
+            });
+
+            if (response.success) {
+                const successMsg = `${response.message || 'پیام با موفقیت ارسال شد'} - موفق: ${response.success_count || 0}, ناموفق: ${response.failed_count || 0}`;
+                showToast(successMsg, 'success');
+                form.reset();
+                updatePreview();
+                document.getElementById('charCount').textContent = '0';
+            } else {
+                showToast(response.message || 'خطا در ارسال پیام', 'error');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        } finally {
+            sendBtn.disabled = false;
+            sendBtn.innerHTML = originalText;
+        }
+    }
+
+    // Initialize preview
+    updatePreview();
+</script>
+{% endblock %}

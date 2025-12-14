@@ -1,0 +1,215 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}داشبورد مدیریت{% endblock %}
+{% block page_subtitle %}نمای کلی سیستم و وضعیت عملکرد{% endblock %}
+
+{% block content %}
+<div class="dashboard-container fade-in">
+
+    <!-- Stats Grid -->
+    <div class="grid-4" style="margin-bottom: var(--sp-2xl);">
+        <!-- Total Users -->
+        <div class="card delay-100">
+            <div class="card-header" style="margin-bottom: var(--sp-sm);">
+                <div class="card-icon">
+                    <i class="fas fa-users"></i>
+                </div>
+                <div class="stat-trend trend-up">
+                    <i class="fas fa-arrow-up"></i>
+                    <span>فعال</span>
+                </div>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value" id="statUsers">{{ "{:,}".format(stats.total_users or 0) }}</div>
+                <div class="text-muted" style="font-size: 0.85rem;">کل کاربران</div>
+            </div>
+        </div>
+
+        <!-- Active Panels -->
+        <div class="card delay-200">
+            <div class="card-header" style="margin-bottom: var(--sp-sm);">
+                <div class="card-icon" style="color: var(--p-success);">
+                    <i class="fas fa-server"></i>
+                </div>
+                <div class="stat-trend trend-up">
+                    <i class="fas fa-check-circle"></i>
+                    <span>آنلاین</span>
+                </div>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value" id="statPanels">{{ stats.active_panels or 0 }} <span
+                        style="font-size: 1rem; color: var(--p-text-muted); font-weight: 400;">/ {{ stats.total_panels
+                        or 0 }}</span></div>
+                <div class="text-muted" style="font-size: 0.85rem;">پنل‌های فعال</div>
+            </div>
+        </div>
+
+        <!-- Active Services -->
+        <div class="card delay-300">
+            <div class="card-header" style="margin-bottom: var(--sp-sm);">
+                <div class="card-icon" style="color: var(--p-info);">
+                    <i class="fas fa-network-wired"></i>
+                </div>
+                <div class="stat-trend trend-up">
+                    <i class="fas fa-signal"></i>
+                    <span>متصل</span>
+                </div>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value" id="statServices">{{ stats.active_services or 0 }} <span
+                        style="font-size: 1rem; color: var(--p-text-muted); font-weight: 400;">/ {{ stats.total_services
+                        or 0 }}</span></div>
+                <div class="text-muted" style="font-size: 0.85rem;">سرویس‌های فعال</div>
+            </div>
+        </div>
+
+        <!-- Total Revenue -->
+        <div class="card delay-100">
+            <div class="card-header" style="margin-bottom: var(--sp-sm);">
+                <div class="card-icon" style="color: var(--p-warning);">
+                    <i class="fas fa-coins"></i>
+                </div>
+                <div class="stat-trend trend-up">
+                    <i class="fas fa-chart-line"></i>
+                    <span>درآمد</span>
+                </div>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value" id="statRevenue" style="font-size: 1.5rem;">{{ "{:,}".format(stats.total_revenue
+                    or 0) }} <span style="font-size: 0.8rem; color: var(--p-text-muted); font-weight: 400;">تومان</span>
+                </div>
+                <div class="text-muted" style="font-size: 0.85rem;">درآمد کل</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="section-header"
+        style="margin-bottom: var(--sp-lg); display: flex; align-items: center; justify-content: space-between;">
+        <h2 style="font-size: 1.25rem; font-weight: 800;">دسترسی سریع</h2>
+    </div>
+
+    <div class="grid-4" style="margin-bottom: var(--sp-2xl);">
+        <a href="/admin/users" class="card"
+            style="padding: var(--sp-lg); display: flex; align-items: center; gap: var(--sp-md); text-decoration: none;">
+            <div class="card-icon"
+                style="width: 48px; height: 48px; border-radius: 50%; background: rgba(225, 29, 72, 0.1); color: var(--p-red-500);">
+                <i class="fas fa-user-plus"></i>
+            </div>
+            <div>
+                <div style="font-weight: 700; color: var(--p-text-main);">مدیریت کاربران</div>
+                <div style="font-size: 0.75rem; color: var(--p-text-muted);">افزودن و ویرایش</div>
+            </div>
+        </a>
+
+        <a href="/admin/panels" class="card"
+            style="padding: var(--sp-lg); display: flex; align-items: center; gap: var(--sp-md); text-decoration: none;">
+            <div class="card-icon"
+                style="width: 48px; height: 48px; border-radius: 50%; background: rgba(16, 185, 129, 0.1); color: var(--p-success);">
+                <i class="fas fa-server"></i>
+            </div>
+            <div>
+                <div style="font-weight: 700; color: var(--p-text-main);">مدیریت پنل‌ها</div>
+                <div style="font-size: 0.75rem; color: var(--p-text-muted);">وضعیت سرورها</div>
+            </div>
+        </a>
+
+        <a href="/admin/products" class="card"
+            style="padding: var(--sp-lg); display: flex; align-items: center; gap: var(--sp-md); text-decoration: none;">
+            <div class="card-icon"
+                style="width: 48px; height: 48px; border-radius: 50%; background: rgba(59, 130, 246, 0.1); color: var(--p-info);">
+                <i class="fas fa-box"></i>
+            </div>
+            <div>
+                <div style="font-weight: 700; color: var(--p-text-main);">محصولات</div>
+                <div style="font-size: 0.75rem; color: var(--p-text-muted);">مدیریت پلن‌ها</div>
+            </div>
+        </a>
+
+        <a href="/admin/broadcast" class="card"
+            style="padding: var(--sp-lg); display: flex; align-items: center; gap: var(--sp-md); text-decoration: none;">
+            <div class="card-icon"
+                style="width: 48px; height: 48px; border-radius: 50%; background: rgba(245, 158, 11, 0.1); color: var(--p-warning);">
+                <i class="fas fa-bullhorn"></i>
+            </div>
+            <div>
+                <div style="font-weight: 700; color: var(--p-text-main);">پیام همگانی</div>
+                <div style="font-size: 0.75rem; color: var(--p-text-muted);">ارسال اعلان</div>
+            </div>
+        </a>
+    </div>
+
+    <!-- Revenue Chart -->
+    <div class="grid-1">
+        <!-- Monthly Revenue -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">
+                    <i class="fas fa-calendar-alt" style="color: var(--p-text-muted);"></i>
+                    آمار ماهانه
+                </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: var(--sp-lg);">
+                <div
+                    style="display: flex; align-items: center; justify-content: space-between; padding: var(--sp-md); background: var(--p-bg-hover); border-radius: var(--radius-lg);">
+                    <div style="display: flex; align-items: center; gap: var(--sp-md);">
+                        <div
+                            style="width: 40px; height: 40px; border-radius: var(--radius-md); background: rgba(168, 85, 247, 0.1); color: #a855f7; display: flex; align-items: center; justify-content: center;">
+                            <i class="fas fa-calendar-check"></i>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.85rem; color: var(--p-text-muted);">درآمد این ماه</div>
+                            <div style="font-weight: 800; font-size: 1.1rem;">{{ "{:,}".format(stats.monthly_revenue or
+                                0) }} <span style="font-size: 0.75rem; font-weight: 400;">تومان</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div
+                    style="display: flex; align-items: center; justify-content: space-between; padding: var(--sp-md); background: var(--p-bg-hover); border-radius: var(--radius-lg);">
+                    <div style="display: flex; align-items: center; gap: var(--sp-md);">
+                        <div
+                            style="width: 40px; height: 40px; border-radius: var(--radius-md); background: rgba(16, 185, 129, 0.1); color: var(--p-success); display: flex; align-items: center; justify-content: center;">
+                            <i class="fas fa-calendar-day"></i>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.85rem; color: var(--p-text-muted);">درآمد امروز</div>
+                            <div style="font-weight: 800; font-size: 1.1rem;">{{ "{:,}".format(stats.daily_revenue or 0)
+                                }} <span style="font-size: 0.75rem; font-weight: 400;">تومان</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div
+                    style="display: flex; align-items: center; justify-content: space-between; padding: var(--sp-md); background: var(--p-bg-hover); border-radius: var(--radius-lg);">
+                    <div style="display: flex; align-items: center; gap: var(--sp-md);">
+                        <div
+                            style="width: 40px; height: 40px; border-radius: var(--radius-md); background: rgba(6, 182, 212, 0.1); color: #06b6d4; display: flex; align-items: center; justify-content: center;">
+                            <i class="fas fa-wifi"></i>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.85rem; color: var(--p-text-muted);">سرویس‌های آنلاین</div>
+                            <div style="font-weight: 800; font-size: 1.1rem;">{{ stats.online_services or 0 }} <span
+                                    style="font-size: 0.75rem; font-weight: 400;">کاربر</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Dashboard Specific Styles */
+    .dashboard-container {
+        max-width: 1600px;
+        margin: 0 auto;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // No specific JS needed for now
+</script>
+{% endblock %}

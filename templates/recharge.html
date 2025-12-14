@@ -1,0 +1,484 @@
+{% extends "base.html" %}
+
+{% block title %}افزایش موجودی - پنل کاربری{% endblock %}
+
+{% block content %}
+<style>
+    :root {
+        --glass-bg: rgba(15, 23, 42, 0.6);
+        --glass-border: rgba(255, 255, 255, 0.08);
+        --neon-primary: #6366f1;
+        --neon-success: #10b981;
+        --neon-warning: #f59e0b;
+        --card-radius: 24px;
+        --btn-radius: 18px;
+    }
+
+    .recharge-page-container {
+        padding-bottom: 100px;
+        max-width: 800px;
+        margin: 0 auto;
+    }
+
+    /* Hero */
+    .recharge-hero {
+        position: relative;
+        background: radial-gradient(circle at 50% 0%, rgba(16, 185, 129, 0.15) 0%, transparent 70%);
+        padding: 2rem 1.5rem 3rem;
+        text-align: center;
+        margin-bottom: 1rem;
+    }
+
+    .hero-icon-box {
+        width: 80px;
+        height: 80px;
+        background: rgba(16, 185, 129, 0.1);
+        border-radius: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2.5rem;
+        color: var(--neon-success);
+        margin: 0 auto 1.5rem;
+        box-shadow: 0 0 30px rgba(16, 185, 129, 0.2);
+        border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+
+    .hero-title {
+        font-size: 1.75rem;
+        font-weight: 900;
+        color: white;
+        margin-bottom: 0.5rem;
+    }
+
+    .current-balance {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: rgba(255, 255, 255, 0.05);
+        padding: 0.5rem 1rem;
+        border-radius: 50px;
+        margin-top: 1rem;
+        border: 1px solid var(--glass-border);
+    }
+
+    /* Amount Selection */
+    .amount-section {
+        padding: 0 1.5rem;
+    }
+
+    .section-title {
+        font-size: 1rem;
+        color: var(--text-secondary);
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .amounts-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.75rem;
+        margin-bottom: 2rem;
+    }
+
+    .amount-chip {
+        background: var(--glass-bg);
+        border: 1px solid var(--glass-border);
+        border-radius: 16px;
+        padding: 1rem 0.5rem;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.2s;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .amount-chip:hover {
+        border-color: var(--neon-success);
+        transform: translateY(-2px);
+    }
+
+    .amount-chip.selected {
+        background: var(--neon-success);
+        border-color: var(--neon-success);
+        color: white;
+        box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+    }
+
+    .amount-value {
+        font-weight: 800;
+        font-size: 1rem;
+        margin-bottom: 0.25rem;
+    }
+
+    .amount-unit {
+        font-size: 0.75rem;
+        opacity: 0.8;
+    }
+
+    /* Custom Input */
+    .custom-input-wrapper {
+        position: relative;
+        margin-bottom: 2rem;
+    }
+
+    .custom-input {
+        width: 100%;
+        background: var(--glass-bg);
+        border: 1px solid var(--glass-border);
+        border-radius: 20px;
+        padding: 1.25rem;
+        text-align: center;
+        font-size: 1.5rem;
+        font-weight: 800;
+        color: white;
+        font-family: inherit;
+        transition: all 0.3s;
+    }
+
+    .custom-input:focus {
+        outline: none;
+        border-color: var(--neon-success);
+        box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.1);
+    }
+
+    .input-hint {
+        text-align: center;
+        font-size: 0.8rem;
+        color: var(--text-tertiary);
+        margin-top: 0.75rem;
+    }
+
+    /* Card Info Box */
+    .card-info-box {
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 24px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        text-align: center;
+    }
+
+    .card-number {
+        font-family: monospace;
+        font-size: 1.5rem;
+        font-weight: 700;
+        letter-spacing: 2px;
+        color: white;
+        margin: 1rem 0;
+        direction: ltr;
+    }
+
+    .card-owner {
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+    }
+
+    .copy-btn {
+        background: rgba(255, 255, 255, 0.1);
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        color: white;
+        font-size: 0.8rem;
+        cursor: pointer;
+        margin-top: 0.5rem;
+        transition: all 0.2s;
+    }
+
+    .copy-btn:hover {
+        background: rgba(255, 255, 255, 0.2);
+    }
+
+    /* File Upload */
+    .file-upload-wrapper {
+        position: relative;
+        margin-bottom: 2rem;
+        text-align: center;
+    }
+
+    .file-upload-label {
+        display: block;
+        padding: 2rem;
+        border: 2px dashed var(--glass-border);
+        border-radius: 20px;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+
+    .file-upload-label:hover {
+        border-color: var(--neon-success);
+        background: rgba(16, 185, 129, 0.05);
+    }
+
+    .file-upload-icon {
+        font-size: 2rem;
+        color: var(--text-secondary);
+        margin-bottom: 1rem;
+    }
+
+    .file-upload-text {
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+    }
+
+    #receiptFile {
+        display: none;
+    }
+
+    /* Action Button */
+    .btn-pay {
+        width: 100%;
+        background: linear-gradient(135deg, var(--neon-success), #059669);
+        color: white;
+        border: none;
+        border-radius: var(--btn-radius);
+        padding: 1.25rem;
+        font-size: 1.1rem;
+        font-weight: 800;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.75rem;
+        transition: all 0.3s;
+        box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+    }
+
+    .btn-pay:disabled {
+        background: var(--glass-border);
+        opacity: 0.5;
+        cursor: not-allowed;
+        box-shadow: none;
+    }
+
+    .btn-pay:active:not(:disabled) {
+        transform: scale(0.98);
+    }
+
+    /* Security Badge */
+    .security-badge {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        margin-top: 1.5rem;
+        color: var(--text-tertiary);
+        font-size: 0.85rem;
+        background: rgba(255, 255, 255, 0.03);
+        padding: 0.75rem;
+        border-radius: 12px;
+    }
+
+    @media (min-width: 768px) {
+        .amounts-grid {
+            grid-template-columns: repeat(6, 1fr);
+        }
+    }
+</style>
+
+<div class="recharge-page-container">
+    <!-- Hero -->
+    <div class="recharge-hero">
+        <div class="hero-icon-box">
+            <i class="fas fa-wallet"></i>
+        </div>
+        <h1 class="hero-title">افزایش موجودی</h1>
+        <div class="current-balance">
+            <span style="color: var(--text-secondary); font-size: 0.9rem;">موجودی فعلی:</span>
+            <span style="font-weight: 800; color: white;">{{ "{:,}".format(user.balance or 0) }} تومان</span>
+        </div>
+    </div>
+
+    <div class="amount-section">
+        <div id="card-loading" style="text-align: center; padding: 2rem;">
+            <i class="fas fa-spinner fa-spin fa-2x" style="color: var(--neon-primary);"></i>
+        </div>
+
+        <div id="card-content" style="display: none;">
+            <div class="card-info-box">
+                <div style="color: var(--text-secondary); font-size: 0.9rem;">شماره کارت جهت واریز</div>
+                <div class="card-number" id="cardNumber">Loading...</div>
+                <div class="card-owner" id="cardOwner">Loading...</div>
+                <button class="copy-btn" onclick="copyCardNumber()">
+                    <i class="fas fa-copy"></i> کپی شماره کارت
+                </button>
+            </div>
+
+            <form id="cardForm" onsubmit="handleCardPayment(event)">
+                <!-- Predefined Amounts -->
+                <div class="section-title">
+                    <i class="fas fa-th-large"></i>
+                    <span>انتخاب مبلغ شارژ</span>
+                </div>
+                <div class="amounts-grid" id="amountsGrid">
+                    <!-- Populated by JS -->
+                </div>
+
+                <div class="section-title">
+                    <i class="fas fa-money-bill-wave"></i>
+                    <span>یا مبلغ دلخواه</span>
+                </div>
+                <div class="custom-input-wrapper">
+                    <input type="number" id="cardAmount" class="custom-input" placeholder="مبلغ واریز شده (تومان)"
+                        required min="10000" step="1000">
+                    <div class="input-hint">حداقل مبلغ شارژ ۱۰,۰۰۰ تومان می‌باشد</div>
+                </div>
+
+                <div class="section-title">
+                    <i class="fas fa-receipt"></i>
+                    <span>آپلود رسید پرداخت</span>
+                </div>
+                <div class="file-upload-wrapper">
+                    <label for="receiptFile" class="file-upload-label">
+                        <i class="fas fa-cloud-upload-alt file-upload-icon"></i>
+                        <div class="file-upload-text" id="fileName">برای انتخاب تصویر رسید کلیک کنید</div>
+                    </label>
+                    <input type="file" id="receiptFile" accept="image/*" required onchange="updateFileName(this)">
+                </div>
+
+                <button type="submit" class="btn-pay" id="cardSubmitBtn">
+                    <span>ارسال رسید و ثبت درخواست</span>
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </form>
+        </div>
+
+        <!-- Security -->
+        <div class="security-badge">
+            <i class="fas fa-lock"></i>
+            <span>پرداخت امن با کلیه کارت‌های عضو شتاب</span>
+        </div>
+    </div>
+</div>
+
+<script>
+    const currentBalance = {{ user.balance or 0 }};
+    const predefinedAmounts = [20000, 50000, 100000, 200000, 500000, 1000000];
+    let selectedAmount = 0;
+
+    function init() {
+        const grid = document.getElementById('amountsGrid');
+        predefinedAmounts.forEach(amount => {
+            const div = document.createElement('div');
+            div.className = 'amount-chip';
+            div.onclick = () => selectAmount(amount, div);
+            div.innerHTML = `
+                <div class="amount-value">${(amount / 1000).toLocaleString()}</div>
+                <div class="amount-unit">هزار تومان</div>
+            `;
+            grid.appendChild(div);
+        });
+
+        document.getElementById('cardAmount').addEventListener('input', handleCustomInput);
+        loadCardInfo();
+    }
+
+    async function loadCardInfo() {
+        const loading = document.getElementById('card-loading');
+        const content = document.getElementById('card-content');
+
+        try {
+            const response = await fetch('api/payment/card-info');
+            const data = await response.json();
+
+            if (data.success) {
+                document.getElementById('cardNumber').textContent = data.card_number || 'تعیین نشده';
+                document.getElementById('cardOwner').textContent = data.card_owner || 'تعیین نشده';
+                loading.style.display = 'none';
+                content.style.display = 'block';
+            } else {
+                showToast('خطا در دریافت اطلاعات کارت', 'error');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            showToast('خطا در دریافت اطلاعات کارت', 'error');
+        }
+    }
+
+    function copyCardNumber() {
+        const cardNumber = document.getElementById('cardNumber').textContent;
+        navigator.clipboard.writeText(cardNumber).then(() => {
+            showToast('شماره کارت کپی شد', 'success');
+        });
+    }
+
+    function updateFileName(input) {
+        const fileName = input.files[0]?.name || 'برای انتخاب تصویر رسید کلیک کنید';
+        document.getElementById('fileName').textContent = fileName;
+    }
+
+    function selectAmount(amount, element) {
+        document.querySelectorAll('.amount-chip').forEach(el => el.classList.remove('selected'));
+        if (element) element.classList.add('selected');
+
+        document.getElementById('cardAmount').value = amount;
+        selectedAmount = amount;
+    }
+
+    function handleCustomInput(e) {
+        document.querySelectorAll('.amount-chip').forEach(el => el.classList.remove('selected'));
+        selectedAmount = parseInt(e.target.value) || 0;
+    }
+
+    async function handleCardPayment(event) {
+        event.preventDefault();
+        const amount = document.getElementById('cardAmount').value;
+        const fileInput = document.getElementById('receiptFile');
+
+        if (!amount || amount < 10000) {
+            showToast('لطفاً مبلغ معتبر وارد کنید (حداقل ۱۰,۰۰۰ تومان)', 'error');
+            return;
+        }
+
+        if (fileInput.files.length === 0) {
+            showToast('لطفاً تصویر رسید را انتخاب کنید', 'error');
+            return;
+        }
+
+        const btn = document.getElementById('cardSubmitBtn');
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> در حال ارسال...';
+
+        const formData = new FormData();
+        formData.append('amount', amount);
+        formData.append('receipt', fileInput.files[0]);
+
+        try {
+            const response = await fetch('api/payment/upload-receipt', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                showToast(data.message, 'success');
+                // Reset form
+                document.getElementById('cardForm').reset();
+                document.getElementById('fileName').textContent = 'برای انتخاب تصویر رسید کلیک کنید';
+                document.querySelectorAll('.amount-chip').forEach(el => el.classList.remove('selected'));
+
+                // Reload after delay
+                setTimeout(() => {
+                    window.location.reload();
+                }, 2000);
+            } else {
+                showToast(data.message || 'خطا در ارسال رسید', 'error');
+                btn.disabled = false;
+                btn.innerHTML = originalHtml;
+            }
+        } catch (error) {
+            console.error('Upload error:', error);
+            showToast('خطا در ارتباط با سرور', 'error');
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }
+    }
+
+    init();
+</script>
+{% endblock %}

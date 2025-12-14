@@ -1,0 +1,512 @@
+:root {
+    --bg-app: #050505;
+    --bg-surface: #121212;
+    --bg-card: rgba(30, 30, 30, 0.6);
+    --bg-glass: rgba(20, 20, 20, 0.8);
+
+    --primary: #E50914;
+    --primary-hover: #ff0f1f;
+    --primary-glow: rgba(229, 9, 20, 0.4);
+
+    --text-main: #ffffff;
+    --text-secondary: #a0a0a0;
+    --text-tertiary: #606060;
+
+    --border-light: rgba(255, 255, 255, 0.1);
+    --border-focus: rgba(229, 9, 20, 0.5);
+
+    --radius-sm: 12px;
+    --radius-md: 16px;
+    --radius-lg: 24px;
+    --radius-xl: 32px;
+
+    --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.2);
+    --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.3);
+    --shadow-glow: 0 0 20px rgba(229, 9, 20, 0.2);
+}
+
+/* Base Styles Override */
+body {
+    background-color: var(--bg-app);
+    color: var(--text-main);
+    font-family: 'Vazirmatn', 'Inter', sans-serif;
+}
+
+.page-content {
+    padding-bottom: 180px;
+    /* Space for bottom navs and action bar */
+}
+
+/* Header Section */
+.buy-header {
+    padding: 20px 24px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 20px;
+    padding-top: 60px;
+}
+
+.header-back-btn {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    width: 42px;
+    height: 42px;
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 100;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.header-back-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateY(-2px);
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
+.header-back-btn:active {
+    transform: scale(0.95);
+}
+
+.buy-header h1 {
+    font-size: 1.8rem;
+    font-weight: 900;
+    margin: 0;
+    background: linear-gradient(45deg, #fff, #ccc);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -0.5px;
+}
+
+.buy-header p {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-top: 8px;
+    font-weight: 400;
+}
+
+/* Wizard Progress */
+.wizard-steps {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 30px;
+}
+
+.step-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--border-light);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.step-dot.active {
+    width: 24px;
+    background: var(--primary);
+    box-shadow: 0 0 10px var(--primary-glow);
+    border-radius: 10px;
+}
+
+.step-dot.completed {
+    background: var(--primary);
+    opacity: 0.5;
+}
+
+/* Cards & Selection Items */
+.selection-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 16px;
+    padding: 0 20px;
+}
+
+.selection-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 0 20px;
+}
+
+.modern-card {
+    background: var(--bg-card);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    padding: 20px;
+    position: relative;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.modern-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(255, 255, 255, 0.2);
+    background: rgba(40, 40, 40, 0.7);
+}
+
+.modern-card.selected {
+    border-color: var(--primary);
+    background: linear-gradient(145deg, rgba(229, 9, 20, 0.15), rgba(0, 0, 0, 0));
+    box-shadow: var(--shadow-glow);
+}
+
+.modern-card .card-icon {
+    font-size: 2rem;
+    margin-bottom: 12px;
+    color: var(--text-secondary);
+    transition: color 0.3s ease;
+}
+
+.modern-card.selected .card-icon {
+    color: var(--primary);
+}
+
+.modern-card .card-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: 4px;
+    color: var(--text-main);
+}
+
+.modern-card .card-subtitle {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.modern-card .check-indicator {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 2px solid var(--border-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transform: scale(0.8);
+    transition: all 0.3s ease;
+}
+
+.modern-card.selected .check-indicator {
+    opacity: 1;
+    transform: scale(1);
+    border-color: var(--primary);
+    background: var(--primary);
+    color: white;
+    font-size: 0.7rem;
+}
+
+/* Volume Chips */
+.volume-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    padding: 0 20px;
+}
+
+.volume-chip {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    padding: 16px 10px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.volume-chip.selected {
+    background: var(--primary);
+    border-color: var(--primary);
+    box-shadow: var(--shadow-glow);
+}
+
+.volume-chip .vol-amount {
+    font-size: 1.2rem;
+    font-weight: 800;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.volume-chip .vol-unit {
+    font-size: 0.8rem;
+    opacity: 0.7;
+}
+
+.volume-chip .vol-price {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 6px;
+}
+
+.volume-chip.selected .vol-price {
+    color: rgba(255, 255, 255, 0.9);
+}
+
+/* Custom Input */
+.custom-input-group {
+    margin: 20px 20px 0;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    padding: 8px;
+    display: flex;
+    align-items: center;
+    transition: border-color 0.3s ease;
+}
+
+.custom-input-group:focus-within {
+    border-color: var(--primary);
+}
+
+.custom-input-group input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: white;
+    padding: 8px 12px;
+    font-size: 1rem;
+    font-family: inherit;
+    text-align: center;
+    outline: none;
+}
+
+.custom-input-group button {
+    background: var(--bg-card);
+    border: none;
+    color: var(--primary);
+    padding: 8px 16px;
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.custom-input-group button:hover {
+    background: rgba(229, 9, 20, 0.1);
+}
+
+/* Invoice Card */
+.invoice-card {
+    margin: 0 20px;
+    background: linear-gradient(180deg, rgba(30, 30, 30, 0.8) 0%, rgba(10, 10, 10, 0.9) 100%);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    position: relative;
+    overflow: hidden;
+}
+
+.invoice-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, var(--primary), transparent);
+}
+
+.invoice-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    font-size: 0.95rem;
+}
+
+.invoice-row.total {
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px dashed var(--border-light);
+}
+
+.invoice-label {
+    color: var(--text-secondary);
+}
+
+.invoice-value {
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.invoice-total-price {
+    font-size: 1.8rem;
+    font-weight: 900;
+    color: var(--primary);
+    text-shadow: 0 0 20px rgba(229, 9, 20, 0.3);
+}
+
+/* Discount Input */
+.discount-box {
+    margin-top: 20px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: var(--radius-sm);
+    padding: 6px;
+    display: flex;
+    gap: 8px;
+}
+
+.discount-box input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: white;
+    padding: 8px 12px;
+    font-size: 0.9rem;
+    outline: none;
+}
+
+.discount-btn {
+    background: var(--primary);
+    color: white;
+    border: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.discount-btn:active {
+    transform: scale(0.95);
+}
+
+/* Payment Methods */
+.payment-methods {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 24px;
+}
+
+.payment-item {
+    display: flex;
+    align-items: center;
+    padding: 16px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.payment-item.selected {
+    border-color: var(--primary);
+    background: linear-gradient(90deg, rgba(229, 9, 20, 0.1), transparent);
+}
+
+.payment-icon {
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 16px;
+    font-size: 1.2rem;
+    color: var(--text-main);
+}
+
+.payment-item.selected .payment-icon {
+    background: var(--primary);
+    color: white;
+}
+
+/* Action Bar */
+.action-bar {
+    position: fixed;
+    bottom: 100px;
+    left: 20px;
+    right: 20px;
+    display: flex;
+    gap: 12px;
+    z-index: 100;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.btn-action {
+    border: none;
+    border-radius: var(--radius-md);
+    padding: 16px;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.3s ease;
+}
+
+.btn-back {
+    background: rgba(40, 40, 40, 0.8);
+    backdrop-filter: blur(10px);
+    color: white;
+    flex: 1;
+}
+
+.btn-submit {
+    background: var(--primary);
+    color: white;
+    flex: 2;
+    box-shadow: 0 4px 20px rgba(229, 9, 20, 0.4);
+}
+
+.btn-submit:active {
+    transform: scale(0.98);
+}
+
+/* Animations */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.fade-in-up {
+    animation: fadeInUp 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+/* Responsive Adjustments */
+@media (min-width: 768px) {
+    .volume-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+
+    .selection-grid {
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    }
+}

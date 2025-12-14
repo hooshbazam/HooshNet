@@ -1,0 +1,234 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}تراکنش‌های مالی{% endblock %}
+{% block page_subtitle %}لیست و وضعیت پرداخت‌های کاربران{% endblock %}
+
+{% block content %}
+<div class="fade-in">
+    <!-- Actions Bar -->
+    <div class="card" style="margin-bottom: var(--sp-xl);">
+        <div
+            style="display: flex; flex-wrap: wrap; gap: var(--sp-md); justify-content: space-between; align-items: center;">
+
+            <!-- Stats Summary -->
+            <div style="display: flex; gap: var(--sp-lg); align-items: center;">
+                <div style="display: flex; align-items: center; gap: var(--sp-sm);">
+                    <div
+                        style="width: 40px; height: 40px; border-radius: var(--radius-lg); background: rgba(99, 102, 241, 0.1); color: var(--p-info); display: flex; align-items: center; justify-content: center;">
+                        <i class="fas fa-receipt"></i>
+                    </div>
+                    <div>
+                        <div style="font-weight: 700;">{{ total }}</div>
+                        <div style="font-size: 0.8rem; color: var(--p-text-muted);">کل تراکنش‌ها</div>
+                    </div>
+                </div>
+
+                <div style="width: 1px; height: 30px; background: var(--border-color);"></div>
+
+                <div style="display: flex; align-items: center; gap: var(--sp-sm);">
+                    <div
+                        style="width: 40px; height: 40px; border-radius: var(--radius-lg); background: rgba(16, 185, 129, 0.1); color: var(--p-success); display: flex; align-items: center; justify-content: center;">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <div>
+                        <div style="font-weight: 700;">{{ stats.successful or 0 }}</div>
+                        <div style="font-size: 0.8rem; color: var(--p-text-muted);">موفق</div>
+                    </div>
+                </div>
+
+                <div style="width: 1px; height: 30px; background: var(--border-color);"></div>
+
+                <div style="display: flex; align-items: center; gap: var(--sp-sm);">
+                    <div
+                        style="width: 40px; height: 40px; border-radius: var(--radius-lg); background: rgba(245, 158, 11, 0.1); color: var(--p-warning); display: flex; align-items: center; justify-content: center;">
+                        <i class="fas fa-clock"></i>
+                    </div>
+                    <div>
+                        <div style="font-weight: 700;">{{ stats.pending or 0 }}</div>
+                        <div style="font-size: 0.8rem; color: var(--p-text-muted);">در انتظار</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search -->
+            <div
+                style="flex: 1; min-width: 300px; display: flex; align-items: center; gap: var(--sp-sm); background: var(--p-bg-main); padding: var(--sp-sm) var(--sp-md); border-radius: var(--radius-lg); border: 1px solid var(--border-color);">
+                <i class="fas fa-search" style="color: var(--p-text-muted);"></i>
+                <input type="text" id="searchInput" placeholder="جستجو (آیدی، مبلغ، یوزرنیم...)" value="{{ search }}"
+                    style="flex: 1; color: var(--p-text-main);" onkeypress="handleSearchKeypress(event)">
+                {% if search %}
+                <button onclick="clearSearch()" style="color: var(--p-text-muted); cursor: pointer;"><i
+                        class="fas fa-times"></i></button>
+                {% endif %}
+            </div>
+
+            <button class="btn btn-primary" onclick="performSearch()">
+                <i class="fas fa-search"></i>
+                <span>جستجو</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Transactions Grid -->
+    <div class="grid-3">
+        {% if invoices %}
+        {% for invoice in invoices %}
+        <div class="card transaction-card">
+            <div class="card-header"
+                style="margin-bottom: var(--sp-md); border-bottom: 1px solid var(--border-color); padding-bottom: var(--sp-md);">
+                <div style="display: flex; gap: var(--sp-md); align-items: center;">
+                    <div style="position: relative;">
+                        <div
+                            style="width: 50px; height: 50px; border-radius: var(--radius-lg); background: var(--p-bg-hover); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; color: {% if invoice.status == 'paid' or invoice.status == 'completed' %}var(--p-success){% elif invoice.status == 'pending' %}var(--p-warning){% else %}var(--p-error){% endif %};">
+                            {% if invoice.status == 'paid' or invoice.status == 'completed' %}
+                            <i class="fas fa-check-circle"></i>
+                            {% elif invoice.status == 'pending' %}
+                            <i class="fas fa-clock"></i>
+                            {% else %}
+                            <i class="fas fa-times-circle"></i>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="font-weight: 800; font-size: 1rem; margin-bottom: 2px;">#{{ invoice.id }}</div>
+                        <div style="font-size: 0.8rem; color: var(--p-text-muted);">
+                            {% if invoice.purchase_type == 'plan' %}پلن{% elif invoice.purchase_type == 'gigabyte'
+                            %}حجم{% else %}{{ invoice.purchase_type }}{% endif %}
+                        </div>
+                    </div>
+                    <div style="text-align: left;">
+                        <div
+                            style="font-weight: 800; font-size: 1.1rem; color: {% if invoice.status == 'paid' or invoice.status == 'completed' %}var(--p-success){% elif invoice.status == 'pending' %}var(--p-warning){% else %}var(--p-error){% endif %};">
+                            {{ "{:,}".format(invoice.amount) }} <span style="font-size: 0.7rem;">تومان</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: var(--sp-sm);">
+                <div
+                    style="display: flex; justify-content: space-between; align-items: center; padding: var(--sp-sm); background: var(--p-bg-hover); border-radius: var(--radius-md);">
+                    <div style="display: flex; align-items: center; gap: var(--sp-sm);">
+                        <i class="fas fa-user" style="color: var(--p-text-muted); font-size: 0.8rem;"></i>
+                        <span style="font-size: 0.8rem; color: var(--p-text-muted);">کاربر</span>
+                    </div>
+                    <div style="text-align: left;">
+                        <div style="font-weight: 700; font-size: 0.9rem;">{{ invoice.first_name or '---' }}</div>
+                        <div style="font-size: 0.7rem; color: var(--p-text-muted);">@{{ invoice.username or '---' }}
+                        </div>
+                    </div>
+                </div>
+
+                <div
+                    style="display: flex; justify-content: space-between; align-items: center; padding: var(--sp-sm); background: var(--p-bg-hover); border-radius: var(--radius-md);">
+                    <div style="display: flex; align-items: center; gap: var(--sp-sm);">
+                        <i class="fas fa-server" style="color: var(--p-text-muted); font-size: 0.8rem;"></i>
+                        <span style="font-size: 0.8rem; color: var(--p-text-muted);">پنل</span>
+                    </div>
+                    <span style="font-weight: 700; color: var(--p-info);">{{ invoice.panel_name }}</span>
+                </div>
+
+                <div
+                    style="display: flex; justify-content: space-between; align-items: center; padding: var(--sp-sm); background: var(--p-bg-hover); border-radius: var(--radius-md);">
+                    <div style="display: flex; align-items: center; gap: var(--sp-sm);">
+                        <i class="fas fa-calendar" style="color: var(--p-text-muted); font-size: 0.8rem;"></i>
+                        <span style="font-size: 0.8rem; color: var(--p-text-muted);">تاریخ</span>
+                    </div>
+                    <div style="text-align: left;">
+                        <div style="font-weight: 700; font-size: 0.9rem;">{{ invoice.created_at.strftime('%Y-%m-%d') if
+                            invoice.created_at else '-' }}</div>
+                        <div style="font-size: 0.7rem; color: var(--p-text-muted);">{{
+                            invoice.created_at.strftime('%H:%M:%S') if invoice.created_at else '' }}</div>
+                    </div>
+                </div>
+
+                {% if invoice.status == 'pending' and invoice.order_id %}
+                <button class="btn btn-sm btn-outline" style="width: 100%; margin-top: var(--sp-sm);"
+                    onclick="checkTransactionStatus({{ invoice.id }}, '{{ invoice.order_id }}', this)">
+                    <i class="fas fa-sync-alt"></i>
+                    بررسی وضعیت
+                </button>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="card" style="grid-column: 1 / -1; text-align: center; padding: var(--sp-3xl);">
+            <i class="fas fa-receipt"
+                style="font-size: 3rem; color: var(--p-bg-active); margin-bottom: var(--sp-lg);"></i>
+            <h3 style="margin-bottom: var(--sp-sm);">تراکنشی یافت نشد</h3>
+            <p class="text-muted">هیچ تراکنشی با مشخصات وارد شده پیدا نشد.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Pagination -->
+    {% if total_pages > 1 %}
+    <div class="card"
+        style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--sp-md); margin-top: var(--sp-xl);">
+        <div class="text-muted" style="font-size: 0.9rem;">
+            نمایش صفحه <strong>{{ page }}</strong> از <strong>{{ total_pages }}</strong>
+        </div>
+        <div style="display: flex; gap: var(--sp-sm);">
+            {% if page > 1 %}
+            <a href="?page={{ page - 1 }}{% if search %}&search={{ search }}{% endif %}"
+                class="btn btn-sm btn-secondary">
+                <i class="fas fa-chevron-right"></i>
+                قبلی
+            </a>
+            {% endif %}
+
+            {% if page < total_pages %} <a href="?page={{ page + 1 }}{% if search %}&search={{ search }}{% endif %}"
+                class="btn btn-sm btn-secondary">
+                بعدی
+                <i class="fas fa-chevron-left"></i>
+                </a>
+                {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+    function handleSearchKeypress(event) {
+        if (event.key === 'Enter') {
+            performSearch();
+        }
+    }
+
+    function performSearch() {
+        const query = document.getElementById('searchInput').value;
+        window.location.href = `?search=${encodeURIComponent(query)}`;
+    }
+
+    function clearSearch() {
+        window.location.href = window.location.pathname;
+    }
+
+    async function checkTransactionStatus(id, orderId, btn) {
+        const originalContent = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> در حال بررسی...';
+        btn.disabled = true;
+
+        try {
+            const response = await apiCall(`/api/admin/transactions/${id}/check`, {
+                method: 'POST',
+                body: JSON.stringify({ order_id: orderId })
+            });
+
+            if (response.status === 'paid' || response.status === 'completed') {
+                showToast('تراکنش با موفقیت پرداخت شده است', 'success');
+                setTimeout(() => window.location.reload(), 1000);
+            } else {
+                showToast('تراکنش هنوز پرداخت نشده است', 'warning');
+                btn.innerHTML = originalContent;
+                btn.disabled = false;
+            }
+        } catch (error) {
+            console.error(error);
+            btn.innerHTML = originalContent;
+            btn.disabled = false;
+        }
+    }
+</script>
+{% endblock %}

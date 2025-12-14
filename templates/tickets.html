@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% block title %}پشتیبانی - پنل کاربری{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tickets-ultra-modern.css') }}">
+
+<div class="tickets-page-container">
+    <!-- Header -->
+    <div class="tickets-page-header">
+        <h1 class="page-title-large">پشتیبانی</h1>
+        <div
+            style="width: 40px; height: 40px; background: var(--bg-card); border: 1px solid var(--border-light); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: var(--primary);">
+            <i class="fas fa-headset"></i>
+        </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="ticket-stats-grid">
+        <div class="stat-card-modern">
+            <div class="stat-icon-wrapper" style="background: rgba(229, 9, 20, 0.1); color: var(--primary);">
+                <i class="fas fa-ticket-alt"></i>
+            </div>
+            <div class="stat-value-modern">{{ total }}</div>
+            <div class="stat-label-modern">کل تیکت‌ها</div>
+        </div>
+        <div class="stat-card-modern">
+            <div class="stat-icon-wrapper" style="background: rgba(245, 158, 11, 0.1); color: #fbbf24;">
+                <i class="fas fa-clock"></i>
+            </div>
+            <div class="stat-value-modern">{{ tickets|selectattr('status', 'equalto', 'open')|list|length }}</div>
+            <div class="stat-label-modern">در جریان</div>
+        </div>
+        <div class="stat-card-modern">
+            <div class="stat-icon-wrapper" style="background: rgba(16, 185, 129, 0.1); color: #34d399;">
+                <i class="fas fa-check-circle"></i>
+            </div>
+            <div class="stat-value-modern">{{ tickets|selectattr('status', 'equalto', 'closed')|list|length }}</div>
+            <div class="stat-label-modern">بسته شده</div>
+        </div>
+    </div>
+
+    <!-- Ticket List -->
+    {% if tickets %}
+    <div class="ticket-list-modern">
+        {% for ticket in tickets %}
+        {% set is_waiting = ticket.status == 'open' and (not ticket.last_reply_by or ticket.last_reply_by ==
+        ticket.user_id) %}
+
+        <a href="{{ url_for('ticket_detail', ticket_id=ticket.id) }}" class="ticket-card-modern">
+            <div class="ticket-card-top">
+                <span class="ticket-id-badge">#{{ ticket.id }}</span>
+                {% if is_waiting %}
+                <div class="ticket-status-badge status-badge-waiting">
+                    <i class="fas fa-circle" style="font-size: 6px;"></i>
+                    منتظر پاسخ
+                </div>
+                {% elif ticket.status == 'open' %}
+                <div class="ticket-status-badge status-badge-open">
+                    <i class="fas fa-circle" style="font-size: 6px;"></i>
+                    پاسخ داده شده
+                </div>
+                {% else %}
+                <div class="ticket-status-badge status-badge-closed">
+                    بسته شده
+                </div>
+                {% endif %}
+            </div>
+
+            <h3 class="ticket-subject-modern">{{ ticket.subject }}</h3>
+
+            <div class="ticket-card-footer">
+                <div class="ticket-meta-info">
+                    <div class="meta-icon-text">
+                        <i class="far fa-calendar-alt"></i>
+                        <span>{{ ticket.created_at.strftime('%Y/%m/%d') if ticket.created_at else 'نامشخص' }}</span>
+                    </div>
+                    <div class="meta-icon-text">
+                        <i class="far fa-comments"></i>
+                        <span>{{ ticket.reply_count or 0 }}</span>
+                    </div>
+                </div>
+
+                <div class="ticket-meta-info">
+                    {% if ticket.priority == 'high' %}
+                    <span style="color: var(--error); font-weight: 700; font-size: 0.75rem;">بالا</span>
+                    {% elif ticket.priority == 'low' %}
+                    <span style="color: var(--text-secondary); font-size: 0.75rem;">پایین</span>
+                    {% else %}
+                    <span style="color: var(--primary); font-size: 0.75rem;">عادی</span>
+                    {% endif %}
+                </div>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+
+    <!-- Pagination -->
+    {% if total_pages > 1 %}
+    <div class="pagination-modern">
+        {% if current_page > 1 %}
+        <a href="{{ url_for('tickets', page=current_page - 1) }}" class="page-btn-modern">
+            <i class="fas fa-chevron-right"></i>
+        </a>
+        {% endif %}
+
+        {% for p in range(1, total_pages + 1) %}
+        {% if p == 1 or p == total_pages or (p >= current_page - 1 and p <= current_page + 1) %} <a
+            href="{{ url_for('tickets', page=p) }}" class="page-btn-modern {% if p == current_page %}active{% endif %}">
+            {{ p }}</a>
+            {% elif p == current_page - 2 or p == current_page + 2 %}
+            <span style="align-self:center; color:var(--text-tertiary)">...</span>
+            {% endif %}
+            {% endfor %}
+
+            {% if current_page < total_pages %} <a href="{{ url_for('tickets', page=current_page + 1) }}"
+                class="page-btn-modern">
+                <i class="fas fa-chevron-left"></i>
+                </a>
+                {% endif %}
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="empty-state-modern">
+        <div class="empty-icon-modern"><i class="fas fa-inbox"></i></div>
+        <h3>هیچ تیکتی ندارید</h3>
+        <p>برای دریافت پشتیبانی، اولین تیکت خود را ایجاد کنید</p>
+    </div>
+    {% endif %}
+
+    <!-- FAB -->
+    <a href="{{ url_for('ticket_new') }}" class="fab-modern">
+        <i class="fas fa-plus"></i>
+    </a>
+</div>
+{% endblock %}

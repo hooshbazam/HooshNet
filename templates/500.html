@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block title %}500 - خطای سرور{% endblock %}
+{% block page_title %}خطای سرور{% endblock %}
+
+{% block content %}
+<div class="error-page">
+    <div class="error-container">
+        <div class="error-code">500</div>
+        <h1 class="error-title">خطای داخلی سرور</h1>
+        <p class="error-description">متأسفانه مشکلی در سرور رخ داده است. لطفاً بعداً دوباره تلاش کنید.</p>
+        <div class="error-actions">
+            <a href="{{ url_for('dashboard') if user else url_for('index') }}" class="btn btn-primary btn-lg">
+                <i class="fas fa-home"></i>
+                بازگشت به صفحه اصلی
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+

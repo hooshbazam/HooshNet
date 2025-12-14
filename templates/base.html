@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#050505">
+    <title>{% block title %}پنل VPN{% endblock %}</title>
+
+    <!-- Telegram Web App SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+        rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/vazirmatn@33.0.3/Vazirmatn-font-face.css" rel="stylesheet">
+
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- CSS -->
+    <link rel="stylesheet"
+        href="{{ url_for('static', filename='css/ultra-modern-redesign-v2.css') }}?v={{ range(1, 10000) | random }}">
+
+    {% block extra_css %}{% endblock %}
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Main Content -->
+        <main class="page-content">
+            {% block content %}{% endblock %}
+        </main>
+
+        <!-- Bottom Navigation -->
+        {% if user %}
+        <nav class="bottom-nav">
+            <a href="{{ url_for('dashboard') }}"
+                class="nav-item {% if request.endpoint == 'dashboard' or request.endpoint == 'index' %}active{% endif %}">
+                <i class="fas fa-home"></i>
+                <span>داشبورد</span>
+            </a>
+
+            <a href="{{ url_for('buy_service') }}"
+                class="nav-item {% if request.endpoint == 'buy_service' %}active{% endif %}">
+                <i class="fas fa-plus-circle"></i>
+                <span>خرید</span>
+            </a>
+
+            <a href="{{ url_for('services') }}"
+                class="nav-item {% if request.endpoint and 'services' in request.endpoint %}active{% endif %}">
+                <i class="fas fa-server"></i>
+                <span>سرویس‌ها</span>
+            </a>
+
+            <a href="{{ url_for('profile') }}"
+                class="nav-item {% if request.endpoint == 'profile' or request.endpoint == 'transactions' %}active{% endif %}">
+                <i class="fas fa-user"></i>
+                <span>پروفایل</span>
+            </a>
+        </nav>
+        {% endif %}
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toastContainer"
+        style="position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 9999; width: 90%; max-width: 400px;">
+    </div>
+
+    <!-- Scripts -->
+    <script>
+        // Telegram Web App Initialization
+        if (window.Telegram && window.Telegram.WebApp) {
+            const tg = window.Telegram.WebApp;
+            tg.expand();
+            tg.enableClosingConfirmation();
+            tg.setHeaderColor('#050505');
+            tg.setBackgroundColor('#050505');
+            tg.ready();
+        }
+
+        // Toast Function
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            if (!container) return;
+
+            const toast = document.createElement('div');
+            toast.style.background = type === 'error' ? '#ef4444' : (type === 'success' ? '#10b981' : '#333');
+            toast.style.color = 'white';
+            toast.style.padding = '12px 20px';
+            toast.style.borderRadius = '12px';
+            toast.style.marginBottom = '10px';
+            toast.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+            toast.style.display = 'flex';
+            toast.style.alignItems = 'center';
+            toast.style.gap = '10px';
+            toast.style.animation = 'fadeIn 0.3s ease-out';
+            toast.style.fontSize = '0.9rem';
+            toast.style.fontWeight = '500';
+
+            let icon = 'fa-info-circle';
+            if (type === 'success') icon = 'fa-check-circle';
+            if (type === 'error') icon = 'fa-exclamation-circle';
+
+            toast.innerHTML = `<i class="fas ${icon}"></i> <span>${message}</span>`;
+
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(-10px)';
+                toast.style.transition = 'all 0.3s ease';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // Copy to Clipboard
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                showToast('کپی شد!', 'success');
+            }).catch(() => {
+                showToast('خطا در کپی', 'error');
+            });
+        }
+
+        // Fix URLs for multi-bot
+        function fixUrl(url) {
+            if (!url || typeof url !== 'string' || url.startsWith('http') || url.startsWith('/static/')) return url;
+            const pathParts = window.location.pathname.split('/').filter(p => p);
+            // Only treat the first part as a bot prefix if it is numeric (Bot ID)
+            if (pathParts.length > 0) {
+                const potentialBotId = pathParts[0];
+                if (/^\d+$/.test(potentialBotId)) {
+                    if (!url.startsWith(`/${potentialBotId}`)) {
+                        return `/${potentialBotId}${url.startsWith('/') ? url : '/' + url}`;
+                    }
+                }
+            }
+            return url;
+        }
+    </script>
+
+    {% block extra_js %}{% endblock %}
+</body>
+
+</html>
