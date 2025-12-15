@@ -81,6 +81,20 @@ class SettingsManager:
         if user_id is None and updated_by is not None:
             user_id = updated_by
             
+        # Resolve Telegram ID to Internal User ID if needed
+        # Telegram IDs are usually large (> 32-bit int max value 2147483647)
+        if user_id and isinstance(user_id, int) and user_id > 2147483647:
+            try:
+                user = self.db.get_user(user_id)
+                if user:
+                    user_id = user['id']
+                else:
+                    logger.warning(f"Could not resolve Telegram ID {user_id} to internal ID for setting {key}")
+                    user_id = None
+            except Exception as e:
+                logger.error(f"Error resolving user ID: {e}")
+                user_id = None
+            
         success = self.db.set_setting(key, value, description, user_id)
         if success:
             self._cache[key] = value
