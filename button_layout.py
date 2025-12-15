@@ -673,6 +673,9 @@ class ProfessionalButtonLayout:
         # Grouping configuration and logs
         keyboard.append([
             InlineKeyboardButton("⚙️ تنظیمات سیستم", callback_data="system_settings"),
+            InlineKeyboardButton("🤖 تنظیمات اطلاعات ربات", callback_data="bot_info_settings")
+        ])
+        keyboard.append([
             InlineKeyboardButton("📋 لاگ‌های سیستم", callback_data="system_logs")
         ])
         
@@ -800,26 +803,20 @@ class ProfessionalButtonLayout:
     @staticmethod
     def create_system_settings_menu() -> InlineKeyboardMarkup:
         """Create professional system settings menu"""
-        keyboard = [
-            # Row 1: Update & Backup
+            # Row 1: Backup & Status
             [
-                InlineKeyboardButton("🔄 آپدیت سیستم", callback_data="sys_update"),
-                InlineKeyboardButton("💾 بکاپ دیتابیس", callback_data="sys_backup")
-            ],
-            # Row 2: Optimize & Status
-            [
-                InlineKeyboardButton("🧹 بهینه‌سازی دیتابیس", callback_data="sys_optimize"),
+                InlineKeyboardButton("💾 بکاپ دیتابیس", callback_data="sys_backup"),
                 InlineKeyboardButton("📊 وضعیت سیستم", callback_data="sys_status")
             ],
-            # Row 3: Logs
+            # Row 2: Logs
             [
                 InlineKeyboardButton("📋 لاگ‌های سیستم", callback_data="sys_logs")
             ],
-            # Row 4: Restart (Full width for safety)
+            # Row 3: Restart (Full width for safety)
             [
                 InlineKeyboardButton("🔄 ریستارت سرویس‌ها", callback_data="sys_restart")
             ],
-            # Row 5: Back
+            # Row 4: Back
             [
                 InlineKeyboardButton("🔙 بازگشت", callback_data="admin_panel")
             ]

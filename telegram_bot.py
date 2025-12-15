@@ -968,6 +968,12 @@ class VPNBot:
                 await self.handle_admin_panel(update, context)
             elif data == "system_settings":
                 await self.handle_system_settings(update, context)
+            elif data == "bot_info_settings":
+                await self.handle_bot_info_settings(update, context)
+            elif data.startswith("edit_setting_"):
+                # edit_setting_setting_key
+                key = data.replace("edit_setting_", "")
+                await self.handle_edit_setting(update, context, key)
             elif data == "system_logs":
                 await self.handle_system_action(update, context, "logs")
             elif data.startswith("sys_"):
@@ -1668,6 +1674,11 @@ class VPNBot:
         # Check if user is editing a panel
         if context.user_data.get('editing_panel', False):
             await self.handle_edit_panel_text_input(update, context, text)
+            return
+        
+        # Check if user is editing a setting
+        if context.user_data.get('editing_setting', False):
+            await self.handle_save_setting(update, context, text)
             return
         
         # Check if user is adding a panel
@@ -15611,6 +15622,111 @@ class VPNBot:
 
 
 
+    async def handle_bot_info_settings(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show bot info settings menu"""
+        query = update.callback_query
+        await query.answer()
+        
+        user_id = update.effective_user.id
+        if not self.db.is_admin(user_id):
+            await query.edit_message_text("❌ دسترسی غیرمجاز.")
+            return
+            
+        text = """
+🤖 **تنظیمات اطلاعات ربات**
+
+در این بخش می‌توانید تنظیمات عمومی ربات را تغییر دهید.
+لطفاً گزینه مورد نظر را برای ویرایش انتخاب کنید:
+        """
+        
+        # Create keyboard dynamically based on settings
+        settings_map = {
+            'channel_id': '📢 کانال اصلی',
+            'reports_channel_id': '📝 کانال گزارشات',
+            'receipts_channel_id': '🧾 کانال رسیدها',
+            'referral_reward_amount': '🎁 هدیه معرفی',
+            'registration_gift_amount': '🎁 هدیه ثبت نام',
+            'website_url': '🌐 وب‌سایت',
+            'webapp_url': '📱 وب‌اپلیکیشن'
+        }
+        
+        keyboard = []
+        for key, label in settings_map.items():
+            current_value = self.settings_manager.get_setting(key)
+            # Truncate long values
+            display_value = str(current_value)
+            if len(display_value) > 20:
+                display_value = display_value[:17] + "..."
+            
+            keyboard.append([InlineKeyboardButton(f"{label}: {display_value}", callback_data=f"edit_setting_{key}")])
+            
+        keyboard.append([InlineKeyboardButton("🔙 بازگشت", callback_data="admin_panel")])
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+
+    async def handle_edit_setting(self, update: Update, context: ContextTypes.DEFAULT_TYPE, key: str):
+        """Handle editing a specific setting"""
+        query = update.callback_query
+        await query.answer()
+        
+        settings_map = {
+            'channel_id': '📢 کانال اصلی (جوین اجباری)',
+            'reports_channel_id': '📝 کانال گزارشات',
+            'receipts_channel_id': '🧾 کانال رسیدها',
+            'referral_reward_amount': '🎁 هدیه معرفی (تومان)',
+            'registration_gift_amount': '🎁 هدیه ثبت نام (تومان)',
+            'website_url': '🌐 آدرس وب‌سایت',
+            'webapp_url': '📱 آدرس وب‌اپلیکیشن'
+        }
+        
+        label = settings_map.get(key, key)
+        current_value = self.settings_manager.get_setting(key)
+        
+        text = f"""
+✏️ **ویرایش {label}**
+
+مقدار فعلی: `{current_value}`
+
+لطفاً مقدار جدید را ارسال کنید.
+برای انصراف /cancel را ارسال کنید.
+        """
+        
+        context.user_data['editing_setting'] = True
+        context.user_data['setting_key'] = key
+        
+        await query.edit_message_text(text, parse_mode='Markdown')
+
+    async def handle_save_setting(self, update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
+        """Save the edited setting"""
+        if text.lower() == '/cancel':
+            await update.message.reply_text("❌ عملیات لغو شد.")
+            context.user_data.clear()
+            return
+
+        key = context.user_data.get('setting_key')
+        if not key:
+            await update.message.reply_text("❌ خطای سیستمی.")
+            context.user_data.clear()
+            return
+            
+        # Validate input if needed
+        if key in ['referral_reward_amount', 'registration_gift_amount']:
+            if not text.isdigit():
+                await update.message.reply_text("❌ لطفاً یک عدد معتبر وارد کنید.")
+                return
+            value = int(text)
+        else:
+            value = text
+            
+        # Save setting
+        if self.settings_manager.set_setting(key, value, updated_by=update.effective_user.id):
+            await update.message.reply_text(f"✅ تنظیمات با موفقیت ذخیره شد!\n\nمقدار جدید: `{value}`", parse_mode='Markdown')
+        else:
+            await update.message.reply_text("❌ خطا در ذخیره تنظیمات.")
+            
+        context.user_data.clear()
+
     async def handle_system_settings(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Show system settings menu"""
         query = update.callback_query
@@ -15626,10 +15742,9 @@ class VPNBot:
 
 لطفاً گزینه مورد نظر را انتخاب کنید:
 
-🔄 **آپدیت سیستم:** دریافت آخرین نسخه ربات و وب اپلیکیشن
 💾 **بکاپ دیتابیس:** تهیه و ارسال فایل پشتیبان دیتابیس
-🧹 **بهینه‌سازی:** بهینه‌سازی جداول و ایندکس‌های دیتابیس
 📊 **وضعیت سیستم:** مشاهده منابع مصرفی سرور
+📋 **لاگ‌های سیستم:** مشاهده آخرین لاگ‌های ربات
 🔄 **ریستارت:** راه‌اندازی مجدد سرویس‌ها
         """
         
@@ -15656,26 +15771,11 @@ class VPNBot:
             return
 
         # Handle actions
-        if action == "update":
-            await query.answer("⏳ در حال شروع آپدیت...", show_alert=True)
-            success, msg = await self.system_manager.update_system()
-            if success:
-                await query.edit_message_text(msg)
-            else:
-                await query.message.reply_text(msg)
-                
-        elif action == "backup":
+        if action == "backup":
             await query.answer("⏳ در حال تهیه بکاپ...", show_alert=True)
             await query.edit_message_text("⏳ در حال تهیه و ارسال بکاپ دیتابیس...\nلطفاً صبر کنید.")
             success, msg = await self.system_manager.backup_database()
             # Return to menu
-            reply_markup = ButtonLayout.create_back_button("system_settings")
-            await query.edit_message_text(msg, reply_markup=reply_markup)
-            
-        elif action == "optimize":
-            await query.answer("⏳ در حال بهینه‌سازی...", show_alert=True)
-            await query.edit_message_text("⏳ در حال بهینه‌سازی دیتابیس...")
-            success, msg = await self.system_manager.optimize_database()
             reply_markup = ButtonLayout.create_back_button("system_settings")
             await query.edit_message_text(msg, reply_markup=reply_markup)
             
@@ -15684,11 +15784,6 @@ class VPNBot:
             status_text = await self.system_manager.get_system_status()
             reply_markup = ButtonLayout.create_back_button("system_settings")
             await query.edit_message_text(status_text, reply_markup=reply_markup, parse_mode='Markdown')
-            
-        elif action == "restart":
-            await query.answer("⏳ در حال ریستارت...", show_alert=True)
-            success, msg = await self.system_manager.restart_services()
-            await query.edit_message_text(msg)
             
         elif action == "logs":
             await query.answer("⏳ دریافت لاگ‌ها...", show_alert=True)
@@ -15715,6 +15810,11 @@ class VPNBot:
                 except Exception:
                     # Fallback if markdown fails (e.g. special chars)
                     await query.edit_message_text(f"📋 لاگ‌های سیستم:\n\n{logs}", reply_markup=reply_markup)
+
+        elif action == "restart":
+            await query.answer("⏳ در حال ریستارت...", show_alert=True)
+            success, msg = await self.system_manager.restart_services()
+            await query.edit_message_text(msg)
 
         else:
             await query.answer("❌ دستور نامعتبر.", show_alert=True)

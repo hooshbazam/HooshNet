@@ -130,6 +130,17 @@ class SystemManager:
             disk_total = disk.total / (1024 * 1024 * 1024)
             disk_percent = disk.percent
             
+            # Uptime
+            boot_time = psutil.boot_time()
+            import time
+            uptime_seconds = time.time() - boot_time
+            uptime_days = int(uptime_seconds // (24 * 3600))
+            uptime_hours = int((uptime_seconds % (24 * 3600)) // 3600)
+            uptime_minutes = int((uptime_seconds % 3600) // 60)
+            
+            # Connections
+            connections = len(psutil.net_connections())
+            
             # Services
             bot_active = self._check_service_active('vpn-bot')
             webapp_active = self._check_service_active('vpn-webapp')
@@ -143,6 +154,8 @@ class SystemManager:
 • پردازنده: {cpu_percent}%
 • رم: {ram_used:.1f}GB / {ram_total:.1f}GB ({ram_percent}%)
 • دیسک: {disk_used:.1f}GB / {disk_total:.1f}GB ({disk_percent}%)
+• آپتایم: {uptime_days} روز، {uptime_hours} ساعت، {uptime_minutes} دقیقه
+• اتصالات فعال: {connections}
 
 ⚙️ **سرویس‌ها:**
 • ربات تلگرام: {'✅ فعال' if bot_active else '🔴 غیرفعال'}
