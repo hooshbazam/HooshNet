@@ -359,21 +359,14 @@ class DatabaseBackupSystem:
     async def create_and_send_backup(self):
         """Create backup and send to channel"""
         if not self.enabled:
-<<<<<<< HEAD
-            return
-=======
             return None
->>>>>>> 662d329 (Auto-update: 2025-12-14 13:52:04)
         
         logger.info(f"🔄 Starting automated backup for bot '{self.bot_name}'...")
         
         backup_path = await self.create_backup()
         if backup_path:
             await self.send_backup_to_channel(backup_path)
-<<<<<<< HEAD
-=======
             return backup_path
->>>>>>> 662d329 (Auto-update: 2025-12-14 13:52:04)
         else:
             logger.error(f"❌ Failed to create backup for bot '{self.bot_name}'")
             # Send error notification
@@ -387,10 +380,7 @@ class DatabaseBackupSystem:
                 )
             except:
                 pass
-<<<<<<< HEAD
-=======
             return None
->>>>>>> 662d329 (Auto-update: 2025-12-14 13:52:04)
     
     async def start_auto_backup(self, interval_hours: int = 1):
         """

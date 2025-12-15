@@ -798,8 +798,6 @@ class ProfessionalButtonLayout:
         return InlineKeyboardMarkup(keyboard)
     
     @staticmethod
-<<<<<<< HEAD
-=======
     def create_system_settings_menu() -> InlineKeyboardMarkup:
         """Create professional system settings menu"""
         keyboard = [
@@ -829,7 +827,6 @@ class ProfessionalButtonLayout:
         return InlineKeyboardMarkup(keyboard)
 
     @staticmethod
->>>>>>> 662d329 (Auto-update: 2025-12-14 13:52:04)
     def create_volume_suggestions(panel_id: int, price_per_gb: int = 1000) -> InlineKeyboardMarkup:
         """Create volume suggestions with custom option - professional and dynamic layout"""
         
@@ -993,8 +990,6 @@ class ProfessionalButtonLayout:
         )]]
         return InlineKeyboardMarkup(keyboard)
 
-<<<<<<< HEAD
-=======
     @staticmethod
     def create_panel_type_selection() -> InlineKeyboardMarkup:
         """Create panel type selection buttons"""
@@ -1011,7 +1006,6 @@ class ProfessionalButtonLayout:
         ]
         return InlineKeyboardMarkup(keyboard)
 
->>>>>>> 662d329 (Auto-update: 2025-12-14 13:52:04)
 
 # Legacy compatibility
 class ButtonLayout(ProfessionalButtonLayout):

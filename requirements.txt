@@ -10,4 +10,3 @@ qrcode>=7.4.2
 Pillow>=10.0.0
 mysql-connector-python>=8.2.0
 gunicorn>=21.2.0
-psutil>=5.9.0

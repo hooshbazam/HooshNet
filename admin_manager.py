@@ -10,10 +10,7 @@ from professional_database import ProfessionalDatabaseManager
 from panel_manager import PanelManager
 from marzban_manager import MarzbanPanelManager
 from rebecca_manager import RebeccaPanelManager
-<<<<<<< HEAD
-=======
 from pasargad_manager import PasargadPanelManager
->>>>>>> 662d329 (Auto-update: 2025-12-14 13:52:04)
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +18,7 @@ class AdminManager:
     def __init__(self, db: ProfessionalDatabaseManager):
         self.db = db
         
-<<<<<<< HEAD
-    def get_panel_manager(self, panel_id: int) -> Optional[Union[PanelManager, MarzbanPanelManager, RebeccaPanelManager]]:
-=======
     def get_panel_manager(self, panel_id: int) -> Optional[Union[PanelManager, MarzbanPanelManager, RebeccaPanelManager, PasargadPanelManager]]:
->>>>>>> 662d329 (Auto-update: 2025-12-14 13:52:04)
         """
         Factory method to get the appropriate panel manager based on panel type
         """
@@ -44,11 +37,8 @@ class AdminManager:
                 manager = MarzbanPanelManager()
             elif panel_type == 'rebecca':
                 manager = RebeccaPanelManager()
-<<<<<<< HEAD
-=======
             elif panel_type == 'pasargad':
                 manager = PasargadPanelManager()
->>>>>>> 662d329 (Auto-update: 2025-12-14 13:52:04)
             else:
                 # Default to 3x-ui
                 manager = PanelManager()
@@ -61,8 +51,6 @@ class AdminManager:
             # For Rebecca/Marzban, we might need subscription_url if available
             if hasattr(manager, 'subscription_url'):
                 manager.subscription_url = panel.get('subscription_url')
-<<<<<<< HEAD
-=======
             
             # For Pasargad, set main group if available
             if isinstance(manager, PasargadPanelManager) and panel.get('extra_config'):
@@ -72,7 +60,6 @@ class AdminManager:
                         manager.main_group = extra_config['main_group']
                 except:
                     pass
->>>>>>> 662d329 (Auto-update: 2025-12-14 13:52:04)
                 
             return manager
             
@@ -446,8 +433,6 @@ class AdminManager:
             logger.error(f"Error changing main inbound: {e}")
             return False, f"Error: {str(e)}"
 
-<<<<<<< HEAD
-=======
 
     def add_panel(self, name: str, url: str, username: str, password: str, 
                   api_endpoint: str, default_inbound_id: int = None, price_per_gb: int = 0,
@@ -558,4 +543,3 @@ class AdminManager:
         except Exception as e:
             logger.error(f"Error updating panel: {e}")
             return False, f"❌ خطای سیستمی: {str(e)}"
->>>>>>> 662d329 (Auto-update: 2025-12-14 13:52:04)

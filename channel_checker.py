@@ -87,13 +87,8 @@ async def show_force_join_message(update: Update, context: ContextTypes.DEFAULT_
         from config import BOT_CONFIG
         bot_config = BOT_CONFIG
     
-<<<<<<< HEAD
-    channel_id = bot_config.get('channel_id', '@AzadJooNet')
-    channel_link = bot_config.get('channel_link', 'https://t.me/AzadJooNet')
-=======
     channel_id = bot_config.get('channel_id', '@YourChannel')
     channel_link = bot_config.get('channel_link', 'https://t.me/YourChannel')
->>>>>>> 662d329 (Auto-update: 2025-12-14 13:52:04)
     
     message = MessageTemplates.WELCOME_MESSAGES.get('force_join', """
 📢 برای استفاده از ربات آزاد‌جو نت، لطفاً ابتدا در کانال ما عضو شوید
