@@ -22,6 +22,7 @@ from username_formatter import UsernameFormatter
 from message_templates import MessageTemplates
 from reporting_system import ReportingSystem
 from statistics_system import StatisticsSystem
+from settings_manager import SettingsManager
 # Payment callback removed
 from config import BOT_CONFIG, CLIENT_DEFAULTS, DEFAULT_PANEL_CONFIG, WEBAPP_CONFIG
 from traffic_monitor import TrafficMonitor
@@ -100,6 +101,7 @@ class VPNBot:
         else:
             self.db = db
             
+        self.settings_manager = SettingsManager(self.db)
         self.system_manager = None
         
         self.panel_manager = PanelManager()
