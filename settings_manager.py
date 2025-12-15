@@ -75,8 +75,12 @@ class SettingsManager:
         # 3. Return default
         return default
 
-    def set_setting(self, key: str, value: Any, description: str = None, user_id: int = None) -> bool:
+    def set_setting(self, key: str, value: Any, description: str = None, user_id: int = None, updated_by: int = None) -> bool:
         """Update setting in database and cache"""
+        # Handle updated_by alias
+        if user_id is None and updated_by is not None:
+            user_id = updated_by
+            
         success = self.db.set_setting(key, value, description, user_id)
         if success:
             self._cache[key] = value
