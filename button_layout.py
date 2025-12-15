@@ -803,6 +803,7 @@ class ProfessionalButtonLayout:
     @staticmethod
     def create_system_settings_menu() -> InlineKeyboardMarkup:
         """Create professional system settings menu"""
+        keyboard = [
             # Row 1: Backup & Status
             [
                 InlineKeyboardButton("💾 بکاپ دیتابیس", callback_data="sys_backup"),
