@@ -58,14 +58,6 @@ bash <(curl -Ls https://raw.githubusercontent.com/hooshbazam/HooshNet/main/insta
 
 ---
 
-## 📸 اسکرین‌شات‌ها
-
-| پنل مدیریت ربات | داشبورد وب‌اپلیکیشن | خرید سرویس |
-|:---:|:---:|:---:|
-| ![Admin Panel](https://via.placeholder.com/200x400?text=Admin+Panel) | ![Web Dashboard](https://via.placeholder.com/200x400?text=Web+Dashboard) | ![Purchase Flow](https://via.placeholder.com/200x400?text=Purchase) |
-
----
-
 ## 🤝 مشارکت و توسعه
 
 ما از مشارکت شما در توسعه هوش‌نت استقبال می‌کنیم! اگر پیشنهادی دارید یا باگی پیدا کردید، لطفاً از طریق بخش Issues در گیتهاب با ما در میان بگذارید.
