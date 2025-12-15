@@ -27,13 +27,9 @@ from config import BOT_CONFIG, CLIENT_DEFAULTS, DEFAULT_PANEL_CONFIG, WEBAPP_CON
 from traffic_monitor import TrafficMonitor
 from persian_datetime import PersianDateTime, format_db_datetime, format_db_date
 from user_info_updater import auto_update_user_info, ensure_user_updated
-<<<<<<< HEAD
-from channel_checker import require_channel_membership, check_channel_membership, show_force_join_message
-=======
 from user_info_updater import auto_update_user_info, ensure_user_updated
 from channel_checker import require_channel_membership, check_channel_membership, show_force_join_message
 from system_manager import SystemManager
->>>>>>> 662d329 (Auto-update: 2025-12-14 13:52:04)
 
 # Configure logging
 logging.basicConfig(
