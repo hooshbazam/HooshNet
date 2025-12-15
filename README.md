@@ -1,9 +1,5 @@
 # 🚀 هوش‌نت (HooshNet)
 
-![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)
-![Python](https://img.shields.io/badge/python-3.9+-yellow.svg)
-![License](https://img.shields.io/badge/license-MIT-green.svg)
-
 **هوش‌نت** یک سیستم مدیریت جامع و حرفه‌ای برای فروش و مدیریت سرویس‌های VPN است. این پروژه شامل یک ربات تلگرام پیشرفته و یک وب‌اپلیکیشن مدرن برای کاربران می‌باشد که تمامی نیازهای شما برای راه‌اندازی یک کسب‌وکارهوشمند را برطرف می‌کند.
 
 ---
@@ -38,7 +34,7 @@
 ### 🚀 دستور نصب سریع (Quick Install)
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/hooshbazam/HooshNet/main/install.sh)
+git clone https://github.com/hooshbazam/HooshNet.git && cd HooshNet && chmod +x installer.sh && sudo ./installer.sh
 ```
 
 یا اگر فایل‌ها را کلون کرده‌اید، دستور زیر را اجرا کنید:
