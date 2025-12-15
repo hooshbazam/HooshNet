@@ -16,12 +16,15 @@ class SettingsManager:
     _instance = None
     _cache = {}
     
-    def __new__(cls):
+    def __new__(cls, db_manager=None):
         if cls._instance is None:
             cls._instance = super(SettingsManager, cls).__new__(cls)
-            cls._instance.db = ProfessionalDatabaseManager()
+            cls._instance.db = db_manager if db_manager else ProfessionalDatabaseManager()
             cls._instance._load_cache()
         return cls._instance
+
+    def __init__(self, db_manager=None):
+        pass
     
     def _load_cache(self):
         """Load all settings from database into cache"""
