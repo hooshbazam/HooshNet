@@ -2599,6 +2599,8 @@ class VPNBot:
 
     async def handle_manage_panels(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Alias for show_manage_panels - called from callback query routing"""
+        # Clear any previous state when returning to main panel menu
+        context.user_data.clear()
         await self.show_manage_panels(update, context)
 
     async def start_add_panel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2611,14 +2613,12 @@ class VPNBot:
         context.user_data['adding_panel'] = True
         
         add_text = """
-🔧 **اضافه کردن پنل جدید**
+✨ **افزودن پنل جدید**
 
-لطفاً نوع پنل را انتخاب کنید:
+مدیر گرامی، برای اتصال پنل جدید به ربات، لطفاً نوع پنل خود را از لیست زیر انتخاب نمایید.
+این انتخاب به ربات کمک می‌کند تا تنظیمات مناسب را برای ارتباط با سرور شما اعمال کند.
 
-🔵 **3x-ui**: پنل قدرتمند 3x-ui با قابلیت‌های پیشرفته
-🟢 **Marzban**: پنل مدرن Marzban با رابط کاربری ساده
-🟣 **Rebecca**: پنل مدیریت کاربران Rebecca
-🟠 **Pasargad**: پنل مدیریت کاربران Pasargad
+👇 **لطفاً یکی از گزینه‌های زیر را انتخاب کنید:**
         """
         
         reply_markup = ButtonLayout.create_panel_type_selection()
@@ -2637,21 +2637,29 @@ class VPNBot:
         context.user_data['panel_type'] = panel_type
         context.user_data['panel_step'] = 'name'
         
+        panel_display_name = {
+            '3x-ui': '3x-ui',
+            'marzban': 'Marzban',
+            'rebecca': 'Rebecca',
+            'pasargad': 'Pasargad'
+        }.get(panel_type, panel_type)
+        
         add_text = f"""
-➕ **اضافه کردن پنل جدید ({panel_type})**
+📝 **مرحله اول: نام‌گذاری پنل ({panel_display_name})**
 
-لطفاً نام پنل را وارد کنید:
+لطفاً یک نام دلخواه و منحصر‌به‌فرد برای این پنل وارد کنید.
+این نام صرفاً جهت نمایش در لیست پنل‌ها و مدیریت راحت‌تر استفاده می‌شود.
 
-**نکات:**
-• نام باید منحصر به فرد باشد
-• فقط حروف انگلیسی و اعداد مجاز است
-• طول نام باید بین 3 تا 20 کاراکتر باشد
+💡 **نکات مهم:**
+• نام باید کوتاه و گویا باشد.
+• از کاراکترهای خاص استفاده نکنید.
+• پیشنهاد می‌شود از نام لوکیشن سرور استفاده کنید (مثال: `Germany-1` یا `Hetzner-Main`)
 
-برای لغو عملیات /cancel را ارسال کنید.
+👇 **نام پنل را ارسال کنید:**
         """
         
         keyboard = [
-            [InlineKeyboardButton("❌ لغو", callback_data="manage_panels")]
+            [InlineKeyboardButton("❌ انصراف و بازگشت", callback_data="manage_panels")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
@@ -3236,34 +3244,65 @@ class VPNBot:
         
         step = context.user_data.get('panel_step', 'name')
         
+        # Common cancel button for all steps
+        cancel_keyboard = [[InlineKeyboardButton("❌ انصراف و بازگشت", callback_data="manage_panels")]]
+        cancel_markup = InlineKeyboardMarkup(cancel_keyboard)
+        
         if step == 'name':
             # Validate panel name
             if not self._validate_panel_name(text):
                 await update.message.reply_text(
-                    "❌ نام پنل نامعتبر است. لطفاً نام دیگری انتخاب کنید:"
+                    "❌ **نام نامعتبر است!**\n\n"
+                    "نام پنل باید بین 3 تا 20 کاراکتر باشد و تنها شامل حروف انگلیسی و اعداد باشد.\n"
+                    "لطفاً مجدداً تلاش کنید:",
+                    reply_markup=cancel_markup
                 )
                 return
             
             context.user_data['panel_name'] = text
             context.user_data['panel_step'] = 'url'
+            panel_type = context.user_data.get('panel_type', '3x-ui')
             
+            # Dynamic help text based on panel type
+            if panel_type in ['marzban', 'rebecca']:
+                url_example = "https://panel.example.com:8000"
+                url_note = "⚠️ **نکته مهم:** برای این نوع پنل، آدرس را **بدون** `/dashboard` یا مسیر اضافی وارد کنید."
+            else:  # 3x-ui, pasargad
+                url_example = "https://panel.example.com:2053/panel_path"
+                url_note = "⚠️ **نکته مهم:** آدرس باید شامل **پورت** و **مسیر پنل** (در صورت وجود) باشد."
+
             await update.message.reply_text(
-                "🔗 **لینک کامل ورود به پنل را وارد کنید:**\n\nمثال: `https://panel.example.com:2080/username`"
+                f"🔗 **مرحله دوم: آدرس اتصال به پنل**\n\n"
+                f"لطفاً آدرس کامل ورود به پنل خود را وارد کنید.\n\n"
+                f"📝 **الگوی صحیح:**\n`{url_example}`\n\n"
+                f"{url_note}\n\n"
+                f"👇 **آدرس پنل را ارسال کنید:**",
+                reply_markup=cancel_markup,
+                parse_mode='Markdown'
             )
             
         elif step == 'url':
             # Validate URL
             if not self._validate_url(text):
                 await update.message.reply_text(
-                    "❌ لینک نامعتبر است. لطفاً لینک صحیح وارد کنید:"
+                    "❌ **لینک نامعتبر است!**\n\n"
+                    "لطفاً مطمئن شوید آدرس با `http://` یا `https://` شروع می‌شود و فرمت صحیحی دارد.\n"
+                    "لطفاً مجدداً تلاش کنید:",
+                    reply_markup=cancel_markup
                 )
                 return
             
+            # Remove trailing slash if present
+            text = text.rstrip('/')
             context.user_data['panel_url'] = text
             context.user_data['panel_step'] = 'username'
             
             await update.message.reply_text(
-                "👤 **یوزرنیم پنل را وارد کنید:**"
+                "👤 **مرحله سوم: نام کاربری (Username)**\n\n"
+                "لطفاً نام کاربری ورود به پنل مدیریت خود را وارد کنید.\n\n"
+                "👇 **نام کاربری را ارسال کنید:**",
+                reply_markup=cancel_markup,
+                parse_mode='Markdown'
             )
             
         elif step == 'username':
@@ -3271,7 +3310,12 @@ class VPNBot:
             context.user_data['panel_step'] = 'password'
             
             await update.message.reply_text(
-                "🔑 **پسورد پنل را وارد کنید:**"
+                "🔑 **مرحله چهارم: رمز عبور (Password)**\n\n"
+                "لطفاً رمز عبور ورود به پنل مدیریت خود را وارد کنید.\n"
+                "این اطلاعات به صورت امن در دیتابیس ذخیره می‌شوند.\n\n"
+                "👇 **رمز عبور را ارسال کنید:**",
+                reply_markup=cancel_markup,
+                parse_mode='Markdown'
             )
             
         elif step == 'password':
@@ -3279,9 +3323,13 @@ class VPNBot:
             context.user_data['panel_step'] = 'subscription_url'
             
             await update.message.reply_text(
-                "🔗 **لینک سابسکریپشن پنل را وارد کنید:**\n\n"
-                "مثال: `https://gr.astonnetwork.xyz:2080/sub`\n\n"
-                "💡 این لینک برای ارسال کانفیگ‌های سابسکریپشن به کاربران استفاده می‌شود.",
+                "🌐 **مرحله پنجم: لینک سابسکریپشن (Subscription URL)**\n\n"
+                "لطفاً دامنه یا لینک سابسکریپشن متصل به این پنل را وارد کنید.\n"
+                "این لینک برای تولید لینک‌های اتصال کاربران استفاده می‌شود.\n\n"
+                "📝 **مثال:**\n`https://sub.example.com:2096`\n"
+                "یا\n`https://sub.example.com/sub`\n\n"
+                "👇 **لینک سابسکریپشن را ارسال کنید:**",
+                reply_markup=cancel_markup,
                 parse_mode='Markdown'
             )
             
@@ -3289,26 +3337,33 @@ class VPNBot:
             # Validate subscription URL
             if not self._validate_url(text):
                 await update.message.reply_text(
-                    "❌ لینک سابسکریپشن نامعتبر است. لطفاً لینک صحیح وارد کنید:\n\n"
-                    "مثال: `https://gr.astonnetwork.xyz:2080/sub`",
-                    parse_mode='Markdown'
+                    "❌ **لینک نامعتبر است!**\n\n"
+                    "لطفاً یک لینک معتبر وارد کنید (شروع با `http` یا `https`).\n"
+                    "لطفاً مجدداً تلاش کنید:",
+                    reply_markup=cancel_markup
                 )
                 return
             
-            context.user_data['panel_subscription_url'] = text
+            context.user_data['panel_subscription_url'] = text.rstrip('/')
             context.user_data['panel_step'] = 'sale_type'
             
+            keyboard = [
+                [InlineKeyboardButton("📊 فروش حجمی (گیگابایت)", callback_data="select_sale_type_gigabyte")],
+                [InlineKeyboardButton("📦 فروش پلنی (بسته‌ای)", callback_data="select_sale_type_plan")],
+                [InlineKeyboardButton("🔄 هر دو مدل", callback_data="select_sale_type_both")],
+                [InlineKeyboardButton("❌ انصراف و بازگشت", callback_data="manage_panels")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
             await update.message.reply_text(
-                "🛒 **نوع فروش پنل را انتخاب کنید:**\n\n"
-                "• گیگابایتی: فروش بر اساس حجم (مثل قبل)\n"
-                "• پلنی: فروش بر اساس پلن‌های تعریف شده\n"
-                "• هر دو: هم گیگابایتی و هم پلنی",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📊 گیگابایتی", callback_data="select_sale_type_gigabyte")],
-                    [InlineKeyboardButton("📦 پلنی", callback_data="select_sale_type_plan")],
-                    [InlineKeyboardButton("🔄 هر دو", callback_data="select_sale_type_both")],
-                    [InlineKeyboardButton("❌ لغو", callback_data="manage_panels")]
-                ])
+                "🛒 **مرحله ششم: انتخاب مدل فروش**\n\n"
+                "لطفاً مشخص کنید که قصد دارید سرویس‌های این پنل را چگونه به فروش برسانید:\n\n"
+                "🔹 **فروش حجمی:** کاربر مقدار حجم (مثلاً ۵۰ گیگ) را انتخاب و خریداری می‌کند.\n"
+                "🔹 **فروش پلنی:** کاربر بسته‌های تعریف شده (مثلاً ۱ ماهه ۳۰ گیگ) را خریداری می‌کند.\n"
+                "🔹 **هر دو:** هر دو گزینه برای کاربر فعال خواهد بود.\n\n"
+                "👇 **یکی از گزینه‌های زیر را انتخاب کنید:**",
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
             )
             
         elif step == 'price':
@@ -3316,7 +3371,10 @@ class VPNBot:
                 price_per_gb = int(text)
                 if price_per_gb <= 0:
                     await update.message.reply_text(
-                        "❌ قیمت باید بیشتر از صفر باشد. لطفاً قیمت صحیح وارد کنید:"
+                        "❌ **قیمت نامعتبر است!**\n\n"
+                        "قیمت باید یک عدد بزرگتر از صفر باشد.\n"
+                        "لطفاً مجدداً تلاش کنید:",
+                        reply_markup=cancel_markup
                     )
                     return
                 
@@ -3331,7 +3389,7 @@ class VPNBot:
                     panel_username = context.user_data['panel_username']
                     panel_password = context.user_data['panel_password']
                     
-                    await update.message.reply_text("⏳ در حال دریافت لیست گروه‌ها...")
+                    await update.message.reply_text("⏳ **در حال برقراری ارتباط با پنل و دریافت لیست گروه‌ها...**")
                     
                     try:
                         from pasargad_manager import PasargadPanelManager
@@ -3343,7 +3401,11 @@ class VPNBot:
                         if temp_panel.login():
                             groups = temp_panel.get_groups()
                             if not groups:
-                                await update.message.reply_text("❌ هیچ گروهی یافت نشد.")
+                                await update.message.reply_text(
+                                    "❌ **هیچ گروهی یافت نشد!**\n"
+                                    "لطفاً ابتدا در پنل پاسارگاد خود یک گروه ایجاد کنید.",
+                                    reply_markup=cancel_markup
+                                )
                                 return
                             
                             keyboard = []
@@ -3353,41 +3415,48 @@ class VPNBot:
                                     callback_data=f"select_group_for_panel_{group['id']}"
                                 )])
                             
-                            keyboard.append([InlineKeyboardButton("❌ لغو", callback_data="manage_panels")])
+                            keyboard.append([InlineKeyboardButton("❌ انصراف و بازگشت", callback_data="manage_panels")])
                             reply_markup = InlineKeyboardMarkup(keyboard)
                             
                             await update.message.reply_text(
-                                "📂 **لطفاً گروه اصلی (Main Group) را انتخاب کنید:**\n\n"
-                                "کاربران جدید در این گروه ساخته خواهند شد.",
+                                "📂 **انتخاب گروه کاربری (Pasargad)**\n\n"
+                                "لطفاً گروهی که می‌خواهید کاربران جدید در آن ساخته شوند را انتخاب کنید.\n"
+                                "تمامی تنظیمات محدودیت و پروتکل‌ها از این گروه اعمال خواهد شد.",
                                 reply_markup=reply_markup,
                                 parse_mode='Markdown'
                             )
                         else:
-                            await update.message.reply_text("❌ خطا در اتصال به پنل. لطفاً اطلاعات را بررسی کنید.")
+                            await update.message.reply_text(
+                                "❌ **خطا در اتصال به پنل!**\n\n"
+                                "امکان ورود به پنل با اطلاعات وارد شده وجود ندارد.\n"
+                                "لطفاً آدرس، نام کاربری و رمز عبور را بررسی کرده و مجدداً تلاش کنید.",
+                                reply_markup=cancel_markup
+                            )
                             context.user_data.clear()
                             return
                             
                     except Exception as e:
                         logger.error(f"Error fetching Pasargad groups: {e}")
-                        await update.message.reply_text(f"❌ خطا: {str(e)}")
+                        await update.message.reply_text(f"❌ خطا در دریافت اطلاعات: {str(e)}", reply_markup=cancel_markup)
                         context.user_data.clear()
                         return
 
                 # For Marzban and Rebecca, ask for protocol instead of inbound
                 elif panel_type in ['marzban', 'rebecca']:
-                    text = "🔗 **انتخاب پروتکل برای ساخت کلاینت‌ها:**\n\n"
-                    text += "کاربران از تمامی inbound های پروتکل انتخابی استفاده خواهند کرد.\n\n"
+                    text_msg = "🔗 **انتخاب پروتکل اتصال**\n\n"
+                    text_msg += "لطفاً پروتکل اصلی که می‌خواهید برای کاربران استفاده شود را انتخاب کنید.\n"
+                    text_msg += "ربات به صورت خودکار از تمامی Inboundهای موجود برای این پروتکل استفاده خواهد کرد.\n\n"
                     
                     keyboard = [
                         [InlineKeyboardButton("🔵 VLESS", callback_data="select_protocol_for_panel_vless")],
                         [InlineKeyboardButton("🟢 VMess", callback_data="select_protocol_for_panel_vmess")],
                         [InlineKeyboardButton("🟣 Trojan", callback_data="select_protocol_for_panel_trojan")],
-                        [InlineKeyboardButton("❌ لغو", callback_data="manage_panels")]
+                        [InlineKeyboardButton("❌ انصراف و بازگشت", callback_data="manage_panels")]
                     ]
                     reply_markup = InlineKeyboardMarkup(keyboard)
                     
                     await update.message.reply_text(
-                        text,
+                        text_msg,
                         reply_markup=reply_markup,
                         parse_mode='Markdown'
                     )
@@ -3397,6 +3466,8 @@ class VPNBot:
                     panel_username = context.user_data['panel_username']
                     panel_password = context.user_data['panel_password']
                     
+                    await update.message.reply_text("⏳ **در حال دریافت لیست Inboundها از پنل...**")
+
                     # Create temporary panel manager for this panel
                     from panel_manager import PanelManager
                     temp_panel = PanelManager()
@@ -3405,42 +3476,63 @@ class VPNBot:
                     temp_panel.username = panel_username
                     temp_panel.password = panel_password
                     
-                    inbounds = temp_panel.get_inbounds()
-                    
-                    if not inbounds:
+                    try:
+                        if not temp_panel.login():
+                            await update.message.reply_text(
+                                "❌ **خطا در اتصال به پنل!**\n\n"
+                                "امکان ورود به پنل با اطلاعات وارد شده وجود ندارد.\n"
+                                "لطفاً آدرس، نام کاربری و رمز عبور را بررسی کرده و مجدداً تلاش کنید.",
+                                reply_markup=cancel_markup
+                            )
+                            context.user_data.clear()
+                            return
+
+                        inbounds = temp_panel.get_inbounds()
+                        
+                        if not inbounds:
+                            await update.message.reply_text(
+                                "❌ **هیچ Inbound فعالی یافت نشد!**\n"
+                                "لطفاً در پنل خود حداقل یک Inbound ایجاد کنید.",
+                                reply_markup=cancel_markup
+                            )
+                            context.user_data.clear()
+                            return
+                        
+                        # Show inbounds for selection
+                        text_msg = "🔗 **انتخاب Inbound پیش‌فرض**\n\n"
+                        text_msg += "لطفاً یکی از Inboundهای زیر را برای ساخت کاربران انتخاب کنید:\n\n"
+                        keyboard = []
+                        
+                        for inbound in inbounds:
+                            inbound_name = inbound.get('remark', f'Inbound {inbound.get("id")}')
+                            inbound_protocol = inbound.get('protocol', 'unknown')
+                            inbound_port = inbound.get('port', 0)
+                            
+                            text_msg += f"🔹 **{inbound_name}** ({inbound_protocol}:{inbound_port})\n"
+                            keyboard.append([InlineKeyboardButton(
+                                f"🔗 {inbound_name} ({inbound_protocol})", 
+                                callback_data=f"select_inbound_for_panel_{inbound.get('id')}"
+                            )])
+                        
+                        keyboard.append([InlineKeyboardButton("❌ انصراف و بازگشت", callback_data="manage_panels")])
+                        reply_markup = InlineKeyboardMarkup(keyboard)
+                        
                         await update.message.reply_text(
-                            f"❌ هیچ inbound فعالی در این پنل 3x-ui یافت نشد. لطفاً پنل را بررسی کنید."
+                            text_msg,
+                            reply_markup=reply_markup,
+                            parse_mode='Markdown'
                         )
+                    except Exception as e:
+                        logger.error(f"Error fetching 3x-ui inbounds: {e}")
+                        await update.message.reply_text(f"❌ خطا در دریافت اطلاعات: {str(e)}", reply_markup=cancel_markup)
                         context.user_data.clear()
                         return
-                    
-                    # Show inbounds for selection
-                    text = "🔗 **انتخاب inbound برای ساخت کلاینت‌ها:**\n\n"
-                    keyboard = []
-                    
-                    for inbound in inbounds:
-                        inbound_name = inbound.get('remark', f'Inbound {inbound.get("id")}')
-                        inbound_protocol = inbound.get('protocol', 'unknown')
-                        inbound_port = inbound.get('port', 0)
-                        
-                        text += f"• **{inbound_name}** ({inbound_protocol}:{inbound_port})\n"
-                        keyboard.append([InlineKeyboardButton(
-                            f"🔗 {inbound_name} ({inbound_protocol})", 
-                            callback_data=f"select_inbound_for_panel_{inbound.get('id')}"
-                        )])
-                    
-                    keyboard.append([InlineKeyboardButton("❌ لغو", callback_data="manage_panels")])
-                    reply_markup = InlineKeyboardMarkup(keyboard)
-                    
-                    await update.message.reply_text(
-                        text,
-                        reply_markup=reply_markup,
-                        parse_mode='Markdown'
-                    )
                 
             except ValueError:
                 await update.message.reply_text(
-                    "❌ قیمت نامعتبر است. لطفاً عدد صحیح وارد کنید:"
+                    "❌ **قیمت نامعتبر است!**\n\n"
+                    "لطفاً فقط عدد وارد کنید (بدون حروف یا علامت).",
+                    reply_markup=cancel_markup
                 )
                 return
     
