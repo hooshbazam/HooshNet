@@ -180,7 +180,7 @@ class MarzneshinPanelManager:
             parsed_inbounds = []
             for idx, inbound in enumerate(inbounds_data, 1):
                 parsed_inbound = {
-                    'id': idx,  # Marzneshin doesn't use numeric IDs like 3x-ui
+                    'id': inbound.get('id', idx),  # Use actual ID if available, else fallback to index
                     'tag': inbound.get('tag', f"inbound-{idx}"),
                     'protocol': inbound.get('protocol', 'vless'),
                     'remark': inbound.get('tag', f"Inbound {idx}"),
@@ -222,22 +222,35 @@ class MarzneshinPanelManager:
                 'settings': {}
             }]
     
+    def get_services(self) -> List[Dict]:
+        """Get list of available services from Marzneshin"""
+        try:
+            if not self.ensure_logged_in():
+                return []
+            
+            response = self.session.get(
+                f"{self.base_url}/api/services",
+                verify=False,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                # Marzneshin pagination response structure
+                if isinstance(data, dict) and 'items' in data:
+                    return data['items']
+                elif isinstance(data, list):
+                    return data
+            return []
+        except Exception as e:
+            print(f"❌ Error getting services: {e}")
+            return []
+
     def create_client(self, inbound_id: int, client_name: str, 
                      protocol: str = 'vless', expire_days: int = 0, 
                      total_gb: int = 0, sub_id: str = None) -> Optional[Dict]:
         """
         Create a new user on Marzneshin panel
-        
-        Args:
-            inbound_id: Not used in Marzneshin (uses protocols instead)
-            client_name: Username for the client
-            protocol: Protocol (vless, vmess, trojan, shadowsocks)
-            expire_days: Days until expiration (0 = unlimited)
-            total_gb: Total traffic in GB (0 = unlimited)
-            sub_id: Subscription ID (not used in Marzneshin)
-            
-        Returns:
-            Dictionary with client information if successful, None otherwise
         """
         try:
             if not self.ensure_logged_in():
@@ -248,84 +261,78 @@ class MarzneshinPanelManager:
             print(f"   Expire Days: {expire_days if expire_days > 0 else 'Unlimited'}")
             print(f"   Total GB: {total_gb if total_gb > 0 else 'Unlimited'}")
             
-            # Calculate expiry timestamp
-            expire_timestamp = None
-            if expire_days > 0:
-                expire_date = datetime.now() + timedelta(days=expire_days)
-                expire_timestamp = int(expire_date.timestamp())
+            # 1. Get Services
+            services = self.get_services()
+            if not services:
+                print("❌ No services found in Marzneshin")
+                # Try to proceed? No, we need a service ID.
+                return None
+                
+            # 2. Find suitable service
+            # We need to check inbounds of each service to find one matching the protocol
+            all_inbounds = self.get_inbounds()
+            inbound_map = {i['id']: i for i in all_inbounds}
             
-            # Convert GB to bytes
+            selected_service_id = None
+            protocol_lower = protocol.lower()
+            
+            print(f"🔍 Looking for service supporting protocol: {protocol_lower}")
+            
+            for service in services:
+                # Check if service has inbounds with matching protocol
+                for i_id in service.get('inbound_ids', []):
+                    inbound = inbound_map.get(i_id)
+                    if inbound and inbound.get('protocol', '').lower() == protocol_lower:
+                        selected_service_id = service['id']
+                        print(f"✅ Found matching service: {service['name']} (ID: {selected_service_id})")
+                        break
+                if selected_service_id:
+                    break
+            
+            if not selected_service_id:
+                # Fallback: use the first service if no specific protocol match found
+                if services:
+                    selected_service_id = services[0]['id']
+                    print(f"⚠️ No service found for {protocol}, using first available service: {services[0]['name']}")
+            
+            if not selected_service_id:
+                print("❌ No suitable service found")
+                return None
+
+            # 3. Prepare User Data
+            # Calculate expiry
+            expire_date_str = None
+            expire_strategy = "never"
+            
+            if expire_days > 0:
+                # Use UTC for consistency
+                expire_dt = datetime.utcnow() + timedelta(days=expire_days)
+                # Marzneshin expects ISO 8601 string
+                expire_date_str = expire_dt.strftime('%Y-%m-%dT%H:%M:%S')
+                expire_strategy = "fixed_date"
+            
+            # Calculate data limit
             data_limit = 0
             if total_gb > 0:
                 data_limit = total_gb * 1024 * 1024 * 1024  # GB to bytes
             
-            # Generate UUID for client
+            # Generate UUID for reference (though Marzneshin generates its own keys)
             import uuid as uuid_lib
             client_uuid = str(uuid_lib.uuid4())
             
-            # Normalize protocol name
-            protocol_lower = protocol.lower()
-            
-            # Prepare proxies configuration based on protocol
-            # Marzneshin expects a dictionary with protocol settings
-            if protocol_lower == 'vless':
-                proxies = {
-                    "vless": {
-                        "id": client_uuid,
-                        "flow": ""
-                    }
-                }
-            elif protocol_lower == 'vmess':
-                proxies = {
-                    "vmess": {
-                        "id": client_uuid
-                    }
-                }
-            elif protocol_lower == 'trojan':
-                proxies = {
-                    "trojan": {
-                        "password": client_uuid
-                    }
-                }
-            else:
-                # Default to VLESS if unknown protocol
-                proxies = {
-                    "vless": {
-                        "id": client_uuid,
-                        "flow": ""
-                    }
-                }
-                protocol_lower = 'vless'
-            
-            # Get available inbound tags for the selected protocol
-            inbounds_dict = self.get_inbound_tags()
-            
-            # Filter inbounds for the selected protocol only
-            protocol_inbounds = {}
-            if inbounds_dict and protocol_lower in inbounds_dict:
-                protocol_inbounds = {protocol_lower: inbounds_dict[protocol_lower]}
-            
-            print(f"📝 Using protocol: {protocol_lower.upper()}")
-            print(f"📝 Using inbounds: {protocol_inbounds if protocol_inbounds else 'AUTO (all available for ' + protocol_lower.upper() + ')'}")
-            
-            # Prepare user data for Marzneshin API
             user_data = {
                 "username": client_name,
-                "proxies": proxies,
-                "data_limit": data_limit,  # in bytes
-                "expire": expire_timestamp,  # Unix timestamp
+                "expire_strategy": expire_strategy,
+                "expire_date": expire_date_str,
+                "data_limit": data_limit,
                 "data_limit_reset_strategy": "no_reset",
+                "service_ids": [selected_service_id],
                 "status": "active"
             }
             
-            # Add inbounds for selected protocol if available
-            # If not specified, Marzneshin will use all available inbounds for that protocol
-            if protocol_inbounds:
-                user_data["inbounds"] = protocol_inbounds
-            
             print(f"🔍 Creating user with data: {json.dumps(user_data, indent=2)}")
             
-            # Create user
+            # 4. Create User
             response = self.session.post(
                 f"{self.base_url}/api/users",
                 json=user_data,
@@ -374,8 +381,6 @@ class MarzneshinPanelManager:
                         subscription_link = f"{self.base_url}/sub/{client_name}"
                 
                 # Return client info
-                # IMPORTANT: For Marzneshin, we use username as the primary ID
-                # The UUID is stored in proxies but username is used for lookups
                 client = {
                     'id': client_name,  # Use username as ID for Marzneshin
                     'name': client_name,
@@ -384,21 +389,18 @@ class MarzneshinPanelManager:
                     'inbound_id': inbound_id,
                     'expire_days': expire_days,
                     'total_gb': total_gb,
-                    'expire_time': expire_timestamp,
+                    'expire_time': int(datetime.utcnow().timestamp()) + (expire_days * 86400) if expire_days > 0 else 0,
                     'total_traffic': data_limit,
                     'status': 'active',
                     'uuid': client_name,  # Store username as UUID for compatibility
                     'sub_id': client_name,  # Username for subscription
                     'subscription_url': subscription_link,
                     'created_at': int(time.time()),
-                    'marzban_uuid': client_uuid  # Store actual UUID for reference
+                    'marzban_uuid': client_uuid  # Store generated UUID for reference
                 }
                 
                 print(f"✅ Created Marzneshin user: {client_name}")
-                print(f"   UUID: {client_uuid}")
                 print(f"   Subscription: {subscription_link}")
-                print(f"   Expire: {expire_days} days" if expire_days > 0 else "   Expire: Unlimited")
-                print(f"   Traffic: {total_gb} GB" if total_gb > 0 else "   Traffic: Unlimited")
                 
                 return client
             else:
