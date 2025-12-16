@@ -378,7 +378,11 @@ class MarzneshinPanelManager:
                     
                     # Last resort: construct it manually
                     if not subscription_link:
-                        subscription_link = f"{self.base_url}/sub/{client_name}"
+                        key = user_data.get('key', '')
+                        if key:
+                            subscription_link = f"{self.base_url}/sub/{client_name}/{key}"
+                        else:
+                            subscription_link = f"{self.base_url}/sub/{client_name}"
                 
                 # Return client info
                 client = {
@@ -584,7 +588,11 @@ class MarzneshinPanelManager:
                     return link
                 
                 # Last resort: construct it manually
-                subscription_url = f"{self.base_url}/sub/{username}"
+                key = user_data.get('key', '')
+                if key:
+                    subscription_url = f"{self.base_url}/sub/{username}/{key}"
+                else:
+                    subscription_url = f"{self.base_url}/sub/{username}"
                 print(f"⚠️ Constructed manual subscription link: {subscription_url}")
                 return subscription_url
             else:
@@ -668,6 +676,7 @@ class MarzneshinPanelManager:
             new_data_limit = new_total_gb * 1024 * 1024 * 1024  # GB to bytes
             
             update_data = {
+                "username": username,  # Required field
                 "data_limit": new_data_limit,
                 "proxies": current_user.get('proxies', {}),
                 "expire": current_user.get('expire'),
