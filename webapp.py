@@ -1265,43 +1265,7 @@ def admin_telegram_webapp_auth():
     except Exception as e:
         logger.error(f"Error in Admin WebApp auth: {e}")
         return jsonify({'success': False, 'message': 'خطا در احراز هویت مدیریت'}), 500
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(reporting_system.report_user_registration(user_data, None))
-                loop.close()
-            except Exception as e:
-                logger.error(f"Failed to send user registration report: {e}")
-                import traceback
-                logger.error(traceback.format_exc())
-        else:
-            # Update user info
-            db_instance.update_user_info(user_id, username, first_name, last_name)
-        
-        # SECURITY: Regenerate session ID to prevent session fixation attacks
-        # Clear old session and create new one
-        old_session = dict(session)
-        session.clear()
-        # Flask will automatically generate new session ID
-        
-        # Set session
-        session['user_id'] = user_id
-        session['username'] = username
-        session['first_name'] = first_name
-        session['photo_url'] = photo_url
-        session.permanent = True
-        
-        logger.info(f"Telegram WebApp login successful for user {user_id}")
-        
-        return jsonify({
-            'success': True,
-            'redirect': url_for('dashboard')
-        })
-    except Exception as e:
-        logger.error(f"Error in Telegram WebApp auth: {e}")
-        # SECURITY: Don't expose error details to client
-        return jsonify({
-            'success': False,
-            'message': 'خطا در ورود'
-        }), 500
+
 
 @app.route('/logout')
 def logout():
