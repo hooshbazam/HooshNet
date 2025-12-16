@@ -175,6 +175,11 @@
         if (window.Telegram && window.Telegram.WebApp) {
             const tg = window.Telegram.WebApp;
             tg.expand();
+            try {
+                tg.requestFullscreen();
+            } catch (e) {
+                console.log('Fullscreen not supported or failed:', e);
+            }
             tg.enableClosingConfirmation();
 
             // Set colors
