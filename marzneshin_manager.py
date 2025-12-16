@@ -568,6 +568,7 @@ class MarzneshinPanelManager:
             
             if response.status_code == 200:
                 user_data = response.json()
+                print(f"🔍 DEBUG: Marzneshin user data: {json.dumps(user_data, indent=2)}")
                 subscription_url = user_data.get('subscription_url', '')
                 
                 # Fix relative paths
