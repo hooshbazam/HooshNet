@@ -68,3 +68,18 @@ git clone https://github.com/hooshbazam/HooshNet.git && cd HooshNet && chmod +x 
 **طراحی و توسعه با ❤️ توسط تیم هوش‌نت**
 
 </div>
+
+
+## 📢 جامعه و پشتیبانی
+
+به جمع کاربران هوش‌نت بپیوندید! برای دریافت آخرین اخبار، آپدیت‌ها و پشتیبانی، ما را در تلگرام دنبال کنید.
+
+<div align="center">
+
+[![Channel](https://img.shields.io/badge/Channel-Join%20Now-blue?style=for-the-badge&logo=telegram)](https://t.me/HooshNet)
+[![Group](https://img.shields.io/badge/Group-Join%20Now-blue?style=for-the-badge&logo=telegram)](https://t.me/HooshNetGp)
+
+**[کانال رسمی هوش‌نت](https://t.me/HooshNet)** | **[گروه پشتیبانی](https://t.me/HooshNetGp)**
+
+</div>
+
