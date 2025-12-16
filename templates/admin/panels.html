@@ -47,7 +47,7 @@
                 <div style="display: flex; gap: var(--sp-md); align-items: center;">
                     <div class="panel-icon-wrapper">
                         <div
-                            class="panel-icon {% if panel.panel_type == 'marzban' %}icon-marzban{% elif panel.panel_type == 'rebecca' %}icon-rebecca{% elif panel.panel_type == 'pasargad' %}icon-pasargad{% else %}icon-3xui{% endif %}">
+                            class="panel-icon {% if panel.panel_type == 'marzban' %}icon-marzban{% elif panel.panel_type == 'rebecca' %}icon-rebecca{% elif panel.panel_type == 'pasargad' %}icon-pasargad{% elif panel.panel_type == 'marzneshin' %}icon-marzneshin{% else %}icon-3xui{% endif %}">
                             <i class="fas fa-server"></i>
                         </div>
                     </div>
@@ -55,7 +55,7 @@
                         <div style="font-weight: 800; font-size: 1.1rem; margin-bottom: 2px;">{{ panel.name }}</div>
                         <div style="display: flex; gap: var(--sp-xs);">
                             <span
-                                class="badge {% if panel.panel_type == 'marzban' %}badge-info{% elif panel.panel_type == 'rebecca' %}badge-error{% elif panel.panel_type == 'pasargad' %}badge-success{% else %}badge-warning{% endif %}">
+                                class="badge {% if panel.panel_type == 'marzban' %}badge-info{% elif panel.panel_type == 'rebecca' %}badge-error{% elif panel.panel_type == 'pasargad' %}badge-success{% elif panel.panel_type == 'marzneshin' %}badge-warning{% else %}badge-warning{% endif %}">
                                 {{ panel.panel_type|upper }}
                             </span>
                             {% if panel.is_active %}
@@ -139,6 +139,7 @@
                         <option value="marzban">Marzban</option>
                         <option value="rebecca">Rebecca</option>
                         <option value="pasargad">Pasargad</option>
+                        <option value="marzneshin">Marzneshin</option>
                     </select>
                 </div>
             </div>
@@ -240,6 +241,7 @@
                         <option value="marzban">Marzban</option>
                         <option value="rebecca">Rebecca</option>
                         <option value="pasargad">Pasargad</option>
+                        <option value="marzneshin">Marzneshin</option>
                     </select>
                 </div>
             </div>
@@ -458,6 +460,10 @@
 
     .icon-pasargad {
         background: linear-gradient(135deg, #10b981, #059669);
+    }
+
+    .icon-marzneshin {
+        background: linear-gradient(135deg, #f59e0b, #d97706);
     }
 
     .detail-row {
