@@ -642,9 +642,9 @@ class ProfessionalButtonLayout:
             ])
             # Add web admin panel button with bot_name prefix
             if bot_name:
-                admin_webapp_url = f"{base_url}/{bot_name}/admin"
+                admin_webapp_url = f"{base_url}/{bot_name}/admin/login"
             else:
-                admin_webapp_url = f"{base_url}/admin"
+                admin_webapp_url = f"{base_url}/admin/login"
             keyboard.append([
                 InlineKeyboardButton(
                     "👑 ورود به پنل مدیریت وب",

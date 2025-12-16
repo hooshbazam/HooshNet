@@ -897,9 +897,19 @@ def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
-            # SECURITY: Preserve bot_name in redirect
-            redirect_url = url_for('index')
-            return redirect(redirect_url)
+            # SECURITY: Redirect to admin login instead of index
+            # Check for bot_name in path or session
+            bot_name = session.get('bot_name')
+            if not bot_name:
+                path_parts = request.path.split('/')
+                if len(path_parts) > 1 and path_parts[1] and not path_parts[1] in ['admin', 'static', 'auth']:
+                     # Simple heuristic, might need refinement based on your URL structure
+                     pass 
+            
+            if bot_name:
+                return redirect(url_for('admin_login', bot_name=bot_name))
+            return redirect(url_for('admin_login'))
+            
         user_id = session.get('user_id')
         db_instance = get_db()
         if not db_instance.is_admin(user_id):
@@ -968,6 +978,28 @@ def index(bot_name=None):
     bot_config = get_bot_config()
     return render_template('index.html', 
                          bot_username=bot_config['bot_username'])
+
+@app.route('/admin/login')
+@app.route('/<bot_name>/admin/login')
+def admin_login(bot_name=None):
+    """Admin Login Page"""
+    logger.info(f"Accessing ADMIN login page. Session: {dict(session)}")
+    
+    # Store bot_name in session if provided
+    if bot_name:
+        session['bot_name'] = bot_name
+        
+    if 'user_id' in session:
+        # Check if admin
+        db_instance = get_db()
+        if db_instance.is_admin(session['user_id']):
+            logger.info(f"Admin {session['user_id']} already logged in, redirecting to admin dashboard")
+            return redirect(url_for('admin_dashboard'))
+        else:
+            logger.warning(f"User {session['user_id']} is NOT admin, redirecting to user dashboard")
+            return redirect(url_for('dashboard'))
+            
+    return render_template('admin/login.html')
 
 @app.route('/auth/telegram', methods=['POST'])
 @rate_limit(max_requests=5, window_seconds=60)  # 5 attempts per minute
@@ -1148,6 +1180,91 @@ def telegram_webapp_auth():
                     'welcome_bonus': REFERRAL_CONFIG.get('welcome_bonus', 1000)
                 }
                 loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(reporting_system.report_user_registration(user_data, None))
+                loop.close()
+            except Exception as e:
+                logger.error(f"Failed to send user registration report: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+        else:
+            # Update user info
+            db_instance.update_user_info(user_id, username, first_name, last_name)
+        
+        # SECURITY: Regenerate session ID
+        old_session = dict(session)
+        session.clear()
+        
+        # Set session
+        session['user_id'] = user_id
+        session['username'] = username
+        session['first_name'] = first_name
+        session['photo_url'] = photo_url
+        session.permanent = True
+        
+        return jsonify({
+            'success': True,
+            'redirect': url_for('dashboard')
+        })
+    except Exception as e:
+        logger.error(f"Error in Telegram WebApp auth: {e}")
+        return jsonify({'success': False, 'message': 'خطا در احراز هویت'}), 500
+
+@app.route('/auth/admin-telegram-webapp', methods=['POST'])
+@rate_limit(max_requests=5, window_seconds=60)
+def admin_telegram_webapp_auth():
+    """Handle Admin Telegram Web App authentication"""
+    try:
+        data = request.json
+        init_data = data.get('init_data')
+        user = data.get('user')
+        
+        if not user or not user.get('id'):
+            return jsonify({'success': False, 'message': 'اطلاعات کاربری نامعتبر است'}), 400
+        
+        # Verify init_data
+        verify_result = verify_telegram_webapp_data(init_data, user)
+        if not verify_result:
+            logger.warning(f"Admin WebApp auth verification failed for user {user.get('id')}")
+        
+        user_id = int(user.get('id'))
+        
+        # Check Admin Status
+        db_instance = get_db()
+        if not db_instance.is_admin(user_id):
+            logger.warning(f"Unauthorized admin login attempt by user {user_id}")
+            return jsonify({'success': False, 'message': 'شما دسترسی مدیریت ندارید'}), 403
+            
+        # Proceed with login
+        username = user.get('username', '')
+        first_name = user.get('first_name', '')
+        last_name = user.get('last_name', '')
+        photo_url = user.get('photo_url', '')
+        
+        if not photo_url:
+            try:
+                photo_url = TelegramHelper.get_user_profile_photo_url_sync(user_id)
+            except:
+                pass
+                
+        # Update user info
+        db_instance.update_user_info(user_id, username, first_name, last_name)
+        
+        # Set session
+        session.clear()
+        session['user_id'] = user_id
+        session['username'] = username
+        session['first_name'] = first_name
+        session['photo_url'] = photo_url
+        session.permanent = True
+        
+        return jsonify({
+            'success': True,
+            'redirect': url_for('admin_dashboard')
+        })
+    except Exception as e:
+        logger.error(f"Error in Admin WebApp auth: {e}")
+        return jsonify({'success': False, 'message': 'خطا در احراز هویت مدیریت'}), 500
                 asyncio.set_event_loop(loop)
                 loop.run_until_complete(reporting_system.report_user_registration(user_data, None))
                 loop.close()
