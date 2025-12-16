@@ -481,7 +481,7 @@ class OptimizedMonitor:
                         UPDATE clients 
                         SET used_gb = %s,
                             last_activity = %s,
-                            is_online = %s,
+                            cached_is_online = %s,
                             remaining_days = %s,
                             expires_at = %s,
                             updated_at = NOW()

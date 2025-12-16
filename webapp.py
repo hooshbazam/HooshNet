@@ -4456,7 +4456,7 @@ def admin_dashboard(bot_name=None):
             # Use COALESCE to fallback to cached_is_online if is_online is NULL
             cursor.execute('''
                 SELECT COUNT(*) as count FROM clients 
-                WHERE COALESCE(is_online, cached_is_online, 0) = 1
+                WHERE COALESCE(cached_is_online, 0) = 1
             ''')
             online_services = cursor.fetchone()['count']
             
