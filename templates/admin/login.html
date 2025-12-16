@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#000000">
+    <title>ورود مدیریت</title>
+
+    <!-- Telegram Web App SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+        rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/vazirmatn@33.0.3/Vazirmatn-font-face.css" rel="stylesheet">
+
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet"
+        href="{{ url_for('static', filename='css/landing-page-redesign.css') }}?v={{ range(1, 10000) | random }}">
+
+    <style>
+        .app-title {
+            color: #ef4444;
+            /* Red for admin */
+        }
+
+        .logo-icon {
+            color: #ef4444;
+        }
+
+        .logo-circle {
+            border-color: #ef4444;
+        }
+
+        .logo-pulse {
+            background: rgba(239, 68, 68, 0.2);
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Background Effects -->
+    <div class="bg-effect">
+        <div class="bg-orb orb-1"></div>
+        <div class="bg-orb orb-2"></div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="landing-container">
+
+        <!-- Animated Logo -->
+        <div class="logo-wrapper">
+            <div class="logo-circle"></div>
+            <div class="logo-pulse"></div>
+            <i class="fas fa-user-shield logo-icon"></i>
+        </div>
+
+        <!-- Typography -->
+        <div>
+            <h1 class="app-title">ADMIN PANEL</h1>
+            <p class="app-subtitle">پنل مدیریت سیستم</p>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div class="loader-container">
+            <div class="loader-bar">
+                <div class="loader-progress"></div>
+            </div>
+            <p class="status-text" id="status">در حال بررسی دسترسی مدیریت...</p>
+        </div>
+
+    </div>
+
+    <!-- Logic -->
+    <script>
+        // Initialize Telegram WebApp
+        if (window.Telegram && window.Telegram.WebApp) {
+            const tg = window.Telegram.WebApp;
+            tg.expand();
+            tg.disableVerticalSwipes();
+            if (tg.lockOrientation) tg.lockOrientation();
+            tg.enableClosingConfirmation();
+            if (tg.setHeaderColor) tg.setHeaderColor('#000000');
+            if (tg.setBackgroundColor) tg.setBackgroundColor('#000000');
+
+            // Request Fullscreen for Admin
+            try {
+                tg.requestFullscreen();
+            } catch (e) {
+                console.log('Fullscreen not supported or failed:', e);
+            }
+
+            tg.ready();
+
+            // Ensure full height
+            window.addEventListener('resize', function () {
+                if (!tg.isExpanded) tg.expand();
+            });
+
+            setTimeout(() => {
+                tg.expand();
+            }, 100);
+        }
+
+        const status = document.getElementById('status');
+
+        function updateStatus(msg) {
+            status.textContent = msg;
+            status.style.opacity = '0';
+            setTimeout(() => {
+                status.style.opacity = '1';
+            }, 100);
+        }
+
+        function parseTelegramData() {
+            if (window.Telegram && window.Telegram.WebApp) {
+                const webApp = window.Telegram.WebApp;
+                const initData = webApp.initData || '';
+                const initDataUnsafe = webApp.initDataUnsafe || {};
+                const user = initDataUnsafe.user;
+
+                if (user && user.id) {
+                    return {
+                        init_data: initData,
+                        user: {
+                            id: user.id,
+                            username: user.username || '',
+                            first_name: user.first_name || '',
+                            last_name: user.last_name || '',
+                            photo_url: user.photo_url || user.profile_photo_url || user.photo || ''
+                        }
+                    };
+                }
+            }
+            return null;
+        }
+
+        function login(data) {
+            updateStatus('خوش آمدید مدیر ' + data.user.first_name);
+
+            const pathParts = window.location.pathname.split('/').filter(p => p);
+            const botName = pathParts[0] === 'admin' ? '' : pathParts[0]; // Handle /admin/login vs /botname/admin/login
+            const authPath = botName ? `/${botName}/auth/admin-telegram-webapp` : '/auth/admin-telegram-webapp';
+
+            fetch(authPath, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            })
+                .then(response => response.json())
+                .then(result => {
+                    if (result.success) {
+                        updateStatus('در حال ورود به داشبورد مدیریت...');
+                        setTimeout(() => {
+                            let redirectUrl = result.redirect;
+                            // Ensure redirect URL has bot prefix if needed
+                            if (botName && redirectUrl && !redirectUrl.startsWith(`/${botName}/`)) {
+                                if (redirectUrl.startsWith('/')) {
+                                    redirectUrl = `/${botName}${redirectUrl}`;
+                                } else if (!redirectUrl.startsWith('http')) {
+                                    redirectUrl = `/${botName}/${redirectUrl}`;
+                                }
+                            }
+                            window.location.href = redirectUrl;
+                        }, 800);
+                    } else {
+                        updateStatus('خطا: ' + result.message);
+                        document.querySelector('.loader-bar').style.backgroundColor = '#ef4444';
+                    }
+                })
+                .catch(err => {
+                    console.error('Fetch error:', err);
+                    updateStatus('خطا در برقراری ارتباط');
+                });
+        }
+
+        // Start Process
+        setTimeout(() => {
+            const data = parseTelegramData();
+
+            if (data && data.user && data.user.id) {
+                login(data);
+            } else {
+                updateStatus('لطفاً از طریق ربات وارد شوید');
+                document.querySelector('.loader-bar').style.display = 'none';
+            }
+        }, 1500);
+    </script>
+</body>
+
+</html>
