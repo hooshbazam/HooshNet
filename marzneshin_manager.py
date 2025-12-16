@@ -46,7 +46,7 @@ class MarzneshinPanelManager:
             }
             
             response = self.session.post(
-                f"{self.base_url}/api/admin/token",
+                f"{self.base_url}/api/admins/token",
                 data=login_data,
                 headers=headers,
                 verify=False,
@@ -327,7 +327,7 @@ class MarzneshinPanelManager:
             
             # Create user
             response = self.session.post(
-                f"{self.base_url}/api/user",
+                f"{self.base_url}/api/users",
                 json=user_data,
                 verify=False,
                 timeout=30
@@ -357,7 +357,7 @@ class MarzneshinPanelManager:
                 if not subscription_link:
                     # Get user details to get the actual subscription link
                     user_response = self.session.get(
-                        f"{self.base_url}/api/user/{client_name}",
+                        f"{self.base_url}/api/users/{client_name}",
                         verify=False,
                         timeout=30
                     )
@@ -433,7 +433,7 @@ class MarzneshinPanelManager:
             username = client_uuid
             
             response = self.session.get(
-                f"{self.base_url}/api/user/{username}",
+                f"{self.base_url}/api/users/{username}",
                 verify=False,
                 timeout=30
             )
@@ -443,7 +443,7 @@ class MarzneshinPanelManager:
                 print(f"⚠️ User {username} not found, trying with client_name: {client_name}")
                 username = client_name
                 response = self.session.get(
-                    f"{self.base_url}/api/user/{username}",
+                    f"{self.base_url}/api/users/{username}",
                     verify=False,
                     timeout=30
                 )
@@ -555,7 +555,7 @@ class MarzneshinPanelManager:
             
             # Get user details which includes subscription URL
             response = self.session.get(
-                f"{self.base_url}/api/user/{username}",
+                f"{self.base_url}/api/users/{username}",
                 verify=False,
                 timeout=30
             )
@@ -618,7 +618,7 @@ class MarzneshinPanelManager:
             
             # Get current user data
             response = self.session.get(
-                f"{self.base_url}/api/user/{username}",
+                f"{self.base_url}/api/users/{username}",
                 verify=False,
                 timeout=30
             )
@@ -647,7 +647,7 @@ class MarzneshinPanelManager:
                                 username = user.get('username')
                                 logger.info(f"✅ Found user by UUID: {username}")
                                 response = self.session.get(
-                                    f"{self.base_url}/api/user/{username}",
+                                    f"{self.base_url}/api/users/{username}",
                                     verify=False,
                                     timeout=30
                                 )
@@ -675,7 +675,7 @@ class MarzneshinPanelManager:
             
             # Update user
             response = self.session.put(
-                f"{self.base_url}/api/user/{username}",
+                f"{self.base_url}/api/users/{username}",
                 json=update_data,
                 verify=False,
                 timeout=30
@@ -708,7 +708,7 @@ class MarzneshinPanelManager:
             
             # Get current user data
             response = self.session.get(
-                f"{self.base_url}/api/user/{username}",
+                f"{self.base_url}/api/users/{username}",
                 verify=False,
                 timeout=30
             )
@@ -729,7 +729,7 @@ class MarzneshinPanelManager:
             
             # Update user
             response = self.session.put(
-                f"{self.base_url}/api/user/{username}",
+                f"{self.base_url}/api/users/{username}",
                 json=update_data,
                 verify=False,
                 timeout=30
@@ -755,7 +755,7 @@ class MarzneshinPanelManager:
             username = client_uuid
             
             response = self.session.delete(
-                f"{self.base_url}/api/user/{username}",
+                f"{self.base_url}/api/users/{username}",
                 verify=False,
                 timeout=30
             )
@@ -792,7 +792,7 @@ class MarzneshinPanelManager:
             
             # Revoke current subscription
             response = self.session.post(
-                f"{self.base_url}/api/user/{username}/revoke_sub",
+                f"{self.base_url}/api/users/{username}/revoke_sub",
                 verify=False,
                 timeout=30
             )
@@ -811,7 +811,7 @@ class MarzneshinPanelManager:
                 if not new_subscription_url:
                     # Get user details to get the actual subscription link
                     user_response = self.session.get(
-                        f"{self.base_url}/api/user/{username}",
+                        f"{self.base_url}/api/users/{username}",
                         verify=False,
                         timeout=30
                     )
