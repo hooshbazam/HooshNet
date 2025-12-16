@@ -568,6 +568,11 @@ class MarzneshinPanelManager:
             
             if response.status_code == 200:
                 user_data = response.json()
+                try:
+                    with open('debug_user_data.json', 'w', encoding='utf-8') as f:
+                        json.dump(user_data, f, indent=2)
+                except:
+                    pass
                 print(f"🔍 DEBUG: Marzneshin user data: {json.dumps(user_data, indent=2)}")
                 subscription_url = user_data.get('subscription_url', '')
                 
