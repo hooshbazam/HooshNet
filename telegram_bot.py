@@ -3278,7 +3278,7 @@ class VPNBot:
             panel_type = context.user_data.get('panel_type', '3x-ui')
             
             # Dynamic help text based on panel type
-            if panel_type in ['marzban', 'rebecca']:
+            if panel_type in ['marzban', 'rebecca', 'marzneshin']:
                 url_example = "https://panel.example.com:8000"
                 url_note = "⚠️ **نکته مهم:** برای این نوع پنل، آدرس را **بدون** `/dashboard` یا مسیر اضافی وارد کنید."
             else:  # 3x-ui, pasargad
@@ -3456,7 +3456,7 @@ class VPNBot:
                         return
 
                 # For Marzban and Rebecca, ask for protocol instead of inbound
-                elif panel_type in ['marzban', 'rebecca']:
+                elif panel_type in ['marzban', 'rebecca', 'marzneshin']:
                     text_msg = "🔗 **انتخاب پروتکل اتصال**\n\n"
                     text_msg += "لطفاً پروتکل اصلی که می‌خواهید برای کاربران استفاده شود را انتخاب کنید.\n"
                     text_msg += "ربات به صورت خودکار از تمامی Inboundهای موجود برای این پروتکل استفاده خواهد کرد.\n\n"
@@ -15573,6 +15573,55 @@ class VPNBot:
             logger.error(f"Error rejecting receipt: {e}")
             await query.answer("❌ خطا در رد پرداخت.", show_alert=True)
 
+
+    async def handle_protocol_selection_for_panel(self, update: Update, context: ContextTypes.DEFAULT_TYPE, protocol: str):
+        """Handle protocol selection for Marzban/Rebecca/Marzneshin panel"""
+        query = update.callback_query
+        await query.answer()
+        
+        try:
+            # Retrieve panel details from user_data
+            panel_name = context.user_data.get('panel_name')
+            panel_url = context.user_data.get('panel_url')
+            panel_username = context.user_data.get('panel_username')
+            panel_password = context.user_data.get('panel_password')
+            panel_sub_url = context.user_data.get('panel_subscription_url')
+            panel_price = context.user_data.get('panel_price')
+            panel_type = context.user_data.get('panel_type')
+            
+            # Save to database
+            extra_config = {'inbound_protocol': protocol}
+            
+            panel_id = self.db.add_panel(
+                name=panel_name,
+                url=panel_url,
+                username=panel_username,
+                password=panel_password,
+                api_endpoint=panel_url,
+                subscription_url=panel_sub_url,
+                price_per_gb=panel_price,
+                panel_type=panel_type,
+                extra_config=extra_config
+            )
+            
+            if panel_id:
+                await query.edit_message_text(
+                    f"✅ پنل **{panel_name}** با موفقیت اضافه شد!\n\n"
+                    f"نوع: {panel_type}\n"
+                    f"پروتکل: {protocol}",
+                    reply_markup=ButtonLayout.create_back_button("manage_panels"),
+                    parse_mode='Markdown'
+                )
+                context.user_data.clear()
+            else:
+                await query.edit_message_text(
+                    "❌ خطا در ذخیره پنل در دیتابیس.",
+                    reply_markup=ButtonLayout.create_back_button("manage_panels")
+                )
+                
+        except Exception as e:
+            logger.error(f"Error handling protocol selection: {e}")
+            await query.edit_message_text("❌ خطا در پردازش درخواست.")
 
     async def handle_group_selection_for_panel(self, update: Update, context: ContextTypes.DEFAULT_TYPE, group_id: str):
         """Handle group selection for Pasargad panel"""
