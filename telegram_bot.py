@@ -2654,7 +2654,8 @@ class VPNBot:
             '3x-ui': '3x-ui',
             'marzban': 'Marzban',
             'rebecca': 'Rebecca',
-            'pasargad': 'Pasargad'
+            'pasargad': 'Pasargad',
+            'marzneshin': 'Marzneshin'
         }.get(panel_type, panel_type)
         
         add_text = f"""

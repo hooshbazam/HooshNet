@@ -1000,6 +1000,7 @@ class ProfessionalButtonLayout:
                 InlineKeyboardButton("🟣 Rebecca", callback_data="panel_type_rebecca"),
                 InlineKeyboardButton("🟠 Pasargad", callback_data="panel_type_pasargad")
             ],
+            [InlineKeyboardButton("🛡️ Marzneshin", callback_data="panel_type_marzneshin")],
             [InlineKeyboardButton("❌ لغو", callback_data="manage_panels")]
         ]
         return InlineKeyboardMarkup(keyboard)

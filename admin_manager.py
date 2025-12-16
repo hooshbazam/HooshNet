@@ -11,6 +11,7 @@ from panel_manager import PanelManager
 from marzban_manager import MarzbanPanelManager
 from rebecca_manager import RebeccaPanelManager
 from pasargad_manager import PasargadPanelManager
+from marzneshin_manager import MarzneshinPanelManager
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ class AdminManager:
     def __init__(self, db: ProfessionalDatabaseManager):
         self.db = db
         
-    def get_panel_manager(self, panel_id: int) -> Optional[Union[PanelManager, MarzbanPanelManager, RebeccaPanelManager, PasargadPanelManager]]:
+    def get_panel_manager(self, panel_id: int) -> Optional[Union[PanelManager, MarzbanPanelManager, RebeccaPanelManager, PasargadPanelManager, MarzneshinPanelManager]]:
         """
         Factory method to get the appropriate panel manager based on panel type
         """
@@ -39,6 +40,8 @@ class AdminManager:
                 manager = RebeccaPanelManager()
             elif panel_type == 'pasargad':
                 manager = PasargadPanelManager()
+            elif panel_type == 'marzneshin':
+                manager = MarzneshinPanelManager()
             else:
                 # Default to 3x-ui
                 manager = PanelManager()
@@ -177,8 +180,8 @@ class AdminManager:
                 return False, "Login failed", None
             
             # Determine panel type and handle accordingly
-            if isinstance(manager, (MarzbanPanelManager, RebeccaPanelManager)):
-                # For Rebecca/Marzban, we should use the Main Service (default_inbound_id)
+            if isinstance(manager, (MarzbanPanelManager, RebeccaPanelManager, MarzneshinPanelManager)):
+                # For Rebecca/Marzban/Marzneshin, we should use the Main Service (default_inbound_id)
                 # Fetch panel details to get default_inbound_id
                 panel = self.db.get_panel(panel_id)
                 main_service_id = panel.get('default_inbound_id') if panel else 0
@@ -448,6 +451,8 @@ class AdminManager:
                 manager = RebeccaPanelManager()
             elif panel_type == 'pasargad':
                 manager = PasargadPanelManager()
+            elif panel_type == 'marzneshin':
+                manager = MarzneshinPanelManager()
             else:
                 manager = PanelManager()
                 
@@ -511,6 +516,8 @@ class AdminManager:
                     manager = RebeccaPanelManager()
                 elif test_type == 'pasargad':
                     manager = PasargadPanelManager()
+                elif test_type == 'marzneshin':
+                    manager = MarzneshinPanelManager()
                 else:
                     manager = PanelManager()
                     
