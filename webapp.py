@@ -1101,8 +1101,9 @@ def telegram_auth():
         return jsonify({'success': False, 'message': 'خطا در احراز هویت'}), 500
 
 @app.route('/auth/telegram-webapp', methods=['POST'])
+@app.route('/<bot_name>/auth/telegram-webapp', methods=['POST'])
 @rate_limit(max_requests=5, window_seconds=60)  # 5 attempts per minute
-def telegram_webapp_auth():
+def telegram_webapp_auth(bot_name=None):
     """Handle Telegram Web App authentication"""
     try:
         data = request.json
@@ -1211,8 +1212,9 @@ def telegram_webapp_auth():
         return jsonify({'success': False, 'message': 'خطا در احراز هویت'}), 500
 
 @app.route('/auth/admin-telegram-webapp', methods=['POST'])
+@app.route('/<bot_name>/auth/admin-telegram-webapp', methods=['POST'])
 @rate_limit(max_requests=5, window_seconds=60)
-def admin_telegram_webapp_auth():
+def admin_telegram_webapp_auth(bot_name=None):
     """Handle Admin Telegram Web App authentication"""
     try:
         data = request.json
