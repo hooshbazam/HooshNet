@@ -10,7 +10,7 @@ import re
 import html
 import os
 from functools import wraps
-from typing import Dict, Optional, Callable, Tuple
+from typing import Dict, Optional, Callable, Tuple, Set
 from collections import defaultdict
 from datetime import datetime, timedelta
 from flask import request, session, jsonify, g, Response
@@ -25,6 +25,9 @@ _rate_limit_lock = {}
 # IP blocking storage - tracks blocked IPs and their unblock time
 _blocked_ips: Dict[str, float] = {}  # IP -> unblock timestamp
 
+# Allowed IPs - these IPs will never be blocked or recorded as suspicious
+_allowed_ips: Set[str] = set()
+
 # Suspicious activity tracking - tracks suspicious activities per IP
 _suspicious_activity: Dict[str, list] = defaultdict(list)  # IP -> list of (timestamp, activity_type, path)
 
@@ -32,6 +35,39 @@ _suspicious_activity: Dict[str, list] = defaultdict(list)  # IP -> list of (time
 MAX_SUSPICIOUS_ACTIVITIES = 3  # Block after 3 suspicious activities (more aggressive)
 BLOCK_DURATION_HOURS = 48  # Block for 48 hours (longer block)
 SUSPICIOUS_ACTIVITY_WINDOW = 300  # 5 minutes window
+
+def load_allowed_ips_from_env(env_var: str = 'ALLOWED_IPS'):
+    """
+    Load allowed IPs from an environment variable (comma-separated list).
+    Example: ALLOWED_IPS="1.2.3.4,5.6.7.8"
+    """
+    raw = os.getenv(env_var, '')
+    if not raw:
+        return
+    for ip in raw.split(','):
+        ip = ip.strip()
+        if ip:
+            _allowed_ips.add(ip)
+    logger.info(f"Loaded allowed IPs from env {env_var}: {_allowed_ips}")
+
+# Load allowed IPs on import if provided via environment
+load_allowed_ips_from_env()
+
+def add_allowed_ip(ip: str):
+    """Add a single IP to the allowed list at runtime"""
+    if ip:
+        _allowed_ips.add(ip)
+        logger.info(f"Added allowed IP: {ip}")
+
+def remove_allowed_ip(ip: str):
+    """Remove a single IP from the allowed list at runtime"""
+    if ip and ip in _allowed_ips:
+        _allowed_ips.remove(ip)
+        logger.info(f"Removed allowed IP: {ip}")
+
+def is_ip_allowed(ip: str) -> bool:
+    """Check if an IP is in the allowed list"""
+    return ip in _allowed_ips
 
 def clean_rate_limit_storage():
     """Clean old entries from rate limit storage"""
@@ -241,6 +277,11 @@ def get_client_ip() -> str:
 
 def record_suspicious_activity(ip: str, activity: str, path: str):
     """Record suspicious activity from an IP and auto-block if threshold exceeded"""
+    # Do not record or block allowed IPs
+    if is_ip_allowed(ip):
+        logger.info(f"Ignoring suspicious activity from allowed IP {ip}: {activity} {path}")
+        return
+
     current_time = time.time()
     
     # Clean old activities
@@ -259,7 +300,7 @@ def record_suspicious_activity(ip: str, activity: str, path: str):
     method = request.method if hasattr(request, 'method') else 'Unknown'
     
     logger.warning(
-        f"⚠️ SUSPICIOUS ACTIVITY from {ip}: {activity} - "
+        f"âš ï¸ SUSPICIOUS ACTIVITY from {ip}: {activity} - "
         f"Path: {path} - Method: {method} - "
         f"User-Agent: {user_agent[:100]} - Referer: {referer[:100]}"
     )
@@ -269,18 +310,27 @@ def record_suspicious_activity(ip: str, activity: str, path: str):
     if len(recent_activities) >= MAX_SUSPICIOUS_ACTIVITIES:
         block_ip(ip, BLOCK_DURATION_HOURS)
         logger.error(
-            f"🚫 AUTO-BLOCKED IP {ip} after {len(recent_activities)} suspicious activities "
+            f"ðŸš« AUTO-BLOCKED IP {ip} after {len(recent_activities)} suspicious activities "
             f"in {SUSPICIOUS_ACTIVITY_WINDOW}s. Activities: {[a[1] for a in recent_activities]}"
         )
 
 def block_ip(ip: str, duration_hours: int = 24):
     """Block an IP address for specified duration"""
+    # Never block allowed IPs
+    if is_ip_allowed(ip):
+        logger.info(f"Attempt to block allowed IP {ip} ignored.")
+        return
+
     unblock_time = time.time() + (duration_hours * 3600)
     _blocked_ips[ip] = unblock_time
-    logger.error(f"🚫 BLOCKED IP: {ip} for {duration_hours} hours (until {datetime.fromtimestamp(unblock_time)})")
+    logger.error(f"ðŸš« BLOCKED IP: {ip} for {duration_hours} hours (until {datetime.fromtimestamp(unblock_time)})")
 
 def is_ip_blocked(ip: str) -> bool:
     """Check if an IP is currently blocked"""
+    # Allowed IPs are never considered blocked
+    if is_ip_allowed(ip):
+        return False
+
     if ip not in _blocked_ips:
         return False
     
@@ -300,10 +350,14 @@ def clean_blocked_ips():
     expired_ips = [ip for ip, unblock_time in _blocked_ips.items() if current_time >= unblock_time]
     for ip in expired_ips:
         del _blocked_ips[ip]
-        logger.info(f"✅ Unblocked IP: {ip} (block expired)")
+        logger.info(f"âœ… Unblocked IP: {ip} (block expired)")
 
 def get_suspicious_activity_count(ip: str, window_seconds: int = SUSPICIOUS_ACTIVITY_WINDOW) -> int:
     """Get count of suspicious activities for an IP in the last window_seconds"""
+    # Allowed IPs are treated as having zero suspicious activities
+    if is_ip_allowed(ip):
+        return 0
+
     current_time = time.time()
     if ip not in _suspicious_activity:
         return 0
@@ -544,6 +598,11 @@ def secure_before_request():
     
     # Get client IP
     client_ip = get_client_ip()
+
+    # If IP is explicitly allowed, skip all blocking/recording logic
+    if is_ip_allowed(client_ip):
+        logger.debug(f"Allowed IP {client_ip} bypassing security checks.")
+        return None
     
     # Check if IP is blocked
     if is_ip_blocked(client_ip):
@@ -597,7 +656,3 @@ def secure_before_request():
 def secure_after_request(response: Response) -> Response:
     """Apply security headers after request"""
     return apply_security_headers(response)
-
-# Import os for urandom
-import os
-
