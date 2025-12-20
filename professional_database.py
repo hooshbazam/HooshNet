@@ -649,7 +649,7 @@ class ProfessionalDatabaseManager:
                     AND TABLE_NAME = 'products'
                 """)
                 result = cursor.fetchone()
-                products_table_exists = result['count'] > 0 if result else False
+                # Removed unused variable products_table_exists
                 
                 # Create menu_buttons table if it doesn't exist
                 cursor.execute("""
@@ -705,6 +705,25 @@ class ProfessionalDatabaseManager:
                     ''', [(self.database_name, *btn) for btn in default_buttons])
                     logger.info("✅ Created menu_buttons table with default buttons")
                 
+                # Create panel_inbounds table
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS panel_inbounds (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        panel_id INT NOT NULL,
+                        inbound_id INT NOT NULL,
+                        name VARCHAR(255),
+                        protocol VARCHAR(50),
+                        is_enabled TINYINT DEFAULT 1,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        FOREIGN KEY (panel_id) REFERENCES panels (id) ON DELETE CASCADE,
+                        UNIQUE KEY unique_panel_inbound (panel_id, inbound_id),
+                        INDEX idx_panel_id (panel_id),
+                        INDEX idx_inbound_id (inbound_id)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                ''')
+                logger.info("✅ Created panel_inbounds table")
+
                 # Create reserved_services table if it doesn't exist
                 cursor.execute("""
                     SELECT COUNT(*) as count 
