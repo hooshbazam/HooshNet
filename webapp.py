@@ -200,12 +200,6 @@ logger.info(f"🔒 USE_HTTPS environment variable: {use_https_env} (Parsed: {use
 
 # CRITICAL FIX: Use ProxyFix to handle Nginx headers correctly
 from werkzeug.middleware.proxy_fix import ProxyFix
-# x_for=1: Trust X-Forwarded-For
-# x_proto=1: Trust X-Forwarded-Proto
-# x_host=1: Trust X-Forwarded-Host
-# x_port=1: Trust X-Forwarded-Port
-# x_prefix=1: Trust X-Forwarded-Prefix
-app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1, x_prefix=1)
 
 # Force HTTPS if configured (fixes issues where proxy sends http header)
 if use_https:

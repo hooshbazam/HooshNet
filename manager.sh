@@ -527,7 +527,7 @@ while true; do
     echo -e " ${GREEN}8.${RESET} ${ICON_GEAR} Edit Config (.env)"
     echo -e " ${GREEN}9.${RESET} ${ICON_DB} Backup Database"
     echo -e " ${GREEN}10.${RESET} ${ICON_DB} Restore Database"
-    echo -e " ${GREEN}11.${RESET} ${ICON_LOCK} Install SSL Certificate"
+    echo -e " ${GREEN}11.${RESET} ${ICON_LOCK} Install/Fix SSL Certificate"
     echo -e " ${GREEN}12.${RESET} ${ICON_LOCK} Renew SSL"
     echo ""
     echo -e " ${CYAN}${BOLD}UTILITIES${RESET}"

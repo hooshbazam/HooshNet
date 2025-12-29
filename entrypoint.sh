@@ -98,13 +98,23 @@ if [ ! -f /etc/nginx/ssl/fullchain.pem ] || [ ! -f /etc/nginx/ssl/privkey.pem ];
     log_success "Self-signed certificate generated"
 fi
 
+# Create certbot directory
+mkdir -p /var/www/certbot
+
 # Write Nginx config
 log_info "Writing Nginx configuration..."
 cat > /etc/nginx/sites-available/vpn_bot << 'NGINX_CONFIG'
 server {
     listen 80;
     server_name _;
-    return 301 https://$host$request_uri;
+    
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+    
+    location / {
+        return 301 https://$host$request_uri;
+    }
 }
 
 server {
@@ -115,6 +125,10 @@ server {
     ssl_certificate_key /etc/nginx/ssl/privkey.pem;
 
     client_max_body_size 10M;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
 
     location / {
         proxy_pass http://127.0.0.1:5000;
