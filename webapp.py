@@ -8813,6 +8813,42 @@ def api_admin_wheel_prize_detail(prize_id):
         return secure_error_response(e)
 
 
+# ==========================================
+# ADMIN SETTINGS ROUTES
+# ==========================================
+
+@app.route('/admin/settings/backup', methods=['GET', 'POST'])
+def admin_settings_backup():
+    """Handle backup settings"""
+    # Check admin session
+    if not session.get('admin_logged_in'):
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+        
+    from settings_manager import SettingsManager
+    settings = SettingsManager()
+    
+    if request.method == 'GET':
+        return jsonify({
+            'success': True,
+            'enabled': settings.get_setting('auto_backup_enabled', False),
+            'frequency': int(settings.get_setting('auto_backup_interval', 24))
+        })
+        
+    # POST
+    try:
+        data = request.get_json()
+        enabled = data.get('enabled')
+        frequency = data.get('frequency')
+        
+        # Save settings
+        settings.set_setting('auto_backup_enabled', enabled, description="Auto Backup Enabled", updated_by=session.get('user_id'))
+        settings.set_setting('auto_backup_interval', int(frequency), description="Auto Backup Interval (Hours)", updated_by=session.get('user_id'))
+        
+        return jsonify({'success': True, 'message': 'تنظیمات بکاپ ذخیره شد'})
+    except Exception as e:
+        logger.error(f"Error saving backup settings: {e}")
+        return jsonify({'success': False, 'message': 'خطا در ذخیره تنظیمات'}), 500
+
 if __name__ == '__main__':
     # Create templates and static directories if they don't exist
     os.makedirs('templates', exist_ok=True)

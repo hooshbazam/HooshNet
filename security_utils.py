@@ -471,7 +471,8 @@ def detect_attack_patterns(path: str) -> Tuple[bool, str]:
         '.env', '.git', '.svn', '.hg', '.bzr',  # Version control
         '.sql', '.db', '.sqlite', '.sqlite3',  # Databases
         'config.yaml', 'config.yml', 'docker-compose',  # Config files
-        'credentials', 'secrets', 'private', 'backup',  # Sensitive names
+        'credentials', 'secrets', 'private',  # Sensitive names
+        '.backup', 'backup.sql', 'backup.zip', 'backup.tar', 'backup.tgz',  # Backup files
         '.pem', '.key', '.crt', '.p12', '.pfx',  # Certificates
         'phpinfo', 'info.php', 'test.php',  # Info disclosure
         'admin.php', 'login.php', 'config.php',  # Admin files
