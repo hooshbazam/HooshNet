@@ -284,7 +284,11 @@ update_bot() {
     git pull
     print_step "Rebuilding containers..."
     chmod +x entrypoint.sh
-    docker compose up -d --build
+    
+    # Force recreation of containers to ensure new config is picked up
+    docker compose down
+    docker compose up -d --build --force-recreate
+    
     print_success "System updated successfully."
     wait_enter
 }

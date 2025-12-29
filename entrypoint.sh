@@ -61,6 +61,14 @@ if [ ! -f /etc/nginx/ssl/fullchain.pem ] || [ ! -f /etc/nginx/ssl/privkey.pem ];
         -subj "/C=US/ST=State/L=City/O=Organization/CN=localhost"
 fi
 
+# Force update Nginx config from project file
+if [ -f /app/nginx.conf ]; then
+    echo "Updating Nginx configuration..."
+    cp /app/nginx.conf /etc/nginx/sites-available/vpn_bot
+    ln -sf /etc/nginx/sites-available/vpn_bot /etc/nginx/sites-enabled/
+    rm -f /etc/nginx/sites-enabled/default
+fi
+
 # Start Supervisor
 echo "Starting Supervisor..."
 exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
