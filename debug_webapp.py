@@ -21,7 +21,7 @@ def test_imports():
         ("hmac", "hmac"),
         ("logging", "logging"),
         ("threading", "threading"),
-        ("flask", "Flask"),
+        ("flask", "flask"),
         ("flask_cors", "flask_cors"),
         ("mysql.connector", "mysql.connector"),
         ("dotenv", "dotenv"),

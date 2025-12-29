@@ -211,8 +211,17 @@ if use_https:
             environ['wsgi.url_scheme'] = 'https'
             return self.app(environ, start_response)
     
+    # Apply ForceHTTPS FIRST (inner) so it runs LAST (closest to app)
+    # This ensures it overrides anything ProxyFix might have set
     app.wsgi_app = ForceHTTPS(app.wsgi_app)
+    
+    # Then wrap with ProxyFix (outer) so it processes headers first
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1, x_prefix=1)
+    
     logger.info("🔒 Forced HTTPS scheme for all requests")
+else:
+    # Just use ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1, x_prefix=1)
 
 # Session Configuration
 # We use ProxyFix so Flask knows when it's secure. 
