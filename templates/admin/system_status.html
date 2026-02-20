@@ -1,0 +1,442 @@
+{% extends "admin/base.html" %}
+
+{% block page_title %}وضعیت سیستم{% endblock %}
+{% block page_subtitle %}مانیتورینگ منابع سرور و وضعیت پنل‌ها{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: var(--sp-lg);
+        margin-bottom: var(--sp-xl);
+    }
+
+    .stat-card {
+        background: var(--p-bg-card);
+        border-radius: var(--radius-xl);
+        padding: var(--sp-lg);
+        border: 1px solid var(--border-color);
+        display: flex;
+        flex-direction: column;
+        gap: var(--sp-md);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .stat-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 4px;
+        background: var(--p-primary);
+        opacity: 0.5;
+    }
+
+    .stat-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .stat-title {
+        font-size: 0.9rem;
+        color: var(--p-text-muted);
+        font-weight: 500;
+    }
+
+    .stat-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: var(--radius-lg);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+        background: rgba(99, 102, 241, 0.1);
+        color: var(--p-primary);
+    }
+
+    .stat-value {
+        font-size: 1.8rem;
+        font-weight: 800;
+        color: var(--p-text-main);
+    }
+
+    .stat-meta {
+        font-size: 0.8rem;
+        color: var(--p-text-muted);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .progress-bar {
+        width: 100%;
+        height: 6px;
+        background: var(--p-bg-hover);
+        border-radius: 10px;
+        overflow: hidden;
+        margin-top: auto;
+    }
+
+    .progress-fill {
+        height: 100%;
+        background: var(--p-primary);
+        border-radius: 10px;
+        transition: width 0.5s ease;
+    }
+
+    /* Status Colors */
+    .status-healthy { color: var(--p-success); }
+    .status-warning { color: var(--p-warning); }
+    .status-danger { color: var(--p-error); }
+    
+    .bg-healthy { background-color: var(--p-success); }
+    .bg-warning { background-color: var(--p-warning); }
+    .bg-danger { background-color: var(--p-error); }
+
+    .panel-status-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: var(--sp-lg);
+    }
+
+    .panel-card {
+        background: var(--p-bg-card);
+        border-radius: var(--radius-xl);
+        padding: var(--sp-lg);
+        border: 1px solid var(--border-color);
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .panel-card:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-lg);
+    }
+
+    .panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: var(--sp-md);
+        padding-bottom: var(--sp-md);
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .panel-name {
+        font-weight: 700;
+        font-size: 1.1rem;
+    }
+
+    .panel-status-badge {
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .panel-status-badge.online {
+        background: rgba(16, 185, 129, 0.1);
+        color: var(--p-success);
+        border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+
+    .panel-status-badge.offline {
+        background: rgba(239, 68, 68, 0.1);
+        color: var(--p-error);
+        border: 1px solid rgba(239, 68, 68, 0.2);
+    }
+
+    .panel-details {
+        display: flex;
+        flex-direction: column;
+        gap: var(--sp-sm);
+    }
+
+    .detail-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.9rem;
+    }
+    
+    .detail-label {
+        color: var(--p-text-muted);
+    }
+
+    .refresh-btn {
+        background: var(--p-primary);
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: var(--radius-lg);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-family: inherit;
+        font-weight: 500;
+        transition: opacity 0.2s;
+    }
+
+    .refresh-btn:hover {
+        opacity: 0.9;
+    }
+
+    .refresh-btn i.spinning {
+        animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="header-card">
+    <div class="header-info">
+        <div class="header-icon">
+            <i class="fas fa-heartbeat"></i>
+        </div>
+        <div class="header-text">
+            <h3>وضعیت کلی سیستم</h3>
+            <p>بروزرسانی خودکار هر ۳۰ ثانیه</p>
+        </div>
+    </div>
+    <div class="header-actions">
+        <button class="refresh-btn" onclick="fetchSystemStats()">
+            <i class="fas fa-sync-alt" id="refreshIcon"></i>
+            <span>بروزرسانی</span>
+        </button>
+    </div>
+</div>
+
+<div class="stats-grid">
+    <!-- CPU Usage -->
+    <div class="stat-card">
+        <div class="stat-header">
+            <span class="stat-title">پردازنده (CPU)</span>
+            <div class="stat-icon"><i class="fas fa-microchip"></i></div>
+        </div>
+        <div class="stat-value" id="cpuValue">--%</div>
+        <div class="stat-meta">
+            <i class="fas fa-clock"></i>
+            <span id="uptime">--</span>
+        </div>
+        <div class="progress-bar">
+            <div class="progress-fill" id="cpuBar" style="width: 0%"></div>
+        </div>
+    </div>
+
+    <!-- RAM Usage -->
+    <div class="stat-card">
+        <div class="stat-header">
+            <span class="stat-title">حافظه رم (RAM)</span>
+            <div class="stat-icon"><i class="fas fa-memory"></i></div>
+        </div>
+        <div class="stat-value" id="ramValue">--%</div>
+        <div class="stat-meta">
+            <span id="ramDetails">-- / -- GB</span>
+        </div>
+        <div class="progress-bar">
+            <div class="progress-fill" id="ramBar" style="width: 0%"></div>
+        </div>
+    </div>
+
+    <!-- Disk Usage -->
+    <div class="stat-card">
+        <div class="stat-header">
+            <span class="stat-title">فضای دیسک (Disk)</span>
+            <div class="stat-icon"><i class="fas fa-hdd"></i></div>
+        </div>
+        <div class="stat-value" id="diskValue">--%</div>
+        <div class="stat-meta">
+            <span id="diskDetails">-- / -- GB</span>
+        </div>
+        <div class="progress-bar">
+            <div class="progress-fill" id="diskBar" style="width: 0%"></div>
+        </div>
+    </div>
+
+    <!-- Database -->
+    <div class="stat-card">
+        <div class="stat-header">
+            <span class="stat-title">پایگاه داده</span>
+            <div class="stat-icon"><i class="fas fa-database"></i></div>
+        </div>
+        <div class="stat-value" id="dbStatus">--</div>
+        <div class="stat-meta">
+            <span id="dbConnections">-- اتصال فعال</span>
+        </div>
+    </div>
+
+    <!-- Network -->
+    <div class="stat-card">
+        <div class="stat-header">
+            <span class="stat-title">ترافیک شبکه</span>
+            <div class="stat-icon"><i class="fas fa-network-wired"></i></div>
+        </div>
+        <div class="stat-value" id="netTotal">--</div>
+        <div class="stat-meta" style="font-size: 0.75rem;">
+            <span style="color: var(--p-success);"><i class="fas fa-arrow-up"></i> <span id="netSent">--</span></span>
+            <span style="margin: 0 5px; color: var(--border-color);">|</span>
+            <span style="color: var(--p-info);"><i class="fas fa-arrow-down"></i> <span id="netRecv">--</span></span>
+        </div>
+    </div>
+</div>
+
+<div class="section-card">
+    <div class="section-header">
+        <div class="section-title">
+            <i class="fas fa-server"></i>
+            <h3>وضعیت سرورهای VPN</h3>
+        </div>
+    </div>
+    
+    <div class="panel-status-grid" id="panelsGrid">
+        <div style="text-align: center; grid-column: 1/-1; padding: 2rem; color: var(--p-text-muted);">
+            <i class="fas fa-circle-notch fa-spin fa-2x"></i>
+            <p style="margin-top: 1rem;">در حال دریافت اطلاعات...</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    function formatBytes(bytes, decimals = 2) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    }
+
+    async function fetchSystemStats() {
+        const refreshIcon = document.getElementById('refreshIcon');
+        refreshIcon.classList.add('spinning');
+        
+        try {
+            const response = await fetch('/api/admin/system-stats');
+            const data = await response.json();
+            
+            if (data.success) {
+                updateUI(data.stats);
+            } else {
+                showToast('خطا در دریافت اطلاعات: ' + data.message, 'error');
+            }
+        } catch (error) {
+            console.error('Error fetching stats:', error);
+            showToast('خطا در ارتباط با سرور', 'error');
+        } finally {
+            refreshIcon.classList.remove('spinning');
+        }
+    }
+
+    function updateUI(stats) {
+        // CPU
+        document.getElementById('cpuValue').textContent = stats.cpu.percent + '%';
+        document.getElementById('cpuBar').style.width = stats.cpu.percent + '%';
+        if (stats.cpu.percent > 80) {
+            document.getElementById('cpuBar').className = 'progress-fill bg-danger';
+        } else if (stats.cpu.percent > 50) {
+            document.getElementById('cpuBar').className = 'progress-fill bg-warning';
+        } else {
+            document.getElementById('cpuBar').className = 'progress-fill bg-healthy';
+        }
+        
+        // Uptime
+        // Convert seconds to readable format
+        const uptimeSeconds = stats.uptime;
+        const days = Math.floor(uptimeSeconds / (3600*24));
+        const hours = Math.floor(uptimeSeconds % (3600*24) / 3600);
+        const minutes = Math.floor(uptimeSeconds % 3600 / 60);
+        document.getElementById('uptime').textContent = `${days} روز, ${hours} ساعت, ${minutes} دقیقه`;
+
+        // RAM
+        const ramPercent = stats.memory.percent;
+        document.getElementById('ramValue').textContent = ramPercent + '%';
+        document.getElementById('ramDetails').textContent = `${formatBytes(stats.memory.used)} / ${formatBytes(stats.memory.total)}`;
+        document.getElementById('ramBar').style.width = ramPercent + '%';
+        
+        // Disk
+        const diskPercent = stats.disk.percent;
+        document.getElementById('diskValue').textContent = diskPercent + '%';
+        document.getElementById('diskDetails').textContent = `${formatBytes(stats.disk.used)} / ${formatBytes(stats.disk.total)}`;
+        document.getElementById('diskBar').style.width = diskPercent + '%';
+
+        // DB
+        const dbStatusEl = document.getElementById('dbStatus');
+        if (stats.database.status === 'connected') {
+            dbStatusEl.textContent = 'متصل';
+            dbStatusEl.className = 'stat-value status-healthy';
+        } else {
+            dbStatusEl.textContent = 'قطع';
+            dbStatusEl.className = 'stat-value status-danger';
+        }
+        document.getElementById('dbConnections').textContent = `${stats.database.active_connections || 0} اتصال فعال`;
+
+        // Network
+        if (stats.network) {
+            const totalBytes = (stats.network.bytes_sent || 0) + (stats.network.bytes_recv || 0);
+            document.getElementById('netTotal').textContent = formatBytes(totalBytes);
+            
+            // Use formatted if available, otherwise format manually
+            if (stats.network.formatted) {
+                document.getElementById('netSent').textContent = stats.network.formatted.sent;
+                document.getElementById('netRecv').textContent = stats.network.formatted.recv;
+            } else {
+                document.getElementById('netSent').textContent = formatBytes(stats.network.bytes_sent || 0);
+                document.getElementById('netRecv').textContent = formatBytes(stats.network.bytes_recv || 0);
+            }
+        }
+
+        // Panels
+        const panelsGrid = document.getElementById('panelsGrid');
+        panelsGrid.innerHTML = '';
+        
+        if (stats.panels && stats.panels.length > 0) {
+            stats.panels.forEach(panel => {
+                const card = document.createElement('div');
+                card.className = 'panel-card';
+                
+                const statusClass = panel.is_online ? 'online' : 'offline';
+                const statusText = panel.is_online ? 'آنلاین' : 'آفلاین';
+                
+                card.innerHTML = `
+                    <div class="panel-header">
+                        <div class="panel-name">${panel.name}</div>
+                        <div class="panel-status-badge ${statusClass}">${statusText}</div>
+                    </div>
+                    <div class="panel-details">
+                        <div class="detail-row">
+                            <span class="detail-label">نوع:</span>
+                            <span>${panel.type}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">آدرس:</span>
+                            <span style="direction: ltr;">${panel.host}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">آخرین پینگ:</span>
+                            <span>${panel.ping ? panel.ping + ' ms' : 'نامشخص'}</span>
+                        </div>
+                    </div>
+                `;
+                panelsGrid.appendChild(card);
+            });
+        } else {
+            panelsGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--p-text-muted);">هیچ پنلی یافت نشد</div>';
+        }
+    }
+
+    // Initial load
+    document.addEventListener('DOMContentLoaded', fetchSystemStats);
+    
+    // Auto refresh every 30 seconds
+    setInterval(fetchSystemStats, 30000);
+</script>
+{% endblock %}

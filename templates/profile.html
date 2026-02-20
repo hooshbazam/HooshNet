@@ -7,6 +7,15 @@
     href="{{ url_for('static', filename='css/profile-ultra-modern.css') }}?v={{ range(1, 10000) | random }}">
 {% endblock %}
 
+{% block extra_js %}
+<script>
+    function handleAvatarError(element) {
+        var initial = element.getAttribute('data-initial');
+        element.parentElement.innerHTML = '<div class="profile-avatar-placeholder">' + initial + '</div>';
+    }
+</script>
+{% endblock %}
+
 {% block content %}
 <div class="profile-page-container">
 
@@ -15,7 +24,9 @@
         <div class="profile-avatar-wrapper">
             {% if photo_url %}
             <img src="{{ bot_url_for('user_photo') }}" alt="Profile" class="profile-avatar"
-                onerror="this.parentElement.innerHTML='<div class=\'profile-avatar-placeholder\'>{{ (user.first_name or 'U')[0]|upper }}</div>'">
+                data-initial="{{ (user.first_name or 'U')[0] | upper }}"
+                onerror="handleAvatarError(this)">
+
             {% else %}
             <div class="profile-avatar-placeholder">{{ (user.first_name or 'U')[0]|upper }}</div>
             {% endif %}
@@ -23,7 +34,7 @@
                 <i class="fas fa-check"></i>
             </div>
         </div>
-        <h1 class="profile-name">{{ user.first_name or 'کاربر' }} {{ user.last_name or '' }}</h1>
+        <h1 class="profile-name">{{ user.first_name or 'کاربر' }}{% if user.last_name %} {{ user.last_name }}{% endif %}</h1>
         <div class="profile-id-badge">
             <i class="fas fa-fingerprint"></i>
             <span>ID: {{ user.telegram_id }}</span>
@@ -44,6 +55,18 @@
             </a>
         </div>
     </div>
+
+    {% if is_reseller %}
+    <div class="wallet-card-premium fade-in-up delay-1" style="padding: 14px; margin-top: 14px;">
+        <div class="wallet-label">پنل نماینده</div>
+        <div style="margin-top: 10px;">
+            <a href="{{ url_for('reseller_portal') }}" class="btn-add-funds" style="justify-content: center;">
+                <i class="fas fa-user-tie"></i>
+                ورود به پنل نماینده
+            </a>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Stats Grid -->
     <div class="stats-grid-modern fade-in-up delay-2">

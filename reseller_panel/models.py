@@ -241,11 +241,15 @@ class ResellerManager:
         Returns (discounted_price, discount_rate, is_reseller)
         """
         reseller = self.get_reseller_by_telegram_id(telegram_id)
-        if reseller and reseller.get('discount_rate', 0) > 0:
-            discount_rate = float(reseller['discount_rate'])
-            discount_amount = original_price * (discount_rate / 100)
-            discounted_price = int(original_price - discount_amount)
-            return discounted_price, discount_rate, True
+        if reseller:
+            discount_rate = float(reseller.get('discount_rate', 0) or 0)
+            if discount_rate > 0:
+                discount_amount = original_price * (discount_rate / 100)
+                discounted_price = int(original_price - discount_amount)
+                return discounted_price, discount_rate, True
+            else:
+                # User is a reseller but has 0% discount
+                return original_price, 0, True
         return original_price, 0, False
 
     def is_reseller(self, telegram_id):

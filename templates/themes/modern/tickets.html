@@ -41,7 +41,7 @@
                 <div class="ticket-meta">
                     <span class="ticket-date">
                         <i class="far fa-clock"></i>
-                        {{ ticket.updated_at|replace('T', ' ')|truncate(16, True, '') }}
+                        {{ ticket.updated_at|string|replace('T', ' ')|truncate(16, True, '') if ticket.updated_at else '' }}
                     </span>
                     {% if ticket.priority %}
                     <span class="priority-badge {{ ticket.priority }}">

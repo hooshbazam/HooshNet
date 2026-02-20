@@ -615,13 +615,14 @@ class GuardPanelManager:
         # Alias for get_client_config_link - for compatibility
         return self.get_client_config_link(inbound_id, client_uuid)
     
-    def update_client_traffic(self, inbound_id: int, client_uuid: str, new_total_gb: int) -> bool:
+    def update_client_traffic(self, inbound_id: int, client_uuid: str, new_total_gb: int, client_name: str = None) -> bool:
         # Update subscription traffic limit (for volume increase/renewal)
         # 
         # Args:
         #     inbound_id: Not used in Guard
         #     client_uuid: Username of the subscription
         #     new_total_gb: New total GB limit
+        #     client_name: Optional client name
         #     
         # Returns:
         #     True if successful, False otherwise
@@ -663,6 +664,64 @@ class GuardPanelManager:
             logger.error(f"❌ Error updating Guard subscription traffic: {e}")
             return False
     
+    def update_client_expiration(self, inbound_id: int, client_uuid: str, expiry_timestamp: int, client_name: str = None) -> bool:
+        """
+        Update client expiration (for renewal) in Guard
+        
+        Args:
+            inbound_id: Not used
+            client_uuid: Username
+            expiry_timestamp: New expiration timestamp (Unix timestamp in seconds)
+            client_name: Optional client name
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            if not self.ensure_logged_in():
+                logger.error("❌ Failed to login to Guard panel")
+                return False
+            
+            username = client_uuid
+            
+            # Guard uses duration in seconds for limit_expire
+            # We need to calculate remaining seconds from now to expiry_timestamp
+            
+            if not expiry_timestamp or expiry_timestamp <= 0:
+                new_expire_seconds = 0 # 0 means unlimited
+            else:
+                import time
+                now = int(time.time())
+                new_expire_seconds = max(0, expiry_timestamp - now)
+            
+            update_data = {
+                "limit_expire": new_expire_seconds
+            }
+            
+            logger.info(f"🔍 Updating Guard subscription expiry: {username} -> {new_expire_seconds} seconds remaining")
+            
+            response = self.session.put(
+                f"{self.base_url}{self.api_prefix}/subscriptions/{username}",
+                json=update_data,
+                verify=False,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                logger.info(f"✅ Successfully updated Guard subscription expiry")
+                return True
+            else:
+                logger.error(f"❌ Failed to update Guard subscription: {response.status_code}")
+                try:
+                    logger.error(f"   Response: {response.text}")
+                except:
+                    pass
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ Error updating Guard subscription expiry: {e}")
+            return False
+
     def update_client_expire(self, inbound_id: int, client_uuid: str, new_expire_days: int) -> bool:
         # Update subscription expiry time
         # 

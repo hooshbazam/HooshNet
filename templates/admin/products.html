@@ -14,12 +14,10 @@
                 style="margin-bottom: var(--sp-md); border-bottom: 1px solid var(--border-color); padding-bottom: var(--sp-md);">
                 <div style="display: flex; gap: var(--sp-md); align-items: center;">
                     <div style="position: relative;">
-                        <div
-                            style="width: 50px; height: 50px; border-radius: var(--radius-lg); background: var(--p-bg-hover); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; color: {% if panel.panel_type == 'marzban' %}var(--p-accent){% else %}var(--p-info){% endif %};">
+                        <div class="panel-icon icon-{{ panel.panel_type }}">
                             <i class="fas fa-server"></i>
                         </div>
-                        <div
-                            style="position: absolute; bottom: -2px; right: -2px; width: 12px; height: 12px; border-radius: 50%; background: {% if panel.is_active %}var(--p-success){% else %}var(--p-error){% endif %}; border: 2px solid var(--p-bg-card);">
+                        <div class="status-dot dot-{{ 'active' if panel.is_active else 'inactive' }}">
                         </div>
                     </div>
                     <div style="flex: 1; min-width: 0;">

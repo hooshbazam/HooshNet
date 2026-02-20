@@ -55,8 +55,7 @@
                 <div class="message-content">
                     <div class="message-header">
                         <span class="message-author">شما</span>
-                        <span class="message-time">{{ ticket.created_at|replace('T', ' ')|truncate(16, True, '')
-                            }}</span>
+                        <span class="message-time">{{ ticket.created_at|string|replace('T', ' ')|truncate(16, True, '') if ticket.created_at else '' }}</span>
                     </div>
                     <div class="message-text">
                         {{ ticket.message }}

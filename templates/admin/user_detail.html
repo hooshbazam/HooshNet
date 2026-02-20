@@ -17,7 +17,7 @@
         </div>
 
         <div style="display: flex; gap: var(--sp-sm); flex-wrap: wrap;">
-            <button onclick="loginAsUser({{ user.id }})" class="btn btn-primary">
+            <button id="loginAsUserBtn" type="button" class="btn btn-primary" data-user-id="{{ user.id }}">
                 <i class="fas fa-sign-in-alt"></i>
                 <span>ورود به پنل کاربر</span>
             </button>
@@ -26,13 +26,14 @@
                 <i class="fas fa-paper-plane"></i>
                 <span>ارسال پیام</span>
             </button>
-            <button onclick="showBanUserModal({{ user.id }}, {{ 'true' if user.get('is_banned') else 'false' }})"
-                class="btn {% if user.get('is_banned') %}btn-success{% else %}btn-warning{% endif %}"
-                style="{% if user.get('is_banned') %}background: var(--p-success); border-color: var(--p-success); color: white;{% else %}background: var(--p-warning); border-color: var(--p-warning); color: white;{% endif %}">
+            <button id="banUserBtn" type="button"
+                data-user-id="{{ user.id }}"
+                data-is-banned="{{ 1 if user.get('is_banned') else 0 }}"
+                class="btn {% if user.get('is_banned') %}btn-unban{% else %}btn-ban{% endif %}">
                 <i class="fas {% if user.get('is_banned') %}fa-unlock{% else %}fa-ban{% endif %}"></i>
                 <span>{% if user.get('is_banned') %}رفع مسدودیت{% else %}مسدود کردن{% endif %}</span>
             </button>
-            <button onclick="showDeleteUserModal({{ user.id }})" class="btn btn-danger"
+            <button id="deleteUserBtn" type="button" class="btn btn-danger" data-user-id="{{ user.id }}"
                 style="background: var(--p-error); border-color: var(--p-error); color: white;">
                 <i class="fas fa-trash"></i>
                 <span>حذف کاربر</span>
@@ -59,8 +60,7 @@
                         <i class="fas fa-user"></i>
                         {% endif %}
                     </div>
-                    <div
-                        style="position: absolute; bottom: 5px; right: 5px; width: 20px; height: 20px; border-radius: 50%; background: {% if user.get('is_banned') %}var(--p-error){% else %}var(--p-success){% endif %}; border: 3px solid var(--p-bg-card);">
+                    <div class="status-dot-large dot-{{ 'banned' if user.get('is_banned') else 'active' }}">
                     </div>
                 </div>
 
@@ -185,8 +185,8 @@
             <div class="grid-2">
                 {% for service in services %}
                 <div class="card service-card" style="position: relative; overflow: hidden;">
-                    <div
-                        style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: {% if service.is_active %}var(--p-success){% else %}var(--p-error){% endif %};">
+                    <div class="{% if service.is_active %}service-strip-active{% else %}service-strip-inactive{% endif %}"
+                        style="position: absolute; top: 0; left: 0; width: 4px; height: 100%;">
                     </div>
 
                     <div
@@ -211,11 +211,10 @@
                         </div>
                         <div
                             style="width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
-                            {% set percent = (service.used_gb / service.total_gb * 100) if service.total_gb > 0 else 0
-                            %}
-                            <div
-                                style="width: {{ percent }}%; height: 100%; background: var(--p-primary); border-radius: 3px;">
-                            </div>
+                            {% set percent = (service.used_gb / service.total_gb * 100) if service.total_gb > 0 else 0 %}
+                            <div class="{% if service.used_gb > service.total_gb %}bg-danger{% else %}bg-primary{% endif %} service-usage-bar"
+                                data-usage-percent="{{ percent }}"
+                                style="width: 0; height: 100%; border-radius: 3px;"></div>
                         </div>
                     </div>
 
@@ -252,10 +251,9 @@
                     {% for trans in transactions %}
                     <div
                         style="display: flex; align-items: center; padding: var(--sp-md); border-bottom: 1px solid var(--border-color); gap: var(--sp-md);">
-                        <div style="width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; 
-                            background: {% if trans.amount > 0 %}rgba(16, 185, 129, 0.1){% else %}rgba(239, 68, 68, 0.1){% endif %};
-                            color: {% if trans.amount > 0 %}var(--p-success){% else %}var(--p-error){% endif %};">
-                            <i class="fas {% if trans.amount > 0 %}fa-arrow-down{% else %}fa-arrow-up{% endif %}"></i>
+                        <div class="{% if trans.amount > 0 %}trans-icon-bg-positive text-success-dynamic{% else %}trans-icon-bg-negative text-error-dynamic{% endif %}"
+                            style="width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                            <i class="fas {% if trans.amount > 0 %}fa-arrow-up{% else %}fa-arrow-down{% endif %}"></i>
                         </div>
 
                         <div style="flex: 1;">
@@ -265,8 +263,8 @@
                                 trans.created_at.strftime('%Y-%m-%d %H:%M:%S') if trans.created_at else '-' }}</div>
                         </div>
 
-                        <div
-                            style="font-weight: 800; font-size: 1rem; color: {% if trans.amount > 0 %}var(--p-success){% else %}var(--p-error){% endif %};">
+                        <div class="{% if trans.amount > 0 %}text-success-dynamic{% else %}text-error-dynamic{% endif %}"
+                            style="font-weight: 800; font-size: 1rem;">
                             {{ "{:,}".format(trans.amount) }} تومان
                         </div>
                     </div>
@@ -437,6 +435,13 @@
 
 <style>
     /* Modal Styles */
+    .service-strip-active { background: var(--p-success) !important; }
+    .service-strip-inactive { background: var(--p-error) !important; }
+    .trans-icon-bg-positive { background: rgba(16, 185, 129, 0.1) !important; }
+    .trans-icon-bg-negative { background: rgba(239, 68, 68, 0.1) !important; }
+    .text-success-dynamic { color: var(--p-success) !important; }
+    .text-error-dynamic { color: var(--p-error) !important; }
+
     .modal-overlay {
         display: none;
         position: fixed;
@@ -478,7 +483,42 @@
 
 {% block extra_js %}
 <script>
-    const userId = {{ user.id }};
+    const userId = '{{ user.id }}';
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const loginAsUserBtn = document.getElementById('loginAsUserBtn');
+        if (loginAsUserBtn) {
+            loginAsUserBtn.addEventListener('click', () => {
+                const id = loginAsUserBtn.getAttribute('data-user-id');
+                if (id) loginAsUser(id);
+            });
+        }
+
+        const banUserBtn = document.getElementById('banUserBtn');
+        if (banUserBtn) {
+            banUserBtn.addEventListener('click', () => {
+                const id = banUserBtn.getAttribute('data-user-id');
+                const isBanned = banUserBtn.getAttribute('data-is-banned') === '1';
+                if (id) showBanUserModal(id, isBanned);
+            });
+        }
+
+        const deleteUserBtn = document.getElementById('deleteUserBtn');
+        if (deleteUserBtn) {
+            deleteUserBtn.addEventListener('click', () => {
+                const id = deleteUserBtn.getAttribute('data-user-id');
+                if (id) showDeleteUserModal(id);
+            });
+        }
+
+        document.querySelectorAll('.service-usage-bar[data-usage-percent]').forEach((el) => {
+            const raw = el.getAttribute('data-usage-percent');
+            const percent = raw ? Number(raw) : NaN;
+            if (Number.isFinite(percent)) {
+                el.style.width = `${percent}%`;
+            }
+        });
+    });
 
     function showAddBalanceModal() {
         document.getElementById('addBalanceModal').style.display = 'flex';
@@ -547,7 +587,7 @@
 
     function showBanUserModal(id, isBanned) {
         currentBanUserId = id;
-        currentBanState = isBanned === 'true' || isBanned === true;
+        currentBanState = isBanned === true || isBanned === 'true' || isBanned === 1;
 
         const modal = document.getElementById('banUserModal');
         const title = document.getElementById('banModalTitle');
@@ -589,7 +629,7 @@
             setTimeout(() => window.location.reload(), 1000);
         } catch (error) {
             console.error(error);
-            showToast(error.message || 'خطا در انجام عملیات', 'error');
+            showToast((error && error.message) || 'خطا در انجام عملیات', 'error');
         }
     }
 
@@ -613,7 +653,7 @@
             setTimeout(() => window.location.href = '/admin/users', 1000);
         } catch (error) {
             console.error(error);
-            showToast(error.message || 'خطا در حذف کاربر', 'error');
+            showToast((error && error.message) || 'خطا در حذف کاربر', 'error');
         }
     }
 
@@ -642,7 +682,7 @@
             form.reset();
         } catch (error) {
             console.error(error);
-            showToast(error.message || 'خطا در ارسال پیام', 'error');
+            showToast((error && error.message) || 'خطا در ارسال پیام', 'error');
         }
     }
 
@@ -650,7 +690,9 @@
         try {
             const response = await apiCall(`/api/admin/users/${id}/login`, { method: 'POST' });
             if (response.redirect_url) {
-                window.open(response.redirect_url, '_blank');
+                // Store current admin URL for back button functionality
+                sessionStorage.setItem('admin_return_url', window.location.href);
+                window.location.href = response.redirect_url;
             }
         } catch (error) {
             console.error(error);

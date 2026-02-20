@@ -550,9 +550,9 @@
     let selectedVolume = 0;
     let currentStep = 1;
     let selectedPaymentMethod = null;
-    const userBalance = {{ user.balance if user and user.balance else 0 }};
+    const userBalance = JSON.parse('{{ user.balance if user and user.balance else 0 }}');
 
-    const preselectedServiceId = {{ preselected_service_id if preselected_service_id else 'null' }};
+    const preselectedServiceId = JSON.parse('{{ preselected_service_id if preselected_service_id else "null" }}');
 
     // Load Services
     async function loadServices() {

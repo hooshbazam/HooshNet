@@ -28,12 +28,12 @@ class ReportingSystem:
         'users': {
             'name': '👥 کاربران',
             'icon': '👥',
-            'report_types': ['user_registration', 'user_blocked', 'user_unblocked', 'test_account_created']
+            'report_types': ['user_registration', 'user_blocked', 'user_unblocked']
         },
         'sales': {
             'name': '🛒 فروش و خرید',
             'icon': '🛒',
-            'report_types': ['service_purchased', 'service_renewed', 'volume_added', 'subscription_link_retrieved']
+            'report_types': ['service_purchased', 'service_renewed', 'volume_added', 'subscription_link_retrieved', 'test_account_created']
         },
         'finance': {
             'name': '💰 مالی',
@@ -119,7 +119,11 @@ class ReportingSystem:
             self.channel_id = raw_channel_id
             
         self.bot_username = bot_config.get('bot_username', 'Unknown')
-        self.bot_name = bot_config.get('bot_name', bot_config.get('bot_username', 'Unknown'))
+        
+        # Determine bot name with fallback
+        self.bot_name = bot_config.get('bot_name')
+        if not self.bot_name:
+            self.bot_name = self.bot_username if self.bot_username != 'Unknown' else 'VPN Bot'
         
         # Validate channel ID
         if not self.channel_id:
@@ -206,26 +210,10 @@ class ReportingSystem:
             if not topic_id:
                 needs_creation = True
             else:
-                # Verify if topic still exists
-                try:
-                    # Try to edit topic (no change) to see if it exists
-                    await self.bot.edit_forum_topic(
-                        chat_id=self.channel_id,
-                        message_thread_id=topic_id,
-                        name=info['name']
-                    )
-                except BadRequest as e:
-                    error_msg = str(e).lower()
-                    if "topic_id_invalid" in error_msg or "topic_closed" in error_msg or "not_found" in error_msg:
-                        logger.warning(f"⚠️ Topic '{info['name']}' (ID: {topic_id}) is invalid or closed. Recreating...")
-                        needs_creation = True
-                    elif "not enough rights" in error_msg:
-                        logger.error(f"❌ Bot does not have permission to manage topics in '{self.channel_id}'")
-                        return # Stop if no permissions
-                    else:
-                        logger.error(f"❌ Error verifying topic '{info['name']}': {e}")
-                except Exception as e:
-                    logger.error(f"❌ Unexpected error verifying topic '{info['name']}': {e}")
+                # User requested to disable topic verification/recreation
+                # If topic ID exists in DB, assume it's valid and don't check/recreate
+                # This prevents deleted topics from reappearing
+                pass
             
             if needs_creation:
                 try:
@@ -241,7 +229,7 @@ class ReportingSystem:
                     logger.info(f"✅ Created topic '{info['name']}' with ID {result.message_thread_id}")
                     
                     # Small delay to avoid rate limiting
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(1.0)
                 except BadRequest as e:
                     if "not enough rights" in str(e).lower():
                         logger.error(f"❌ Bot does not have permission to create topics in '{self.channel_id}'")
@@ -464,103 +452,103 @@ class ReportingSystem:
             bot_username = self.bot_config.get('bot_username', 'Unknown')
             admin_id = self.bot_config.get('admin_id', 'Unknown')
             return f"""
-🚀 **ربات VPN راه‌اندازی شد**
+🚀 ربات VPN راه‌اندازی شد
 
-⏰ **زمان:** {timestamp}
-🤖 **نام ربات:** @{bot_username}
-👤 **آیدی ادمین:** {admin_id}
-📢 **کانال گزارشات:** {self.channel_id if self.enabled else 'غیرفعال'}
-🗂️ **حالت گزارش:** {'گروه با تاپیک' if self.is_group else 'کانال ساده'}
+⏰ زمان: {timestamp}
+🤖 نام ربات: @{bot_username}
+👤 آیدی ادمین: {admin_id}
+📢 کانال گزارشات: {self.channel_id if self.enabled else 'غیرفعال'}
+🗂️ حالت گزارش: {'گروه با تاپیک' if self.is_group else 'کانال ساده'}
 
-✅ **وضعیت:** آماده به کار
+✅ وضعیت: آماده به کار
             """
         
         elif report_type == "user_registration":
             referrer_info = ""
             if data.get('referrer_id'):
                 referrer_info = f"""
-🎁 **اطلاعات معرف:**
+🎁 اطلاعات معرف:
    • نام: {data.get('referrer_name', 'نامشخص')}
    • یوزرنیم: @{data.get('referrer_username', 'بدون نام کاربری')}
    • آیدی: {data.get('referrer_telegram_id', 'نامشخص')}
    • پاداش: {data.get('referral_reward', 0):,} تومان
 """
             else:
-                referrer_info = "\n🎁 **معرف:** ثبت نام مستقیم\n"
+                referrer_info = "\n🎁 معرف: ثبت نام مستقیم\n"
             
             return f"""
-👤 **ثبت‌نام کاربر جدید**
+👤 ثبت‌نام کاربر جدید
 
-⏰ **زمان:** {timestamp}
-🆔 **آیدی تلگرام:** {data.get('telegram_id', 'Unknown')}
-👤 **نام کاربری:** @{data.get('username', 'بدون نام کاربری')}
-📝 **نام:** {data.get('first_name', 'نامشخص')} {data.get('last_name', '')}
-💰 **هدیه ثبت نام:** {data.get('welcome_bonus', 0):,} تومان
+⏰ زمان: {timestamp}
+🆔 آیدی تلگرام: {data.get('telegram_id', 'Unknown')}
+👤 نام کاربری: @{data.get('username', 'بدون نام کاربری')}
+📝 نام: {data.get('first_name', 'نامشخص')} {data.get('last_name', '')}
+💰 هدیه ثبت نام: {data.get('welcome_bonus', 0):,} تومان
 {referrer_info}
-✅ **وضعیت:** ثبت‌نام موفق
+✅ وضعیت: ثبت‌نام موفق
             """
         
         elif report_type == "user_blocked":
             target = data.get('target_user', {})
             target_name, target_username = get_user_display(target)
             return f"""
-🚫 **مسدود کردن کاربر**
+🚫 مسدود کردن کاربر
 
-⏰ **زمان:** {timestamp}
-👨‍💼 **ادمین:** {user_name} ({user_username})
+⏰ زمان: {timestamp}
+👨‍💼 ادمین: {user_name} ({user_username})
 
-👤 **کاربر مسدود شده:**
+👤 کاربر مسدود شده:
    • نام: {target_name}
    • یوزرنیم: {target_username}
    • آیدی: {target.get('telegram_id', 'نامشخص')}
-📝 **دلیل:** {data.get('reason', 'نامشخص')}
+📝 دلیل: {data.get('reason', 'نامشخص')}
 
-🚫 **وضعیت:** کاربر مسدود شد
+🚫 وضعیت: کاربر مسدود شد
             """
         
         elif report_type == "user_unblocked":
             target = data.get('target_user', {})
             target_name, target_username = get_user_display(target)
             return f"""
-✅ **رفع مسدودیت کاربر**
+✅ رفع مسدودیت کاربر
 
-⏰ **زمان:** {timestamp}
-👨‍💼 **ادمین:** {user_name} ({user_username})
+⏰ زمان: {timestamp}
+👨‍💼 ادمین: {user_name} ({user_username})
 
-👤 **کاربر رفع مسدود شده:**
+👤 کاربر رفع مسدود شده:
    • نام: {target_name}
    • یوزرنیم: {target_username}
    • آیدی: {target.get('telegram_id', 'نامشخص')}
 
-✅ **وضعیت:** مسدودیت کاربر برداشته شد
+✅ وضعیت: مسدودیت کاربر برداشته شد
             """
         
         elif report_type == "test_account_created":
             return f"""
-🧪 **ایجاد اکانت تست**
+🧪 ایجاد اکانت تست
 
-⏰ **زمان:** {timestamp}
-👤 **کاربر:** {user_name} ({user_username})
-🆔 **آیدی:** {user_id}
-🖥️ **پنل:** {data.get('panel_name', 'نامشخص')}
-📊 **حجم:** {data.get('volume_gb', 0)} گیگابایت
-⏰ **مدت:** {data.get('duration_hours', 24)} ساعت
+⏰ زمان: {timestamp}
+👤 کاربر: {user_name} ({user_username})
+🆔 آیدی: {user_id}
+🖥️ پنل: {data.get('panel_name', 'نامشخص')}
+📊 حجم: {data.get('volume_gb', 0)} گیگابایت
+⏰ مدت: {data.get('duration_hours', 24)} ساعت
 
-✅ **وضعیت:** اکانت تست ایجاد شد
+✅ وضعیت: اکانت تست ایجاد شد
             """
         
         elif report_type == "balance_added":
             return f"""
-💰 **افزایش موجودی**
+💰 افزایش موجودی
 
-⏰ **زمان:** {timestamp}
-👤 **کاربر:** {user_name} ({user_username})
-🆔 **آیدی:** {user_id}
-💵 **مبلغ:** {data.get('amount', 0):,} تومان
-💳 **موجودی جدید:** {data.get('new_balance', 0):,} تومان
-🔗 **روش پرداخت:** {data.get('payment_method', 'نامشخص')}
+⏰ زمان: {timestamp}
+👤 کاربر: {user_name} ({user_username})
+🆔 آیدی: {user_id}
+💵 مبلغ: {data.get('amount', 0):,} تومان
+💳 موجودی جدید: {data.get('new_balance', 0):,} تومان
+🔗 روش پرداخت: {data.get('payment_method', 'نامشخص')}
 
-✅ **وضعیت:** موفق
+✅ وضعیت: موفق
             """
         
         elif report_type == "service_purchased":
@@ -570,59 +558,59 @@ class ReportingSystem:
             plan_info = ""
             if data.get('purchase_type') == 'plan':
                 if data.get('product_name'):
-                    plan_info = f"\n📦 **نام پلن:** {data.get('product_name')}"
+                    plan_info = f"\n📦 نام پلن: {data.get('product_name')}"
                 if data.get('duration_days', 0) > 0:
-                    plan_info += f"\n⏰ **مدت:** {data.get('duration_days')} روز"
+                    plan_info += f"\n⏰ مدت: {data.get('duration_days')} روز"
             
             return f"""
-🛒 **خرید سرویس جدید**
+🛒 خرید سرویس جدید
 
-⏰ **زمان:** {timestamp}
-👤 **کاربر:** {user_name} ({user_username})
-🆔 **آیدی:** {user_id}
-🔧 **نام سرویس:** {data.get('service_name', 'نامشخص')}
-📊 **حجم:** {data.get('data_amount', 0)} گیگابایت{plan_info}
-💰 **مبلغ:** {data.get('amount', 0):,} تومان
-🖥️ **پنل:** {data.get('panel_name', 'نامشخص')}
-📋 **نوع:** {purchase_type}
-💳 **پرداخت:** {payment_method}
+⏰ زمان: {timestamp}
+👤 کاربر: {user_name} ({user_username})
+🆔 آیدی: {user_id}
+🔧 نام سرویس: {data.get('service_name', 'نامشخص')}
+📊 حجم: {data.get('data_amount', 0)} گیگابایت{plan_info}
+💰 مبلغ: {data.get('amount', 0):,} تومان
+🖥️ پنل: {data.get('panel_name', 'نامشخص')}
+📋 نوع: {purchase_type}
+💳 پرداخت: {payment_method}
 
-✅ **وضعیت:** خرید موفق
+✅ وضعیت: خرید موفق
             """
         
         elif report_type == "service_renewed":
             return f"""
-🔄 **تمدید سرویس**
+🔄 تمدید سرویس
 
-⏰ **زمان:** {timestamp}
-👤 **کاربر:** {user_name} ({user_username})
-🆔 **آیدی:** {user_id}
-🔧 **نام سرویس:** {data.get('service_name', 'نامشخص')}
-📊 **حجم اضافه:** {data.get('additional_data', 0)} گیگابایت
-📈 **حجم کل جدید:** {data.get('total_data', 0)} گیگابایت
-💰 **مبلغ:** {data.get('amount', 0):,} تومان
+⏰ زمان: {timestamp}
+👤 کاربر: {user_name} ({user_username})
+🆔 آیدی: {user_id}
+🔧 نام سرویس: {data.get('service_name', 'نامشخص')}
+📊 حجم اضافه: {data.get('additional_data', 0)} گیگابایت
+📈 حجم کل جدید: {data.get('total_data', 0)} گیگابایت
+💰 مبلغ: {data.get('amount', 0):,} تومان
 
-✅ **وضعیت:** تمدید موفق
+✅ وضعیت: تمدید موفق
             """
         
         elif report_type == "volume_added":
             payment_method = "💳 درگاه بانکی" if data.get('payment_method') == 'gateway' else "💰 موجودی"
             
             return f"""
-📈 **افزایش حجم سرویس**
+📈 افزایش حجم سرویس
 
-⏰ **زمان:** {timestamp}
-👤 **کاربر:** {user_name} ({user_username})
-🆔 **آیدی:** {user_id}
-🔧 **نام سرویس:** {data.get('service_name', 'نامشخص')}
-📊 **حجم اضافه شده:** {data.get('volume_added', 0)} گیگابایت
-📈 **حجم قبلی:** {data.get('old_volume', 0):.2f} گیگابایت
-📈 **حجم جدید:** {data.get('new_volume', 0):.2f} گیگابایت
-💰 **مبلغ:** {data.get('amount', 0):,} تومان
-🖥️ **پنل:** {data.get('panel_name', 'نامشخص')}
-💳 **پرداخت:** {payment_method}
+⏰ زمان: {timestamp}
+👤 کاربر: {user_name} ({user_username})
+🆔 آیدی: {user_id}
+🔧 نام سرویس: {data.get('service_name', 'نامشخص')}
+📊 حجم اضافه شده: {data.get('volume_added', 0)} گیگابایت
+📈 حجم قبلی: {data.get('old_volume', 0):.2f} گیگابایت
+📈 حجم جدید: {data.get('new_volume', 0):.2f} گیگابایت
+💰 مبلغ: {data.get('amount', 0):,} تومان
+🖥️ پنل: {data.get('panel_name', 'نامشخص')}
+💳 پرداخت: {payment_method}
 
-✅ **وضعیت:** افزایش حجم موفق
+✅ وضعیت: افزایش حجم موفق
             """
         
         elif report_type == "service_volume_70_percent":

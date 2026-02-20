@@ -115,6 +115,23 @@ class AdminManager:
             logger.error(f"Error testing panel connection: {e}")
             return False, f"❌ خطای سیستمی: {str(e)}"
 
+    def get_panel_system_stats(self, panel_id: int) -> Dict:
+        """Get system stats for a panel"""
+        try:
+            manager = self.get_panel_manager(panel_id)
+            if not manager:
+                return {}
+            
+            if not manager.login():
+                return {}
+            
+            if hasattr(manager, 'get_system_stats'):
+                return manager.get_system_stats()
+            return {}
+        except Exception as e:
+            logger.error(f"Error getting panel system stats: {e}")
+            return {}
+
     def get_panel_inbounds(self, panel_id: int) -> List[Dict]:
         """Get inbounds for a panel"""
         try:
@@ -137,7 +154,7 @@ class AdminManager:
 
     def create_client_on_panel(self, panel_id: int, inbound_id: int, client_name: str, 
                              protocol: str = 'vless', expire_days: int = 0, 
-                             total_gb: int = 0) -> Tuple[bool, str, Optional[Dict]]:
+                             total_gb: float = 0) -> Tuple[bool, str, Optional[Dict]]:
         """
         Create a client on a specific inbound of a panel.
         """
@@ -169,11 +186,12 @@ class AdminManager:
 
     def create_client_on_all_panel_inbounds(self, panel_id: int, client_name: str, 
                                           protocol: str = 'vless', expire_days: int = 0, 
-                                          total_gb: int = 0) -> Tuple[bool, str, Optional[Dict]]:
+                                          total_gb: float = 0, limit_ip: int = 0, 
+                                          inbound_id: int = 0) -> Tuple[bool, str, Optional[Dict]]:
         """
         Create a client on the specified panel.
         For Marzban/Rebecca: Creates a user with access to all inbounds of the specified protocol.
-        For 3x-ui: Creates a client on the first available/matching inbound.
+        For 3x-ui: Creates a client on the specified inbound or first available/matching inbound.
         """
         try:
             manager = self.get_panel_manager(panel_id)
@@ -186,20 +204,31 @@ class AdminManager:
             # Determine panel type and handle accordingly
             if isinstance(manager, (MarzbanPanelManager, RebeccaPanelManager, MarzneshinPanelManager, GuardPanelManager)):
                 # For Rebecca/Marzban/Marzneshin, we should use the Main Service (default_inbound_id)
-                # Fetch panel details to get default_inbound_id
-                panel = self.db.get_panel(panel_id)
-                main_service_id = panel.get('default_inbound_id') if panel else 0
+                # If inbound_id is provided, use it, otherwise fetch panel default
+                main_service_id = inbound_id
+                
+                if not main_service_id:
+                    # Fetch panel details to get default_inbound_id
+                    panel = self.db.get_panel(panel_id)
+                    main_service_id = panel.get('default_inbound_id') if panel else 0
                 
                 if isinstance(manager, RebeccaPanelManager) and not main_service_id:
                     logger.warning(f"⚠️ No Main Service (default_inbound_id) selected for Rebecca panel {panel_id}. Client might be created without specific service.")
 
-                client = manager.create_client(
-                    inbound_id=main_service_id,  # Pass Main Service ID
-                    client_name=client_name,
-                    protocol=protocol,
-                    expire_days=expire_days,
-                    total_gb=total_gb
-                )
+                # Check if manager supports limit_ip
+                import inspect
+                sig = inspect.signature(manager.create_client)
+                kwargs = {
+                    'inbound_id': main_service_id,  # Pass Main Service ID
+                    'client_name': client_name,
+                    'protocol': protocol,
+                    'expire_days': expire_days,
+                    'total_gb': total_gb
+                }
+                if 'limit_ip' in sig.parameters:
+                    kwargs['limit_ip'] = limit_ip
+
+                client = manager.create_client(**kwargs)
                 
                 if client and not client.get('error'):
                     # Add extra info for consistency
@@ -212,18 +241,48 @@ class AdminManager:
             
             else:
                 # 3x-ui Panel
-                # We need to find a suitable inbound since one wasn't specified
+                
+                # We need to find a suitable inbound
                 inbounds = manager.get_inbounds()
                 if not inbounds:
                     return False, "No inbounds found on panel", None
                 
                 target_inbound = None
                 
+                # 0. Try to use specified inbound_id if provided
+                if inbound_id:
+                    for inbound in inbounds:
+                        if inbound.get('id') == inbound_id:
+                            if inbound.get('enable', True):
+                                target_inbound = inbound
+                            else:
+                                logger.warning(f"Specified inbound {inbound_id} is disabled")
+                            break
+                    
+                    if not target_inbound:
+                        logger.warning(f"Specified inbound {inbound_id} not found or disabled, falling back to auto-selection")
+
+                # 0.5. Try to use default inbound if set (only if target_inbound not set yet)
+                if not target_inbound:
+                    # Fetch panel details to get default_inbound_id
+                    panel = self.db.get_panel(panel_id)
+                    default_inbound_id = panel.get('default_inbound_id') if panel else None
+                    
+                    if default_inbound_id:
+                        for inbound in inbounds:
+                            if inbound.get('id') == default_inbound_id:
+                                if inbound.get('enable', True):
+                                    target_inbound = inbound
+                                else:
+                                    logger.warning(f"Default inbound {default_inbound_id} is disabled, falling back to auto-selection")
+                                break
+                
                 # 1. Try to find inbound matching requested protocol
-                for inbound in inbounds:
-                    if inbound.get('enable', True) and inbound.get('protocol') == protocol:
-                        target_inbound = inbound
-                        break
+                if not target_inbound:
+                    for inbound in inbounds:
+                        if inbound.get('enable', True) and inbound.get('protocol') == protocol:
+                            target_inbound = inbound
+                            break
                 
                 # 2. If not found, try to find any vless inbound (preferred)
                 if not target_inbound and protocol != 'vless':
@@ -243,13 +302,20 @@ class AdminManager:
                     return False, "No active inbounds found on panel", None
                 
                 # Create client on the selected inbound
-                client = manager.create_client(
-                    inbound_id=target_inbound['id'],
-                    client_name=client_name,
-                    protocol=target_inbound['protocol'], # Use inbound's actual protocol
-                    expire_days=expire_days,
-                    total_gb=total_gb
-                )
+                # Check if manager supports limit_ip
+                import inspect
+                sig = inspect.signature(manager.create_client)
+                kwargs = {
+                    'inbound_id': target_inbound['id'],
+                    'client_name': client_name,
+                    'protocol': target_inbound['protocol'], # Use inbound's actual protocol
+                    'expire_days': expire_days,
+                    'total_gb': total_gb
+                }
+                if 'limit_ip' in sig.parameters:
+                    kwargs['limit_ip'] = limit_ip
+                
+                client = manager.create_client(**kwargs)
                 
                 if client:
                     client['created_on_inbounds'] = 1

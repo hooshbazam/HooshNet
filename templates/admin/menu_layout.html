@@ -879,8 +879,8 @@
 
 <script>
     // Data from server
-    let buttons = {{ buttons| tojson }};
-    const availableButtons = {{ available_buttons| tojson }};
+    let buttons = JSON.parse('{{ buttons| tojson }}');
+    const availableButtons = JSON.parse('{{ available_buttons| tojson }}');
 
     // Initialize on DOM ready
     document.addEventListener('DOMContentLoaded', function () {

@@ -133,6 +133,7 @@
         margin-bottom: 4px;
         background: linear-gradient(to right, #fff, #cbd5e1);
         -webkit-background-clip: text;
+        background-clip: text;
         -webkit-text-fill-color: transparent;
     }
 
@@ -462,9 +463,15 @@
     <div class="hero-card anim-entry">
         <div class="hero-bg-glow"></div>
         <div class="hero-content">
-            <div class="status-badge {% if not service.is_online %}offline{% endif %}">
+            <div class="status-badge {% if not service.is_active %}offline{% endif %}">
                 <span class="dot" style="width: 6px; height: 6px; border-radius: 50%; background: currentColor;"></span>
-                {{ 'سرویس فعال' if service.is_online else 'غیرفعال' }}
+                {% if not service.is_active %}
+                غیرفعال
+                {% elif service.usage_percentage|default(0)|float == 0 %}
+                استفاده نشده
+                {% else %}
+                فعال
+                {% endif %}
             </div>
 
             <h2 class="service-name">{{ service.client_name or 'سرویس بدون نام' }}</h2>
@@ -535,18 +542,33 @@
 
     <!-- Copy Link Action -->
     {% if service.subscription_link %}
-    <div class="copy-box anim-entry delay-2" onclick="copySubscriptionLink()">
-        <div class="copy-content">
-            <div class="action-icon" style="width: 32px; height: 32px; font-size: 1rem;">
-                <i class="fas fa-link"></i>
+        <div class="copy-box anim-entry delay-2" onclick="copyToClipboard('{{ service.subscription_link }}', 'لینک اتصال کپی شد')">
+            <div class="copy-content">
+                <div class="action-icon" style="width: 32px; height: 32px; font-size: 1rem;">
+                    <i class="fas fa-link"></i>
+                </div>
+                <div>
+                    <div style="font-weight: 600; font-size: 0.95rem;">لینک اتصال (Subscription)</div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted);">برای کپی ضربه بزنید</div>
+                </div>
             </div>
-            <div>
-                <div style="font-weight: 600; font-size: 0.95rem;">لینک اتصال</div>
-                <div style="font-size: 0.8rem; color: var(--text-muted);">برای کپی ضربه بزنید</div>
-            </div>
+            <i class="fas fa-copy" style="color: var(--primary);"></i>
         </div>
-        <i class="fas fa-copy" style="color: var(--primary);"></i>
-    </div>
+    {% endif %}
+        
+    {% if service.config_link %}
+        <div class="copy-box anim-entry delay-2" onclick="copyToClipboard('{{ service.config_link }}', 'کانفیگ کپی شد')">
+            <div class="copy-content">
+                <div class="action-icon" style="width: 32px; height: 32px; font-size: 1rem;">
+                    <i class="fas fa-key"></i>
+                </div>
+                <div>
+                    <div style="font-weight: 600; font-size: 0.95rem;">کانفیگ مستقیم (Config)</div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted);">برای کپی ضربه بزنید</div>
+                </div>
+            </div>
+            <i class="fas fa-copy" style="color: var(--accent);"></i>
+        </div>
     {% endif %}
 
     <!-- Action Grid -->
@@ -563,9 +585,14 @@
         </a>
         {% endif %}
 
-        <div class="action-btn location" onclick="showChangePanelModal()">
-            <div class="action-icon"><i class="fas fa-map-marker-alt"></i></div>
-            <span class="action-text">تغییر لوکیشن</span>
+        <div class="action-btn" onclick="toggleService()">
+            {% if service.status == 'paused' %}
+            <div class="action-icon" style="background: rgba(16, 185, 129, 0.15); color: #10b981;"><i class="fas fa-power-off"></i></div>
+            <span class="action-text">روشن کردن</span>
+            {% else %}
+            <div class="action-icon" style="background: rgba(239, 68, 68, 0.15); color: #ef4444;"><i class="fas fa-power-off"></i></div>
+            <span class="action-text">خاموش کردن</span>
+            {% endif %}
         </div>
 
         <div class="action-btn" onclick="showQRModal()">
@@ -597,26 +624,13 @@
     </div>
 </div>
 
-<!-- Change Panel Modal -->
-<div class="modal-overlay" id="changePanelModal" onclick="closeChangePanelModal()">
-    <div class="modal-sheet" onclick="event.stopPropagation()">
-        <div class="modal-header">
-            <h3 class="modal-title">تغییر لوکیشن</h3>
-            <button class="modal-close" onclick="closeChangePanelModal()"><i class="fas fa-times"></i></button>
-        </div>
-        <div id="panelsList" style="max-height: 40vh; overflow-y: auto; padding-bottom: 20px;">
-            <div style="text-align: center; padding: 20px; color: var(--text-muted);">
-                <i class="fas fa-spinner fa-spin fa-2x"></i>
-            </div>
-        </div>
-    </div>
-</div>
+
 
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script>
-    const subLink = '{{ service.subscription_link }}';
-    const sId = {{ service.id }};
-    const usagePercent = {{ service.usage_percentage|default (0) | int }};
+    const subLink = '{{ service.qr_link }}';
+    const sId = Number("{{ service.id }}");
+    const usagePercent = Number("{{ service.usage_percentage|default(0)|int }}");
 
     // Initialize Progress Ring
     document.addEventListener('DOMContentLoaded', () => {
@@ -633,15 +647,24 @@
         }, 500);
     });
 
-    function copySubscriptionLink() {
-        if (!subLink) return;
-        navigator.clipboard.writeText(subLink).then(() => {
-            // Custom toast implementation or use existing showToast
+    function copyToClipboard(text, message) {
+        if (!text) return;
+        navigator.clipboard.writeText(text).then(() => {
             if (typeof showToast === 'function') {
-                showToast('لینک اتصال کپی شد', 'success');
+                showToast(message || 'کپی شد');
             } else {
-                alert('لینک کپی شد');
+                alert(message || 'کپی شد');
             }
+        });
+    }
+
+    function toggleService() {
+        fetch('{{ add_bot_prefix("/services/" + service.id|string + "/toggle") }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: ''
+        }).then(() => {
+            window.location.reload();
         });
     }
 
@@ -654,58 +677,6 @@
     }
     function closeQRModal() { document.getElementById('qrModal').classList.remove('visible'); }
 
-    function showChangePanelModal() {
-        document.getElementById('changePanelModal').classList.add('visible');
-        const list = document.getElementById('panelsList');
 
-        fetch(fixUrl(`/api/service/${sId}/compatible-panels`))
-            .then(r => r.json())
-            .then(d => {
-                if (d.success && d.panels.length) {
-                    list.innerHTML = d.panels.map(p => `
-                        <div class="panel-item" onclick="selectPanel(${p.id})">
-                            <div style="display: flex; align-items: center; gap: 12px;">
-                                <div style="width: 40px; height: 40px; background: rgba(59,130,246,0.1); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--primary);">
-                                    <i class="fas fa-server"></i>
-                                </div>
-                                <div>
-                                    <div style="font-weight: 700; color: var(--text-main);">${p.name}</div>
-                                    <div style="font-size: 0.8rem; color: var(--text-muted);">${p.price_per_gb.toLocaleString()} ت/GB</div>
-                                </div>
-                            </div>
-                            <i class="fas fa-chevron-left" style="color: var(--text-muted); font-size: 0.8rem;"></i>
-                        </div>
-                    `).join('');
-                } else {
-                    list.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-muted);">هیچ لوکیشن دیگری برای این سرویس یافت نشد.</div>';
-                }
-            })
-            .catch(() => {
-                list.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--danger);">خطا در دریافت لیست.</div>';
-            });
-    }
-    function closeChangePanelModal() { document.getElementById('changePanelModal').classList.remove('visible'); }
-
-    function selectPanel(pid) {
-        if (!confirm('آیا از تغییر لوکیشن سرویس اطمینان دارید؟')) return;
-
-        // Show loading
-        if (typeof showToast === 'function') showToast('در حال تغییر لوکیشن...', 'info');
-
-        fetch(fixUrl(`/api/service/${sId}/change-panel`), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ panel_id: pid })
-        }).then(r => r.json()).then(d => {
-            if (d.success) {
-                if (typeof showToast === 'function') showToast('لوکیشن با موفقیت تغییر کرد', 'success');
-                setTimeout(() => location.reload(), 1500);
-            } else {
-                if (typeof showToast === 'function') showToast(d.message || 'خطا در تغییر لوکیشن', 'error');
-            }
-        }).catch(err => {
-            if (typeof showToast === 'function') showToast('خطای ارتباط با سرور', 'error');
-        });
-    }
 </script>
 {% endblock %}

@@ -566,8 +566,7 @@
         const circle = document.getElementById('usageCircle');
         const radius = circle.r.baseVal.value;
         const circumference = radius * 2 * Math.PI;
-        const percent = {{ percent|default (0)
-    }};
+        const percent = Number("{{ percent|default(0) }}");
 
     circle.style.strokeDasharray = `${circumference} ${circumference}`;
     circle.style.strokeDashoffset = circumference;

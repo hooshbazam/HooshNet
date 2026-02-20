@@ -96,7 +96,61 @@
             </div>
         </div>
 
+        <!-- Finance Settings -->
+        <div class="card">
+            <div class="card-header"
+                style="margin-bottom: var(--sp-md); padding-bottom: var(--sp-md); border-bottom: 1px solid var(--border-color);">
+                <div style="font-weight: 800; display: flex; align-items: center; gap: var(--sp-sm);">
+                    <i class="fas fa-coins" style="color: var(--p-success);"></i>
+                    تنظیمات مالی
+                </div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: var(--sp-md);">
+                <div class="setting-item">
+                    <div style="display: flex; gap: var(--sp-md); align-items: center;">
+                        <div
+                            style="width: 40px; height: 40px; border-radius: var(--radius-md); background: var(--p-bg-hover); display: flex; align-items: center; justify-content: center; color: var(--p-text-muted);">
+                            <i class="fas fa-file-invoice-dollar"></i>
+                        </div>
+                        <div>
+                            <div style="font-weight: 700;">تایید خودکار رسید</div>
+                            <div style="font-size: 0.8rem; color: var(--p-text-muted);">تایید اتوماتیک رسیدهای ارسالی کاربران (کارت به کارت)</div>
+                        </div>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="autoApproveReceipt" onchange="toggleAutoApprove(this.checked)" {% if auto_approve_receipts %}checked{% endif %}>
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
         <script>
+            async function toggleAutoApprove(checked) {
+                try {
+                    const response = await apiCall('/api/admin/settings/update', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            key: 'auto_approve_receipts',
+                            value: checked
+                        })
+                    });
+                    
+                    if (response.success) {
+                        showToast(checked ? 'تایید خودکار فعال شد' : 'تایید خودکار غیرفعال شد', 'success');
+                    } else {
+                        showToast(response.message || 'خطا در تغییر تنظیمات', 'error');
+                        // Revert checkbox if failed
+                        document.getElementById('autoApproveReceipt').checked = !checked;
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    showToast('خطا در ارتباط با سرور', 'error');
+                    document.getElementById('autoApproveReceipt').checked = !checked;
+                }
+            }
+
             async function changeTheme(theme) {
                 try {
                     const response = await fetch('/admin/settings/theme', {
@@ -178,6 +232,16 @@
                                 <option value="168">هفتگی</option>
                             </select>
                         </div>
+                        
+                        <div
+                            style="display: grid; grid-template-columns: 1fr auto; gap: var(--sp-md); align-items: center; margin-top: var(--sp-sm);">
+                            <div>
+                                <div style="font-size: 0.9rem;">شناسه تاپیک (Topic ID):</div>
+                                <div style="font-size: 0.75rem; color: var(--p-text-muted);">برای ارسال به تاپیک خاص در سوپرگروه (۰ = خودکار)</div>
+                            </div>
+                            <input type="number" id="backupTopicId" onchange="saveBackupSettings()" placeholder="0"
+                                style="padding: 5px 10px; width: 100px; border-radius: 5px; background: var(--p-bg-card); color: var(--p-text-main); border: 1px solid var(--border-color); text-align: center;">
+                        </div>
                     </div>
                 </div>
             </div>
@@ -194,6 +258,7 @@
                     if (data.success) {
                         document.getElementById('autoBackupToggle').checked = data.enabled;
                         document.getElementById('backupFrequency').value = data.frequency || 24;
+                        document.getElementById('backupTopicId').value = data.topic_id || 0;
                         toggleBackupVisibility(data.enabled);
                     }
                 } catch (error) {
@@ -215,6 +280,7 @@
             async function saveBackupSettings() {
                 const enabled = document.getElementById('autoBackupToggle').checked;
                 const frequency = document.getElementById('backupFrequency').value;
+                const topicId = document.getElementById('backupTopicId').value;
 
                 try {
                     const response = await fetch('/admin/settings/backup', {
@@ -224,7 +290,8 @@
                         },
                         body: JSON.stringify({
                             enabled: enabled,
-                            frequency: parseInt(frequency)
+                            frequency: parseInt(frequency),
+                            topic_id: parseInt(topicId)
                         })
                     });
 

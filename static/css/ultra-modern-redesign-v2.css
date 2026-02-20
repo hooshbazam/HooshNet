@@ -84,6 +84,7 @@ button {
 .text-gradient {
     background: linear-gradient(135deg, #fff 0%, #ccc 100%);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
 }
 
@@ -481,6 +482,17 @@ button {
     background: var(--primary);
     border-radius: 3px;
     box-shadow: 0 0 10px var(--primary-glow);
+    transition: width 0.3s ease, background-color 0.3s ease;
+}
+
+.progress-fill.status-warning {
+    background: var(--warning);
+    box-shadow: 0 0 10px rgba(245, 158, 11, 0.5);
+}
+
+.progress-fill.status-critical {
+    background: var(--error);
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
 }
 
 .usage-stats {
@@ -763,5 +775,12 @@ button {
 
     .selection-list {
         grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    }
+}
+
+@keyframes slideOutRight {
+    to {
+        transform: translateX(400px);
+        opacity: 0;
     }
 }

@@ -420,13 +420,21 @@ class PasargadPanelManager:
             logger.error(f"Error getting client details: {e}")
             return None
 
-    def update_client_traffic(self, inbound_id: int, client_uuid: str, new_total_gb: int) -> bool:
-        """Update client traffic limit"""
+    def update_client_traffic(self, inbound_id: int, client_uuid: str, new_total_gb: int, client_name: str = None) -> bool:
+        """
+        Update client traffic limit.
+        
+        Args:
+            inbound_id: Inbound ID (ignored for Pasargad)
+            client_uuid: Client UUID (username in Pasargad)
+            new_total_gb: New total traffic limit in GB
+            client_name: Optional client name
+        """
         if not self.login():
             return False
 
         try:
-            username = client_uuid
+            username = client_name if client_name else client_uuid
             
             # First get current user data to preserve other fields
             response = self.session.get(

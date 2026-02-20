@@ -44,6 +44,11 @@
                     <span>داشبورد</span>
                 </a>
 
+                <a href="/admin/system-status" class="nav-item {% if request.endpoint == 'admin_system_status' %}active{% endif %}">
+                    <i class="fas fa-heartbeat"></i>
+                    <span>وضعیت سیستم</span>
+                </a>
+
                 <a href="/admin/users" class="nav-item {% if request.endpoint == 'admin_users' %}active{% endif %}">
                     <i class="fas fa-users"></i>
                     <span>کاربران</span>
@@ -84,10 +89,10 @@
                     <span>تخفیف‌ها</span>
                 </a>
 
-                <a href="/admin/broadcast"
-                    class="nav-item {% if request.endpoint == 'admin_broadcast' %}active{% endif %}">
-                    <i class="fas fa-bullhorn"></i>
-                    <span>همگانی</span>
+                <a href="/admin/wheel"
+                    class="nav-item {% if request.endpoint == 'admin_wheel' %}active{% endif %}">
+                    <i class="fas fa-dharmachakra"></i>
+                    <span>گردونه شانس</span>
                 </a>
 
                 <a href="/admin/tickets"
@@ -311,11 +316,20 @@
                     },
                     ...options
                 });
-                const data = await response.json();
-                if (!response.ok) throw new Error(data.message || 'خطا در ارتباط با سرور');
-                return data;
+                let data = null;
+                try {
+                    data = await response.json();
+                } catch (e) {
+                    data = null;
+                }
+                if (!response.ok) {
+                    const message = (data && data.message) ? data.message : 'خطا در ارتباط با سرور';
+                    throw new Error(message);
+                }
+                return data || {};
             } catch (error) {
-                showToast(error.message, 'error');
+                const message = (error && error.message) ? error.message : 'خطا در ارتباط با سرور';
+                showToast(message, 'error');
                 throw error;
             }
         }

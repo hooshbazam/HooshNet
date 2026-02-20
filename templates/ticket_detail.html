@@ -23,7 +23,7 @@
                     <span style="font-family: monospace;">#{{ ticket.id }}</span>
                     <span>•</span>
                     <span
-                        style="color: {% if ticket.status == 'open' %}#10b981{% else %}#a1a1aa{% endif %}; font-weight: 600;">
+                        class="status-badge {% if ticket.status == 'open' %}status-open{% else %}status-closed{% endif %}">
                         {% if ticket.status == 'open' %}باز{% else %}بسته شده{% endif %}
                     </span>
                 </div>
@@ -98,9 +98,11 @@
     // Preserve reply form state when navigating back
     const replyForm = document.getElementById('replyForm');
     const messageInput = document.getElementById('messageInput');
+    const ticketId = '{{ ticket.id }}';
+    
     if (replyForm && messageInput) {
         // Store form state in sessionStorage
-        const storedMessage = sessionStorage.getItem(`ticket_reply_${ {{ ticket.id }} }`);
+        const storedMessage = sessionStorage.getItem(`ticket_reply_${ticketId}`);
         if (storedMessage) {
             messageInput.value = storedMessage;
             messageInput.style.height = 'auto';
@@ -109,12 +111,12 @@
         
         // Save on input
         messageInput.addEventListener('input', function() {
-            sessionStorage.setItem(`ticket_reply_${ {{ ticket.id }} }`, this.value);
+            sessionStorage.setItem(`ticket_reply_${ticketId}`, this.value);
         });
         
         // Clear on successful submit
         replyForm.addEventListener('submit', function() {
-            sessionStorage.removeItem(`ticket_reply_${ {{ ticket.id }} }`);
+            sessionStorage.removeItem(`ticket_reply_${ticketId}`);
         });
     }
 

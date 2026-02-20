@@ -2,6 +2,23 @@
 
 {% block title %}داشبورد - پنل کاربری{% endblock %}
 
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const progressFills = document.querySelectorAll('.progress-fill[data-width]');
+        progressFills.forEach(fill => {
+            const width = fill.getAttribute('data-width');
+            if (width) {
+                // Small delay to ensure transition animation plays if any
+                setTimeout(() => {
+                    fill.style.width = width + '%';
+                }, 100);
+            }
+        });
+    });
+</script>
+{% endblock %}
+
 {% block content %}
 <div class="user-welcome fade-in">
     <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -109,16 +126,17 @@
                     <p>#{{ service.id }}</p>
                 </div>
             </div>
-            <div class="service-status {% if service.is_online %}status-online{% else %}status-offline{% endif %}">
+            {% set is_unused = (service.is_active and (service.used_gb|default(0)) == 0) %}
+            <div class="service-status {% if not service.is_active %}status-offline{% else %}status-online{% endif %}">
                 <div class="status-dot"></div>
-                {% if service.is_online %}آنلاین{% else %}آفلاین{% endif %}
+                {% if not service.is_active %}غیرفعال{% elif is_unused %}استفاده نشده{% else %}فعال{% endif %}
             </div>
         </div>
 
         {% set percentage = service.usage_percentage|default(0)|int %}
         <div class="progress-track">
-            <div class="progress-fill"
-                style="width: {{ percentage }}%; {% if percentage > 90 %}background: var(--error); box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);{% elif percentage > 75 %}background: var(--warning); box-shadow: 0 0 10px rgba(245, 158, 11, 0.5);{% endif %}">
+            <div class="progress-fill {% if percentage > 90 %}status-critical{% elif percentage > 75 %}status-warning{% endif %}"
+                 data-width="{{ percentage }}">
             </div>
         </div>
         <div class="usage-stats">

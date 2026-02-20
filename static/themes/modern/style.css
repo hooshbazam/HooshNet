@@ -55,6 +55,11 @@
     --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* --- Utilities --- */
+.bg-danger {
+    background: var(--c-danger) !important;
+}
+
 /* --- Reset & Base --- */
 * {
     box-sizing: border-box;
@@ -4260,6 +4265,7 @@ button {
         margin-bottom: 4px;
         background: linear-gradient(to right, #fff, #94a3b8);
         -webkit-background-clip: text;
+        background-clip: text;
         -webkit-text-fill-color: transparent;
     }
 
@@ -4776,6 +4782,7 @@ button {
         margin-bottom: 4px;
         background: linear-gradient(to right, #fff, #94a3b8);
         -webkit-background-clip: text;
+        background-clip: text;
         -webkit-text-fill-color: transparent;
     }
 
@@ -6001,3 +6008,4 @@ button {
         font-weight: 600;
         font-size: 0.95rem;
     }
+}

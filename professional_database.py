@@ -218,6 +218,12 @@ class ProfessionalDatabaseManager:
                     # Column might already exist, ignore error
                     pass
                 
+                # Add has_used_test_account column if it doesn't exist
+                try:
+                    cursor.execute('ALTER TABLE users ADD COLUMN has_used_test_account TINYINT DEFAULT 0')
+                except Exception as e:
+                    pass
+                
                 # Create panels table
                 cursor.execute('''
                     CREATE TABLE IF NOT EXISTS panels (
@@ -303,8 +309,11 @@ class ProfessionalDatabaseManager:
                         deletion_grace_period_end TIMESTAMP NULL,
                         cached_used_gb DOUBLE DEFAULT 0,
                         cached_last_activity BIGINT DEFAULT 0,
+                        last_activity BIGINT DEFAULT 0,
                         cached_is_online TINYINT DEFAULT 0,
+                        cached_remaining_days INT DEFAULT 0,
                         data_last_synced TIMESTAMP NULL,
+                        invoice_id INT,
                         notes TEXT,
                         FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
                         FOREIGN KEY (panel_id) REFERENCES panels (id) ON DELETE CASCADE,
@@ -313,13 +322,23 @@ class ProfessionalDatabaseManager:
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                 ''')
                 
+                # Add invoice_id column to clients if it doesn't exist (migration)
+                try:
+                    cursor.execute("SHOW COLUMNS FROM clients LIKE 'invoice_id'")
+                    if not cursor.fetchone():
+                        cursor.execute("ALTER TABLE clients ADD COLUMN invoice_id INT")
+                        cursor.execute("CREATE INDEX idx_invoice_id ON clients(invoice_id)")
+                        logger.info("✅ Added invoice_id column to clients table")
+                except Exception as e:
+                    logger.warning(f"⚠️ Error checking/adding invoice_id column to clients: {e}")
+                
                 # Create invoices table
                 cursor.execute('''
                     CREATE TABLE IF NOT EXISTS invoices (
                         id INT AUTO_INCREMENT PRIMARY KEY,
                         user_id INT NOT NULL,
                         panel_id INT NOT NULL,
-                        gb_amount INT NOT NULL,
+                        gb_amount DOUBLE NOT NULL,
                         amount INT NOT NULL,
                         status VARCHAR(50) DEFAULT 'pending',
                         payment_method VARCHAR(50),
@@ -364,6 +383,16 @@ class ProfessionalDatabaseManager:
                     cursor.execute('CREATE INDEX IF NOT EXISTS idx_receipt_status ON invoices(receipt_status)')
                 except Exception:
                     pass
+                
+                # Update invoices.gb_amount to DOUBLE if it is INT
+                try:
+                    cursor.execute("SHOW COLUMNS FROM invoices LIKE 'gb_amount'")
+                    column_info = cursor.fetchone()
+                    if column_info and 'int' in str(column_info['Type']).lower():
+                        cursor.execute("ALTER TABLE invoices MODIFY COLUMN gb_amount DOUBLE NOT NULL")
+                        logger.info("✅ Updated invoices.gb_amount column to DOUBLE")
+                except Exception as e:
+                    logger.warning(f"⚠️ Error checking/updating invoices.gb_amount column: {e}")
                 
                 # Create balance_transactions table
                 cursor.execute('''
@@ -499,6 +528,47 @@ class ProfessionalDatabaseManager:
                         FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
                         INDEX idx_user_id (user_id),
                         INDEX idx_code_id (code_id)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                ''')
+
+                # Create wheel_settings table
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS wheel_settings (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        setting_key VARCHAR(255) UNIQUE NOT NULL,
+                        setting_value TEXT,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                ''')
+
+                # Create wheel_prizes table
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS wheel_prizes (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        name VARCHAR(255) NOT NULL,
+                        type VARCHAR(50) NOT NULL,
+                        value FLOAT DEFAULT 0,
+                        probability FLOAT DEFAULT 0,
+                        is_active TINYINT DEFAULT 1,
+                        display_order INT DEFAULT 0,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        INDEX idx_is_active (is_active)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                ''')
+                
+                # Create wheel_spins table
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS wheel_spins (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        user_id INT NOT NULL,
+                        prize_type VARCHAR(50) NOT NULL,
+                        prize_value INT DEFAULT 0,
+                        prize_label VARCHAR(255),
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+                        INDEX idx_user_id (user_id),
+                        INDEX idx_created_at (created_at)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                 ''')
                 
@@ -721,6 +791,24 @@ class ProfessionalDatabaseManager:
                 result = cursor.fetchone()
                 products_table_exists = result['count'] > 0 if result else False
                 
+                # Add visibility columns to products table if they don't exist
+                if products_table_exists:
+                    try:
+                        cursor.execute("SHOW COLUMNS FROM products LIKE 'is_visible_to_users'")
+                        if not cursor.fetchone():
+                            cursor.execute("ALTER TABLE products ADD COLUMN is_visible_to_users TINYINT DEFAULT 1")
+                            logger.info("✅ Added is_visible_to_users column to products table")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Error checking/adding is_visible_to_users column: {e}")
+                        
+                    try:
+                        cursor.execute("SHOW COLUMNS FROM products LIKE 'is_visible_to_resellers'")
+                        if not cursor.fetchone():
+                            cursor.execute("ALTER TABLE products ADD COLUMN is_visible_to_resellers TINYINT DEFAULT 1")
+                            logger.info("✅ Added is_visible_to_resellers column to products table")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Error checking/adding is_visible_to_resellers column: {e}")
+                
                 # Create menu_buttons table if it doesn't exist
                 cursor.execute("""
                     SELECT COUNT(*) as count 
@@ -856,6 +944,36 @@ class ProfessionalDatabaseManager:
         try:
             cursor = conn.cursor(dictionary=True)
             
+            # Migration v7.0: Add test_volume_gb to product_categories table
+            cursor.execute("SELECT version FROM database_migrations WHERE version = 'v7.0_add_category_test_volume'")
+            if not cursor.fetchone():
+                try:
+                    # Check column
+                    cursor.execute("SHOW COLUMNS FROM product_categories LIKE 'test_volume_gb'")
+                    if not cursor.fetchone():
+                        cursor.execute('ALTER TABLE product_categories ADD COLUMN test_volume_gb FLOAT DEFAULT 0')
+                        logger.info("✅ Added test_volume_gb column to product_categories table")
+                        
+                    cursor.execute("INSERT INTO database_migrations (version, description) VALUES ('v7.0_add_category_test_volume', 'Add test_volume_gb to product_categories table')")
+                    logger.info("Applied migration v7.0_add_category_test_volume")
+                except Exception as e:
+                    logger.error(f"Migration v7.0 failed: {e}")
+
+            # Migration v7.1: Add test_duration_hours to product_categories table
+            cursor.execute("SELECT version FROM database_migrations WHERE version = 'v7.1_add_category_test_duration'")
+            if not cursor.fetchone():
+                try:
+                    # Check column
+                    cursor.execute("SHOW COLUMNS FROM product_categories LIKE 'test_duration_hours'")
+                    if not cursor.fetchone():
+                        cursor.execute('ALTER TABLE product_categories ADD COLUMN test_duration_hours INT DEFAULT 24')
+                        logger.info("✅ Added test_duration_hours column to product_categories table")
+                    
+                    cursor.execute("INSERT INTO database_migrations (version, description) VALUES ('v7.1_add_category_test_duration', 'Add test_duration_hours to product_categories table')")
+                    logger.info("Applied migration v7.1_add_category_test_duration")
+                except Exception as e:
+                    logger.error(f"Migration v7.1 failed: {e}")
+
             # Migration 1: Add subscription_url to panels table
             cursor.execute("SELECT version FROM database_migrations WHERE version = 'v1.0_add_subscription_url'")
             if not cursor.fetchone():
@@ -909,6 +1027,95 @@ class ProfessionalDatabaseManager:
                 ''')
                 logger.info("✅ Migration v1.0_add_subscription_url completed")
             
+            # Migration v1.5: Add additional warning flags
+            cursor.execute("SELECT version FROM database_migrations WHERE version = 'v1.5_add_warning_flags'")
+            if not cursor.fetchone():
+                logger.info("Running migration: Add additional warning flags to clients table")
+                
+                columns_to_add = [
+                    ('warned_one_day', 'TINYINT DEFAULT 0'),
+                    ('warned_12_hours', 'TINYINT DEFAULT 0'),
+                    ('warned_80_percent', 'TINYINT DEFAULT 0'),
+                    ('warned_90_percent', 'TINYINT DEFAULT 0')
+                ]
+                
+                # Check columns
+                cursor.execute("""
+                    SELECT COLUMN_NAME 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = DATABASE() 
+                    AND TABLE_NAME = 'clients'
+                """)
+                existing_columns = [row['COLUMN_NAME'] for row in cursor.fetchall()]
+                
+                for col_name, col_def in columns_to_add:
+                    if col_name not in existing_columns:
+                        try:
+                            cursor.execute(f'ALTER TABLE clients ADD COLUMN {col_name} {col_def}')
+                            logger.info(f"✅ Added {col_name} column to clients table")
+                        except Exception as e:
+                            logger.error(f"Failed to add column {col_name}: {e}")
+                
+                # Mark migration as applied
+                cursor.execute('''
+                    INSERT INTO database_migrations (version, description)
+                    VALUES ('v1.5_add_warning_flags', 'Add detailed warning flags for expiration and usage')
+                ''')
+                logger.info("✅ Migration v1.5_add_warning_flags completed")
+            
+            # Migration v1.6: Add more granular warning flags
+            cursor.execute("SELECT version FROM database_migrations WHERE version = 'v1.6_add_more_warning_flags'")
+            if not cursor.fetchone():
+                logger.info("Running migration: Add more granular warning flags to clients table")
+                
+                columns_to_add = [
+                    ('warned_95_percent', 'TINYINT DEFAULT 0'),
+                    ('warned_98_percent', 'TINYINT DEFAULT 0'),
+                    ('warned_6_hours', 'TINYINT DEFAULT 0'),
+                    ('warned_7_days', 'TINYINT DEFAULT 0')
+                ]
+                
+                # Check columns
+                cursor.execute("""
+                    SELECT COLUMN_NAME 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = DATABASE() 
+                    AND TABLE_NAME = 'clients'
+                """)
+                existing_columns = [row['COLUMN_NAME'] for row in cursor.fetchall()]
+                
+                for col_name, col_def in columns_to_add:
+                    if col_name not in existing_columns:
+                        try:
+                            cursor.execute(f'ALTER TABLE clients ADD COLUMN {col_name} {col_def}')
+                            logger.info(f"✅ Added {col_name} column to clients table")
+                        except Exception as e:
+                            logger.error(f"Failed to add column {col_name}: {e}")
+                
+                # Mark migration as applied
+                cursor.execute('''
+                    INSERT INTO database_migrations (version, description)
+                    VALUES ('v1.6_add_more_warning_flags', 'Add granular warning flags (95%, 98%, 6h, 7d)')
+                ''')
+                logger.info("✅ Migration v1.6_add_more_warning_flags completed")
+
+            cursor.execute("SELECT version FROM database_migrations WHERE version = 'v1.17_add_predelete_warning_flag'")
+            if not cursor.fetchone():
+                cursor.execute("""
+                    SELECT COLUMN_NAME 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = DATABASE() 
+                    AND TABLE_NAME = 'clients'
+                """)
+                existing_columns = [row['COLUMN_NAME'] for row in cursor.fetchall()]
+                if 'warned_3_hours_before_deletion' not in existing_columns:
+                    cursor.execute('ALTER TABLE clients ADD COLUMN warned_3_hours_before_deletion TINYINT DEFAULT 0')
+                cursor.execute('''
+                    INSERT INTO database_migrations (version, description)
+                    VALUES ('v1.17_add_predelete_warning_flag', 'Add warned_3_hours_before_deletion flag for grace period deletion warning')
+                ''')
+                logger.info("✅ Migration v1.17_add_predelete_warning_flag completed")
+            
             # Migration 2: Add sub_id to clients table
             cursor.execute("SELECT version FROM database_migrations WHERE version = 'v1.1_add_client_sub_id'")
             if not cursor.fetchone():
@@ -958,7 +1165,7 @@ class ProfessionalDatabaseManager:
                     VALUES ('v1.2_add_panel_type', 'Add panel_type field to panels table')
                 ''')
                 logger.info("✅ Migration v1.2_add_panel_type completed")
-
+            
             # Migration 4: Create settings table if not exists (for existing installations)
             cursor.execute("SELECT version FROM database_migrations WHERE version = 'v1.3_create_settings_table'")
             if not cursor.fetchone():
@@ -985,7 +1192,7 @@ class ProfessionalDatabaseManager:
                     VALUES ('v1.3_create_settings_table', 'Create settings table for dynamic configuration')
                 ''')
                 logger.info("✅ Migration v1.3_create_settings_table completed")
-
+            
             # Migration 5: Add admin_role column to users table for multi-level admin support
             cursor.execute("SELECT version FROM database_migrations WHERE version = 'v1.4_add_admin_role'")
             if not cursor.fetchone():
@@ -1239,6 +1446,90 @@ class ProfessionalDatabaseManager:
                 ''')
                 logger.info("✅ Migration v5.1_add_panel_methods completed")
 
+            # Migration 14: Add user_limit to products table
+            cursor.execute("SELECT version FROM database_migrations WHERE version = 'v7.0_add_product_user_limit'")
+            if not cursor.fetchone():
+                logger.info("Running migration: Add user_limit to products")
+                
+                cursor.execute("""
+                    SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products'
+                """)
+                columns = [row['COLUMN_NAME'] for row in cursor.fetchall()]
+                
+                if 'user_limit' not in columns:
+                    cursor.execute("ALTER TABLE products ADD COLUMN user_limit INT DEFAULT 0")
+                    logger.info("✅ Added user_limit to products")
+                
+                cursor.execute('''
+                    INSERT INTO database_migrations (version, description)
+                    VALUES ('v7.0_add_product_user_limit', 'Add user_limit field to products table')
+                ''')
+                logger.info("✅ Migration v7.0_add_product_user_limit completed")
+
+            # Migration 15: Add limit_ip to clients table
+            cursor.execute("SELECT version FROM database_migrations WHERE version = 'v7.1_add_client_limit_ip'")
+            if not cursor.fetchone():
+                logger.info("Running migration: Add limit_ip to clients")
+                
+                cursor.execute("""
+                    SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'clients'
+                """)
+                columns = [row['COLUMN_NAME'] for row in cursor.fetchall()]
+                
+                if 'limit_ip' not in columns:
+                    cursor.execute("ALTER TABLE clients ADD COLUMN limit_ip INT DEFAULT 0")
+                    logger.info("✅ Added limit_ip to clients")
+                
+                cursor.execute('''
+                    INSERT INTO database_migrations (version, description)
+                    VALUES ('v7.1_add_client_limit_ip', 'Add limit_ip field to clients table')
+                ''')
+                logger.info("✅ Migration v7.1_add_client_limit_ip completed")
+
+            # Migration 16: Add last_activity to clients table
+            cursor.execute("SELECT version FROM database_migrations WHERE version = 'v7.2_add_client_last_activity'")
+            if not cursor.fetchone():
+                logger.info("Running migration: Add last_activity to clients")
+                
+                cursor.execute("""
+                    SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'clients'
+                """)
+                columns = [row['COLUMN_NAME'] for row in cursor.fetchall()]
+                
+                if 'last_activity' not in columns:
+                    cursor.execute("ALTER TABLE clients ADD COLUMN last_activity BIGINT DEFAULT 0")
+                    logger.info("✅ Added last_activity to clients")
+                
+                cursor.execute('''
+                    INSERT INTO database_migrations (version, description)
+                    VALUES ('v7.2_add_client_last_activity', 'Add last_activity field to clients table')
+                ''')
+                logger.info("✅ Migration v7.2_add_client_last_activity completed")
+
+            # Migration 17: Add inbound_id to products table
+            cursor.execute("SELECT version FROM database_migrations WHERE version = 'v8.0_add_product_inbound_id'")
+            if not cursor.fetchone():
+                logger.info("Running migration: Add inbound_id to products")
+                
+                cursor.execute("""
+                    SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products'
+                """)
+                columns = [row['COLUMN_NAME'] for row in cursor.fetchall()]
+                
+                if 'inbound_id' not in columns:
+                    cursor.execute("ALTER TABLE products ADD COLUMN inbound_id INT DEFAULT NULL")
+                    logger.info("✅ Added inbound_id to products")
+                
+                cursor.execute('''
+                    INSERT INTO database_migrations (version, description)
+                    VALUES ('v8.0_add_product_inbound_id', 'Add inbound_id field to products table')
+                ''')
+                logger.info("✅ Migration v8.0_add_product_inbound_id completed")
+
         except Exception as e:
             logger.error(f"Migration error: {e}")
             # Don't raise, just log - we don't want to stop startup if a migration fails
@@ -1376,6 +1667,150 @@ class ProfessionalDatabaseManager:
                     VALUES ('v1.16_add_extra_config', 'Add extra_config JSON field to panels table for custom panel settings')
                 ''')
                 logger.info("✅ Migration v1.16_add_extra_config completed")
+                conn.commit()
+
+            # Migration 17: Add last_activity to clients table (fix for missing column error)
+            cursor.execute("SELECT version FROM database_migrations WHERE version = 'v1.17_add_last_activity_to_clients'")
+            if not cursor.fetchone():
+                logger.info("Running migration: Add last_activity to clients table")
+                
+                # Check if column already exists
+                cursor.execute("""
+                    SELECT COLUMN_NAME 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = DATABASE() 
+                    AND TABLE_NAME = 'clients'
+                """)
+                columns = [row['COLUMN_NAME'] for row in cursor.fetchall()]
+                
+                if 'last_activity' not in columns:
+                    cursor.execute('ALTER TABLE clients ADD COLUMN last_activity BIGINT DEFAULT 0')
+                    logger.info("✅ Added last_activity column to clients table")
+                
+                # Mark migration as applied
+                cursor.execute('''
+                    INSERT INTO database_migrations (version, description)
+                    VALUES ('v1.17_add_last_activity_to_clients', 'Add last_activity field to clients table to fix missing column error')
+                ''')
+                logger.info("✅ Migration v1.17_add_last_activity_to_clients completed")
+                conn.commit()
+
+            # Migration 18: Add cached_remaining_days to clients table
+            cursor.execute("SELECT version FROM database_migrations WHERE version = 'v1.18_add_cached_remaining_days'")
+            if not cursor.fetchone():
+                logger.info("Running migration: Add cached_remaining_days to clients table")
+                
+                # Check if column already exists
+                cursor.execute("""
+                    SELECT COLUMN_NAME 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = DATABASE() 
+                    AND TABLE_NAME = 'clients'
+                """)
+                columns = [row['COLUMN_NAME'] for row in cursor.fetchall()]
+                
+                if 'cached_remaining_days' not in columns:
+                    cursor.execute('ALTER TABLE clients ADD COLUMN cached_remaining_days INT DEFAULT 0')
+                    logger.info("✅ Added cached_remaining_days column to clients table")
+                
+                # Mark migration as applied
+                cursor.execute('''
+                    INSERT INTO database_migrations (version, description)
+                    VALUES ('v1.18_add_cached_remaining_days', 'Add cached_remaining_days field to clients table for caching remaining days')
+                ''')
+                logger.info("✅ Migration v1.18_add_cached_remaining_days completed")
+                conn.commit()
+            
+            # Migration 19: Add test account settings to product_categories table
+            cursor.execute("SELECT version FROM database_migrations WHERE version = 'v1.19_add_category_test_settings'")
+            if not cursor.fetchone():
+                logger.info("Running migration: Add test account settings to product_categories table")
+                
+                # Check columns
+                cursor.execute("""
+                    SELECT COLUMN_NAME 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = DATABASE() 
+                    AND TABLE_NAME = 'product_categories'
+                """)
+                columns = [row['COLUMN_NAME'] for row in cursor.fetchall()]
+                
+                if 'test_account_volume_gb' not in columns:
+                    cursor.execute('ALTER TABLE product_categories ADD COLUMN test_account_volume_gb FLOAT DEFAULT 0')
+                    logger.info("✅ Added test_account_volume_gb column to product_categories table")
+                    
+                if 'test_account_duration_hours' not in columns:
+                    cursor.execute('ALTER TABLE product_categories ADD COLUMN test_account_duration_hours INT DEFAULT 0')
+                    logger.info("✅ Added test_account_duration_hours column to product_categories table")
+                
+                # Mark migration as applied
+                cursor.execute('''
+                    INSERT INTO database_migrations (version, description)
+                    VALUES ('v1.19_add_category_test_settings', 'Add test account volume and duration to product_categories')
+                ''')
+                logger.info("✅ Migration v1.19_add_category_test_settings completed")
+                conn.commit()
+
+            # Migration 20: Add test_accounts_log and is_test_account to clients
+            cursor.execute("SELECT version FROM database_migrations WHERE version = 'v2.0_multi_test_accounts'")
+            if not cursor.fetchone():
+                logger.info("Running migration: v2.0_multi_test_accounts")
+                
+                # Create test_accounts_log table
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS test_accounts_log (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        user_id INT NOT NULL,
+                        panel_id INT NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        client_uuid VARCHAR(255),
+                        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+                        FOREIGN KEY (panel_id) REFERENCES panels (id) ON DELETE CASCADE,
+                        INDEX idx_user_panel (user_id, panel_id)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                ''')
+                logger.info("✅ Created test_accounts_log table")
+                
+                # Add is_test_account to clients
+                cursor.execute("""
+                    SELECT COLUMN_NAME 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = DATABASE() 
+                    AND TABLE_NAME = 'clients'
+                """)
+                columns = [row['COLUMN_NAME'] for row in cursor.fetchall()]
+                
+                if 'is_test_account' not in columns:
+                    cursor.execute('ALTER TABLE clients ADD COLUMN is_test_account TINYINT DEFAULT 0')
+                    logger.info("✅ Added is_test_account column to clients table")
+                
+                # Mark migration as applied
+                cursor.execute('''
+                    INSERT INTO database_migrations (version, description)
+                    VALUES ('v2.0_multi_test_accounts', 'Add support for multiple test accounts per panel')
+                ''')
+                logger.info("✅ Migration v2.0_multi_test_accounts completed")
+                conn.commit()
+
+            # Migration v2.1: Ensure test_account button exists
+            cursor.execute("SELECT version FROM database_migrations WHERE version = 'v2.1_add_test_account_button'")
+            if not cursor.fetchone():
+                logger.info("Running migration: v2.1_add_test_account_button")
+                
+                # Check if button exists
+                cursor.execute("SELECT id FROM menu_buttons WHERE button_key = 'test_account'")
+                if not cursor.fetchone():
+                    cursor.execute('''
+                        INSERT INTO menu_buttons 
+                        (database_name, button_key, button_text, callback_data, button_type, row_position, column_position, is_active, is_visible_for_users, display_order)
+                        VALUES (%s, 'test_account', '🧪 اکانت تست', 'test_account', 'callback', 1, 0, 1, 1, 3)
+                    ''', (self.database_name,))
+                    logger.info("✅ Added test_account button to menu_buttons")
+                
+                cursor.execute('''
+                    INSERT INTO database_migrations (version, description)
+                    VALUES ('v2.1_add_test_account_button', 'Ensure test account button exists in menu')
+                ''')
                 conn.commit()
             
         except Exception as e:
@@ -1605,32 +2040,162 @@ class ProfessionalDatabaseManager:
             logger.error(f"Error getting user by ID: {e}")
             return None
     
-    def update_user_balance(self, telegram_id: int, amount: int, transaction_type: str, description: str = None) -> bool:
+    def has_user_received_test_account(self, telegram_id: int) -> bool:
+        """Check if user has already received a test account"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute('SELECT has_used_test_account FROM users WHERE telegram_id = %s', (telegram_id,))
+                result = cursor.fetchone()
+                if result:
+                    return bool(result['has_used_test_account'])
+                return False
+        except Exception as e:
+            logger.error(f"Error checking test account usage: {e}")
+            return False
+
+    def mark_test_account_used(self, telegram_id: int) -> bool:
+        """Mark user as having used the test account (Legacy: updates flag)"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('UPDATE users SET has_used_test_account = 1 WHERE telegram_id = %s', (telegram_id,))
+                conn.commit()
+                return True
+        except Exception as e:
+            logger.error(f"Error marking test account usage: {e}")
+            return False
+
+    def _ensure_test_accounts_table(self):
+        """Ensure test_accounts_log table exists (Self-healing)"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS test_accounts_log (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        user_id INT NOT NULL,
+                        panel_id INT NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        client_uuid VARCHAR(255),
+                        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+                        FOREIGN KEY (panel_id) REFERENCES panels (id) ON DELETE CASCADE,
+                        INDEX idx_user_panel (user_id, panel_id)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                ''')
+                
+                # Check for is_test_account column in clients
+                cursor.execute("SHOW COLUMNS FROM clients LIKE 'is_test_account'")
+                if not cursor.fetchone():
+                    cursor.execute('ALTER TABLE clients ADD COLUMN is_test_account TINYINT DEFAULT 0')
+                
+                conn.commit()
+                logger.info("✅ Self-healed test_accounts_log table")
+        except Exception as e:
+            logger.error(f"Error self-healing test_accounts_log: {e}")
+
+    def log_test_account_creation(self, user_id: int, panel_id: int, client_uuid: str = None) -> bool:
+        """Log test account creation in the new log table"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO test_accounts_log (user_id, panel_id, client_uuid)
+                    VALUES (%s, %s, %s)
+                ''', (user_id, panel_id, client_uuid))
+                conn.commit()
+                return True
+        except Exception as e:
+            if "doesn't exist" in str(e) or "1146" in str(e):
+                self._ensure_test_accounts_table()
+                return self.log_test_account_creation(user_id, panel_id, client_uuid) # Retry
+            logger.error(f"Error logging test account creation: {e}")
+            return False
+
+    def get_user_test_accounts_count(self, user_id: int) -> int:
+        """Get total number of test accounts received by user"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute('SELECT COUNT(*) as count FROM test_accounts_log WHERE user_id = %s', (user_id,))
+                result = cursor.fetchone()
+                return result['count'] if result else 0
+        except Exception as e:
+            if "doesn't exist" in str(e) or "1146" in str(e):
+                self._ensure_test_accounts_table()
+                return 0 # Treat as 0 after creating table
+            logger.error(f"Error counting user test accounts: {e}")
+            return 0
+
+    def has_user_received_test_account_from_panel(self, user_id: int, panel_id: int) -> bool:
+        """Check if user has received a test account from specific panel"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute('SELECT id FROM test_accounts_log WHERE user_id = %s AND panel_id = %s', (user_id, panel_id))
+                return bool(cursor.fetchone())
+        except Exception as e:
+            if "doesn't exist" in str(e) or "1146" in str(e):
+                self._ensure_test_accounts_table()
+                return False
+            logger.error(f"Error checking panel test account: {e}")
+            return False
+
+
+    def update_user_balance(self, telegram_id: int, amount: int, transaction_type: str, description: str = None, notify_user: bool = True) -> bool:
         """Update user balance and log transaction"""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
                 
-                # Get current balance
-                cursor.execute('SELECT balance FROM users WHERE telegram_id = %s', (telegram_id,))
-                current_balance = cursor.fetchone()
+                # Check if user exists
+                cursor.execute('SELECT id FROM users WHERE telegram_id = %s', (telegram_id,))
+                user_row = cursor.fetchone()
                 
-                if not current_balance:
+                if not user_row:
                     return False
                 
-                new_balance = current_balance['balance'] + amount
+                # Update balance atomically
+                cursor.execute('UPDATE users SET balance = balance + %s WHERE telegram_id = %s', (amount, telegram_id))
                 
-                # Update balance
-                cursor.execute('UPDATE users SET balance = %s WHERE telegram_id = %s', (new_balance, telegram_id))
+                # Fetch new balance for notification
+                cursor.execute('SELECT balance FROM users WHERE telegram_id = %s', (telegram_id,))
+                row = cursor.fetchone()
+                new_balance = row['balance'] if row else 0
                 
                 # Log transaction
                 cursor.execute('''
                     INSERT INTO balance_transactions (user_id, amount, transaction_type, description)
-                    VALUES ((SELECT id FROM users WHERE telegram_id = %s), %s, %s, %s)
-                ''', (telegram_id, amount, transaction_type, description))
+                    VALUES (%s, %s, %s, %s)
+                ''', (user_row['id'], amount, transaction_type, description))
                 
                 conn.commit()
                 self.log_system_event('INFO', f'Balance updated for user {telegram_id}: {amount}', 'balance_management', telegram_id)
+                
+                # Send notification to user (if amount is not 0 and notifications enabled)
+                if amount != 0 and notify_user:
+                    try:
+                        from telegram_helper import TelegramHelper
+                        
+                        emoji = "💰" if amount > 0 else "💸"
+                        action_text = "افزایش" if amount > 0 else "کاهش"
+                        
+                        # Don't show negative sign in amount text
+                        amount_abs = abs(amount)
+                        
+                        notification_text = f"""
+{emoji} موجودی کیف پول شما تغییر کرد
+
+💵 مبلغ: {amount_abs:,} تومان ({action_text})
+💰 موجودی جدید: {new_balance:,} تومان
+📝 بابت: {description or 'تغییر توسط سیستم'}
+
+📅 تاریخ: {datetime.now().strftime('%Y/%m/%d %H:%M')}
+"""
+                        TelegramHelper.send_message_sync(telegram_id, notification_text)
+                    except Exception as e:
+                        logger.error(f"Error sending balance notification to {telegram_id}: {e}")
+                
                 return True
                 
         except Exception as e:
@@ -1712,6 +2277,22 @@ class ProfessionalDatabaseManager:
                 return True
         except Exception as e:
             logger.error(f"Error updating user info: {e}")
+            return False
+    
+    def update_user_ban_status(self, telegram_id: int, is_banned: bool) -> bool:
+        """Update user's ban status"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute('''
+                    UPDATE users 
+                    SET is_banned = %s, last_activity = CURRENT_TIMESTAMP
+                    WHERE telegram_id = %s
+                ''', (1 if is_banned else 0, telegram_id))
+                conn.commit()
+                return True
+        except Exception as e:
+            logger.error(f"Error updating user ban status: {e}")
             return False
     
     def update_user_activity(self, telegram_id: int) -> bool:
@@ -2217,7 +2798,7 @@ class ProfessionalDatabaseManager:
             logger.error(f"Error getting category: {e}")
             return None
     
-    def update_category(self, category_id: int, name: str = None, is_active: bool = None) -> bool:
+    def update_category(self, category_id: int, **kwargs) -> bool:
         """Update category information"""
         try:
             with self.get_connection() as conn:
@@ -2226,12 +2807,19 @@ class ProfessionalDatabaseManager:
                 updates = []
                 params = []
                 
-                if name is not None:
-                    updates.append("name = %s")
-                    params.append(name)
-                if is_active is not None:
-                    updates.append("is_active = %s")
-                    params.append(1 if is_active else 0)
+                # Handle standard fields explicitly for backward compatibility if needed, 
+                # but kwargs covers everything.
+                
+                allowed_fields = ['name', 'is_active', 'test_account_volume_gb', 'test_account_duration_hours']
+                
+                for field, value in kwargs.items():
+                    if field in allowed_fields:
+                        if field == 'is_active':
+                            updates.append(f"{field} = %s")
+                            params.append(1 if value else 0)
+                        else:
+                            updates.append(f"{field} = %s")
+                            params.append(value)
                 
                 if not updates:
                     return True
@@ -2323,7 +2911,8 @@ class ProfessionalDatabaseManager:
             return 'name'
     
     def add_product(self, panel_id: int, name: str, volume_gb: int, duration_days: int,
-                   price: int, category_id: int = None, description: str = None) -> int:
+                   price: int, category_id: int = None, description: str = None, inbound_id: int = None, user_limit: int = 1,
+                   is_visible_to_users: bool = True, is_visible_to_resellers: bool = True) -> int:
         """Add a new product"""
         try:
             with self.get_connection() as conn:
@@ -2378,6 +2967,22 @@ class ProfessionalDatabaseManager:
                     insert_columns.append('category_id')
                     insert_values.append(category_id)
                 
+                if 'inbound_id' in columns:
+                    insert_columns.append('inbound_id')
+                    insert_values.append(inbound_id)
+                
+                if 'user_limit' in columns:
+                    insert_columns.append('user_limit')
+                    insert_values.append(user_limit)
+
+                if 'is_visible_to_users' in columns:
+                    insert_columns.append('is_visible_to_users')
+                    insert_values.append(1 if is_visible_to_users else 0)
+
+                if 'is_visible_to_resellers' in columns:
+                    insert_columns.append('is_visible_to_resellers')
+                    insert_values.append(1 if is_visible_to_resellers else 0)
+                
                 # Add name column(s)
                 if use_name_product:
                     insert_columns.append('name_product')
@@ -2416,7 +3021,7 @@ class ProfessionalDatabaseManager:
                             insert_columns.append('code_product')
                             insert_values.append(code_value)
                             logger.info(f"Auto-added code_product with value: {code_value}")
-                        elif col_name not in ['panel_id', 'name', 'name_product', 'volume_gb', 'duration_days', 'price']:
+                        elif col_name not in ['panel_id', 'name', 'name_product', 'volume_gb', 'duration_days', 'price', 'is_visible_to_users', 'is_visible_to_resellers']:
                             # For other NOT NULL columns, use a default based on type
                             col_type = col_info['DATA_TYPE'].upper()
                             if 'INT' in col_type or 'TINYINT' in col_type or 'SMALLINT' in col_type or 'MEDIUMINT' in col_type or 'BIGINT' in col_type:
@@ -2533,7 +3138,8 @@ class ProfessionalDatabaseManager:
     
     def update_product(self, product_id: int, name: str = None, volume_gb: int = None,
                       duration_days: int = None, price: int = None, 
-                      category_id: int = None, is_active: bool = None, description: str = None) -> bool:
+                      category_id: int = None, is_active: bool = None, description: str = None, inbound_id: int = None, user_limit: int = None,
+                      is_visible_to_users: bool = None, is_visible_to_resellers: bool = None) -> bool:
         """Update product information"""
         try:
             with self.get_connection() as conn:
@@ -2566,6 +3172,26 @@ class ProfessionalDatabaseManager:
                 if description is not None:
                     updates.append("description = %s")
                     params.append(description)
+                if inbound_id is not None:
+                    updates.append("inbound_id = %s")
+                    params.append(inbound_id)
+                if user_limit is not None:
+                    updates.append("user_limit = %s")
+                    params.append(user_limit)
+
+                if is_visible_to_users is not None:
+                    # Check if column exists first
+                    cursor.execute("SHOW COLUMNS FROM products LIKE 'is_visible_to_users'")
+                    if cursor.fetchone():
+                        updates.append('is_visible_to_users = %s')
+                        params.append(1 if is_visible_to_users else 0)
+
+                if is_visible_to_resellers is not None:
+                    # Check if column exists first
+                    cursor.execute("SHOW COLUMNS FROM products LIKE 'is_visible_to_resellers'")
+                    if cursor.fetchone():
+                        updates.append('is_visible_to_resellers = %s')
+                        params.append(1 if is_visible_to_resellers else 0)
                 
                 if not updates:
                     return True
@@ -2614,8 +3240,8 @@ class ProfessionalDatabaseManager:
     # Client Management Methods
     def add_client(self, user_id: int, panel_id: int, client_name: str, 
                    client_uuid: str, inbound_id: int, protocol: str,
-                   expire_days: int = 0, total_gb: int = 0, config_link: str = None, 
-                   sub_id: str = None, expires_at: str = None, product_id: int = None) -> int:
+                   expire_days: int = 0, total_gb: float = 0, config_link: str = None, 
+                   sub_id: str = None, expires_at: str = None, product_id: int = None, limit_ip: int = 0, invoice_id: int = None) -> int:
         """Add client to database"""
         try:
             with self.get_connection() as conn:
@@ -2630,18 +3256,59 @@ class ProfessionalDatabaseManager:
                 
                 cursor.execute('''
                     INSERT INTO clients (user_id, panel_id, client_name, client_uuid, 
-                                       inbound_id, protocol, expire_days, total_gb, expires_at, config_link, sub_id, product_id)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                      inbound_id, protocol, expire_days, total_gb, expires_at, config_link, sub_id, product_id, limit_ip, invoice_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ''', (user_id, panel_id, client_name, client_uuid, 
-                      inbound_id, protocol, expire_days, total_gb, expires_at, config_link, sub_id, product_id))
+                      inbound_id, protocol, expire_days, total_gb, expires_at, config_link, sub_id, product_id, limit_ip, invoice_id))
                 
                 client_id = cursor.lastrowid
                 conn.commit()
                 self.log_system_event('INFO', f'Client added: {client_name}', 'client_management', user_id)
                 return client_id
         except Exception as e:
+            # Check for unknown column error (MySQL 1054) regarding invoice_id
+            if "Unknown column 'invoice_id'" in str(e):
+                logger.warning("⚠️ invoice_id column missing in clients table, retrying without it...")
+                try:
+                    with self.get_connection() as conn:
+                        cursor = conn.cursor(dictionary=True)
+                        cursor.execute('''
+                            INSERT INTO clients (user_id, panel_id, client_name, client_uuid, 
+                                              inbound_id, protocol, expire_days, total_gb, expires_at, config_link, sub_id, product_id, limit_ip)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ''', (user_id, panel_id, client_name, client_uuid, 
+                              inbound_id, protocol, expire_days, total_gb, expires_at, config_link, sub_id, product_id, limit_ip))
+                        client_id = cursor.lastrowid
+                        conn.commit()
+                        self.log_system_event('INFO', f'Client added (fallback mode): {client_name}', 'client_management', user_id)
+                        return client_id
+                except Exception as e2:
+                    logger.error(f"Error adding client (fallback failed): {e2}")
+                    return 0
+            
             logger.error(f"Error adding client: {e}")
             return 0
+
+    def get_clients_by_invoice(self, invoice_id: int) -> List[Dict]:
+        """Get clients associated with an invoice"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute('''
+                    SELECT c.*, p.name as panel_name, pi.inbound_name
+                    FROM clients c
+                    LEFT JOIN panels p ON c.panel_id = p.id
+                    LEFT JOIN panel_inbounds pi ON c.panel_id = pi.panel_id AND c.inbound_id = pi.inbound_id
+                    WHERE c.invoice_id = %s
+                    ORDER BY c.created_at DESC
+                ''', (invoice_id,))
+                return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            if "Unknown column 'invoice_id'" in str(e):
+                logger.warning("⚠️ invoice_id column missing in clients table, cannot match services to invoice")
+                return []
+            logger.error(f"Error getting clients by invoice: {e}")
+            return []
     
     def update_client_config(self, client_id: int, config_link: str) -> bool:
         """Update client config link"""
@@ -2684,6 +3351,9 @@ class ProfessionalDatabaseManager:
                         last_activity = -9223372036854775808
                     
                     update_parts.append("cached_last_activity = %s")
+                    params.append(last_activity)
+                    # Also update last_activity column to keep in sync
+                    update_parts.append("last_activity = %s")
                     params.append(last_activity)
                 
                 if is_online is not None:
@@ -2757,23 +3427,43 @@ class ProfessionalDatabaseManager:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 
-                # Prepare data for batch update
-                # We'll use executemany with a CASE statement or multiple queries in a transaction
-                # For simplicity and reliability with MySQL, we'll use a transaction with multiple updates
-                # But to be truly fast with thousands of rows, we should use INSERT ... ON DUPLICATE KEY UPDATE
-                # However, that requires inserting all fields.
-                # Let's use a transaction with individual updates first, but optimized to not commit every time
-                
-                # BETTER APPROACH: Group by fields being updated
-                # Most common case: updating 'used_gb' for many clients
-                
+                monitoring_updates = []
                 used_gb_updates = []
                 for update in updates:
-                    if 'id' in update and 'used_gb' in update:
-                        used_gb_updates.append((update['used_gb'], update['id']))
+                    if not isinstance(update, dict) or 'id' not in update:
+                        continue
+                    if update.get('monitoring_update') is True:
+                        monitoring_updates.append((
+                            update.get('used_gb'),
+                            update.get('cached_used_gb'),
+                            update.get('cached_last_activity'),
+                            update.get('last_activity'),
+                            update.get('cached_is_online'),
+                            update.get('cached_remaining_days'),
+                            update.get('expires_at'),
+                            update['id']
+                        ))
+                    elif 'used_gb' in update:
+                        used_gb_updates.append((update.get('used_gb'), update['id']))
+                
+                if monitoring_updates:
+                    query = """
+                        UPDATE clients
+                        SET used_gb = %s,
+                            cached_used_gb = %s,
+                            cached_last_activity = %s,
+                            last_activity = %s,
+                            cached_is_online = %s,
+                            cached_remaining_days = %s,
+                            expires_at = %s,
+                            data_last_synced = NOW(),
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = %s
+                    """
+                    cursor.executemany(query, monitoring_updates)
+                    logger.info(f"⚡ Bulk updated monitoring data for {len(monitoring_updates)} clients")
                 
                 if used_gb_updates:
-                    # Execute batch update for used_gb
                     query = "UPDATE clients SET used_gb = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s"
                     cursor.executemany(query, used_gb_updates)
                     logger.info(f"⚡ Bulk updated used_gb for {len(used_gb_updates)} clients")
@@ -3009,9 +3699,10 @@ class ProfessionalDatabaseManager:
             with self.get_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
                 cursor.execute('''
-                    SELECT c.*, p.name as panel_name, p.price_per_gb 
+                    SELECT c.*, p.name as panel_name, p.price_per_gb, pi.inbound_name
                     FROM clients c 
                     LEFT JOIN panels p ON c.panel_id = p.id 
+                    LEFT JOIN panel_inbounds pi ON c.panel_id = pi.panel_id AND c.inbound_id = pi.inbound_id
                     WHERE c.user_id = %s 
                     ORDER BY c.created_at DESC
                 ''', (user_id,))
@@ -3026,12 +3717,15 @@ class ProfessionalDatabaseManager:
             with self.get_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
                 cursor.execute('''
-                    SELECT c.*, p.name as panel_name 
+                    SELECT c.*, p.name as panel_name, pi.inbound_name
                     FROM clients c 
                     JOIN panels p ON c.panel_id = p.id 
+                    LEFT JOIN panel_inbounds pi ON c.panel_id = pi.panel_id AND c.inbound_id = pi.inbound_id
                     WHERE c.user_id = %s 
-                      AND (c.is_active = 1 
-                       OR (c.status = 'disabled' 
+                      AND (
+                        ((c.is_active = 1 OR c.status = 'active' OR c.status IS NULL OR c.status = '')
+                         AND COALESCE(c.status, '') NOT IN ('disabled', 'expired', 'exhausted'))
+                       OR (c.status IN ('disabled', 'expired', 'exhausted')
                            AND ((c.exhausted_at IS NOT NULL 
                                  AND DATE_ADD(c.exhausted_at, INTERVAL 24 HOUR) > NOW())
                               OR (c.expired_at IS NOT NULL 
@@ -3043,25 +3737,33 @@ class ProfessionalDatabaseManager:
             logger.error(f"Error getting user services: {e}")
             return []
     
-    def get_user_clients(self, telegram_id: int) -> List[Dict]:
-        """Get user's clients by telegram ID - includes active and disabled services in grace period"""
+    def get_user_clients(self, user_identifier: int) -> List[Dict]:
+        """Get user's clients by telegram ID or internal user ID - includes active and grace-period services"""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
                 cursor.execute('''
-                    SELECT c.*, p.name as panel_name 
+                    SELECT c.*, p.name as panel_name, pi.inbound_name
                     FROM clients c 
                     JOIN panels p ON c.panel_id = p.id 
                     JOIN users u ON c.user_id = u.id
-                    WHERE u.telegram_id = %s 
-                      AND (c.is_active = 1 
-                       OR (c.status = 'disabled' 
-                           AND ((c.exhausted_at IS NOT NULL 
-                                 AND DATE_ADD(c.exhausted_at, INTERVAL 24 HOUR) > NOW())
-                              OR (c.expired_at IS NOT NULL 
-                                  AND DATE_ADD(c.expired_at, INTERVAL 24 HOUR) > NOW()))))
+                    LEFT JOIN panel_inbounds pi ON c.panel_id = pi.panel_id AND c.inbound_id = pi.inbound_id
+                    WHERE (u.telegram_id = %s OR u.id = %s)
+                      AND (
+                        (
+                          (c.is_active = 1 OR c.status = 'active' OR c.status IS NULL OR c.status = '')
+                          AND COALESCE(c.status, '') NOT IN ('disabled', 'expired', 'exhausted')
+                        )
+                        OR (
+                          c.status IN ('disabled', 'expired', 'exhausted')
+                          AND (
+                            (c.exhausted_at IS NOT NULL AND DATE_ADD(c.exhausted_at, INTERVAL 24 HOUR) > NOW())
+                            OR (c.expired_at IS NOT NULL AND DATE_ADD(c.expired_at, INTERVAL 24 HOUR) > NOW())
+                          )
+                        )
+                      )
                     ORDER BY c.created_at DESC
-                ''', (telegram_id,))
+                ''', (user_identifier, user_identifier))
                 return [dict(row) for row in cursor.fetchall()]
         except Exception as e:
             logger.error(f"Error getting user clients: {e}")
@@ -3073,9 +3775,10 @@ class ProfessionalDatabaseManager:
             with self.get_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
                 cursor.execute('''
-                    SELECT c.*, p.name as panel_name 
+                    SELECT c.*, p.name as panel_name, pi.inbound_name
                     FROM clients c 
                     JOIN panels p ON c.panel_id = p.id 
+                    LEFT JOIN panel_inbounds pi ON c.panel_id = pi.panel_id AND c.inbound_id = pi.inbound_id
                     WHERE c.id = %s AND c.user_id = %s
                 ''', (service_id, user_id))
                 row = cursor.fetchone()
@@ -3091,7 +3794,9 @@ class ProfessionalDatabaseManager:
                 cursor = conn.cursor(dictionary=True)
                 cursor.execute('''
                     SELECT warned_70_percent, warned_100_percent, warned_expired, 
-                           warned_three_days, warned_one_week
+                           warned_three_days, warned_one_week,
+                           warned_95_percent, warned_98_percent,
+                           warned_6_hours, warned_7_days
                     FROM clients 
                     WHERE id = %s
                 ''', (service_id,))
@@ -3102,7 +3807,11 @@ class ProfessionalDatabaseManager:
                         'warned_100_percent': bool(row['warned_100_percent']),
                         'warned_expired': bool(row['warned_expired']),
                         'warned_three_days': bool(row['warned_three_days']),
-                        'warned_one_week': bool(row['warned_one_week'])
+                        'warned_one_week': bool(row.get('warned_one_week', False)),
+                        'warned_95_percent': bool(row.get('warned_95_percent', False)),
+                        'warned_98_percent': bool(row.get('warned_98_percent', False)),
+                        'warned_6_hours': bool(row.get('warned_6_hours', False)),
+                        'warned_7_days': bool(row.get('warned_7_days', False))
                     }
                 return {}
         except Exception as e:
@@ -3230,7 +3939,7 @@ class ProfessionalDatabaseManager:
             return 0
 
 
-    def add_invoice(self, user_id: int, panel_id: int, gb_amount: int, 
+    def add_invoice(self, user_id: int, panel_id: int, gb_amount: float, 
                    amount: int, payment_method: str = None, status: str = 'pending',
                    discount_code_id: int = None, discount_amount: int = None, original_amount: int = None,
                    product_id: int = None, duration_days: int = None, purchase_type: str = 'gigabyte',
@@ -3448,12 +4157,16 @@ class ProfessionalDatabaseManager:
                     FROM clients c 
                     JOIN panels p ON c.panel_id = p.id 
                     WHERE p.is_active = 1
-                      AND (c.is_active = 1 
-                       OR (c.status = 'disabled' 
-                           AND ((c.exhausted_at IS NOT NULL 
-                                 AND DATE_ADD(c.exhausted_at, INTERVAL 25 HOUR) > NOW())
-                              OR (c.expired_at IS NOT NULL 
-                                  AND DATE_ADD(c.expired_at, INTERVAL 25 HOUR) > NOW()))))
+                      AND (
+                        (c.is_active = 1 OR c.status = 'active' OR c.status IS NULL OR c.status = '')
+                        OR (
+                          c.status IN ('disabled', 'expired', 'exhausted')
+                          AND (
+                            (c.exhausted_at IS NOT NULL AND DATE_ADD(c.exhausted_at, INTERVAL 25 HOUR) > NOW())
+                            OR (c.expired_at IS NOT NULL AND DATE_ADD(c.expired_at, INTERVAL 25 HOUR) > NOW())
+                          )
+                        )
+                      )
                     ORDER BY c.created_at DESC
                 ''')
                 
@@ -3519,6 +4232,35 @@ class ProfessionalDatabaseManager:
                 conn.commit()
         except Exception as e:
             logger.error(f"Error updating 100% warning: {e}")
+
+    def update_service_95_percent_warning(self, service_id: int, warned: bool = True):
+        """Update 95% warning status"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute('''
+                    UPDATE clients 
+                    SET warned_95_percent = %s 
+                    WHERE id = %s
+                ''', (warned, service_id))
+                conn.commit()
+        except Exception as e:
+            logger.error(f"Error updating 95% warning: {e}")
+
+    def update_service_98_percent_warning(self, service_id: int, warned: bool = True):
+        """Update 98% warning status"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute('''
+                    UPDATE clients 
+                    SET warned_98_percent = %s 
+                    WHERE id = %s
+                ''', (warned, service_id))
+                conn.commit()
+        except Exception as e:
+            logger.error(f"Error updating 98% warning: {e}")
+
     
     def update_service_three_days_warning(self, service_id: int, warned: bool = True):
         """Update 3 days expiry warning status"""
@@ -3533,6 +4275,35 @@ class ProfessionalDatabaseManager:
                 conn.commit()
         except Exception as e:
             logger.error(f"Error updating 3 days warning: {e}")
+
+    def update_service_7_days_warning(self, service_id: int, warned: bool = True):
+        """Update 7 days expiry warning status"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute('''
+                    UPDATE clients 
+                    SET warned_7_days = %s 
+                    WHERE id = %s
+                ''', (warned, service_id))
+                conn.commit()
+        except Exception as e:
+            logger.error(f"Error updating 7 days warning: {e}")
+
+    def update_service_6_hours_warning(self, service_id: int, warned: bool = True):
+        """Update 6 hours expiry warning status"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute('''
+                    UPDATE clients 
+                    SET warned_6_hours = %s 
+                    WHERE id = %s
+                ''', (warned, service_id))
+                conn.commit()
+        except Exception as e:
+            logger.error(f"Error updating 6 hours warning: {e}")
+
 
     def update_service_expired_warning(self, service_id: int, warned: bool = True):
         """Update expired warning status"""
@@ -3610,7 +4381,7 @@ class ProfessionalDatabaseManager:
                     FROM clients c 
                     JOIN panels p ON c.panel_id = p.id 
                     WHERE p.is_active = 1
-                      AND c.status = 'disabled' 
+                      AND c.status IN ('disabled', 'exhausted')
                       AND c.exhausted_at IS NOT NULL
                       AND DATE_ADD(c.exhausted_at, INTERVAL 24 HOUR) < NOW()
                     ORDER BY c.exhausted_at ASC
@@ -3635,7 +4406,7 @@ class ProfessionalDatabaseManager:
                     WHERE p.is_active = 1
                       AND c.product_id IS NOT NULL
                       AND c.expired_at IS NOT NULL
-                      AND c.status = 'disabled'
+                      AND c.status IN ('disabled', 'expired')
                       AND DATE_ADD(c.expired_at, INTERVAL 24 HOUR) < NOW()
                     ORDER BY c.expired_at ASC
                 ''')
@@ -4863,12 +5634,15 @@ class ProfessionalDatabaseManager:
             return [], 0
     
     def get_all_users_paginated(self, page: int = 1, per_page: int = 10, search: str = None) -> Tuple[List[Dict], int]:
-        """Get all users with pagination and optional search"""
+        """Get all users with pagination and optional search, including service count"""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
                 
-                query = 'SELECT * FROM users'
+                # Base query parts
+                select_part = 'SELECT *, (SELECT COUNT(*) FROM clients WHERE clients.user_id = users.id) as total_clients'
+                from_part = 'FROM users'
+                where_part = ''
                 params = []
                 
                 if search:
@@ -4876,7 +5650,7 @@ class ProfessionalDatabaseManager:
                     search = search.strip()[:100]  # Limit to 100 characters
                     if search:
                         search_pattern = f'%{search}%'
-                        query += ''' WHERE (
+                        where_part = ''' WHERE (
                             username LIKE %s OR
                             CAST(telegram_id AS CHAR) LIKE %s OR
                             first_name LIKE %s OR
@@ -4885,13 +5659,13 @@ class ProfessionalDatabaseManager:
                         params.extend([search_pattern] * 4)
                 
                 # Get total count
-                count_query = query.replace('SELECT *', 'SELECT COUNT(*) as count')
+                count_query = f'SELECT COUNT(*) as count {from_part} {where_part}'
                 cursor.execute(count_query, params)
                 result = cursor.fetchone()
                 total = result['count'] if result else 0
                 
                 # Get paginated results
-                query += ' ORDER BY created_at DESC LIMIT %s OFFSET %s'
+                query = f'{select_part} {from_part} {where_part} ORDER BY created_at DESC LIMIT %s OFFSET %s'
                 params.extend([per_page, (page - 1) * per_page])
                 cursor.execute(query, params)
                 
@@ -5512,44 +6286,271 @@ class ProfessionalDatabaseManager:
             logger.error(f"Error setting system setting '{setting_key}': {e}")
             return False
     
-    def get_test_account_config(self) -> Dict[str, Optional[int]]:
-        """Get test account configuration (panel_id and inbound_id)"""
-        panel_id = self.get_system_setting('test_account_panel_id')
-        inbound_id = self.get_system_setting('test_account_inbound_id')
+    def get_test_account_config(self, panel_id: int = None, category_id: int = None) -> Dict[str, Optional[int]]:
+        """
+        Get test account configuration.
+        If category_id is provided, checks category-specific config first.
+        If panel_id is provided, checks panel-specific config next.
+        Falls back to global settings.
+        """
+        # Global defaults
+        global_panel_id = self.get_setting('test_account_panel_id')
+        global_inbound_id = self.get_setting('test_account_inbound_id')
+        global_duration = self.get_setting('test_account_duration', 24)
+        global_volume = self.get_setting('test_account_volume', 1)
         
-        return {
-            'panel_id': int(panel_id) if panel_id and panel_id.isdigit() else None,
-            'inbound_id': int(inbound_id) if inbound_id and inbound_id.isdigit() else None
+        config = {
+            'panel_id': int(global_panel_id) if global_panel_id and str(global_panel_id).isdigit() else None,
+            'inbound_id': int(global_inbound_id) if global_inbound_id and str(global_inbound_id).isdigit() else None,
+            'duration_hours': int(global_duration),
+            'volume_gb': float(global_volume)
         }
+
+        # 1. Check Category Config (Highest Priority for Volume/Duration)
+        if category_id:
+            category = self.get_category(category_id)
+            if category:
+                # Assuming get_category returns dict with test_volume_gb and test_duration_hours
+                if category.get('test_volume_gb') is not None and category.get('test_volume_gb') > 0:
+                    config['volume_gb'] = float(category['test_volume_gb'])
+                
+                if category.get('test_duration_hours') is not None and category.get('test_duration_hours') > 0:
+                    config['duration_hours'] = int(category['test_duration_hours'])
+
+        # 2. Check Panel Config (Override if not set by category or if category not provided)
+        # Note: If category set volume, we might still want to check panel for inbound_id or other settings
+        if panel_id:
+            panel = self.get_panel(panel_id)
+            if panel and panel.get('extra_config'):
+                extra_config = panel['extra_config']
+                if isinstance(extra_config, str):
+                    try:
+                        extra_config = json.loads(extra_config)
+                    except:
+                        extra_config = {}
+                
+                # Only override if NOT set by category (or if we want panel to override category? No, category is more specific)
+                # But wait, logic above sets config. If category didn't set it, it's global default.
+                # We need to know if category set it.
+                # Actually, simple logic: Start with Global -> Override with Panel -> Override with Category
+                
+                # Let's restart logic slightly for clarity
+                pass # Already initialized with global
+                
+                # Apply Panel Overrides
+                if extra_config.get('test_duration_hours'):
+                    config['duration_hours'] = int(extra_config['test_duration_hours'])
+                if extra_config.get('test_volume_gb'):
+                    config['volume_gb'] = float(extra_config['test_volume_gb'])
+                if extra_config.get('test_inbound_id'):
+                     config['inbound_id'] = int(extra_config['test_inbound_id'])
+
+        # 3. Apply Category Overrides (Most specific)
+        if category_id:
+            category = self.get_category(category_id)
+            if category:
+                if category.get('test_volume_gb') is not None and category.get('test_volume_gb') > 0:
+                    config['volume_gb'] = float(category['test_volume_gb'])
+                
+                if category.get('test_duration_hours') is not None and category.get('test_duration_hours') > 0:
+                    config['duration_hours'] = int(category['test_duration_hours'])
+
+        return config
     
-    def set_test_account_config(self, panel_id: int, inbound_id: int = None) -> bool:
+    def set_panel_test_config(self, panel_id: int, duration_hours: int = None, volume_gb: float = None, inbound_id: int = None) -> bool:
+        """Set test account configuration for a specific panel in extra_config"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                
+                # Get current config
+                cursor.execute('SELECT extra_config FROM panels WHERE id = %s', (panel_id,))
+                result = cursor.fetchone()
+                
+                if not result:
+                    return False
+                    
+                current_config = result['extra_config']
+                if isinstance(current_config, str):
+                    try:
+                        config_dict = json.loads(current_config) if current_config else {}
+                    except:
+                        config_dict = {}
+                else:
+                    config_dict = current_config if current_config else {}
+                    
+                # Update settings
+                if duration_hours is not None:
+                    config_dict['test_duration_hours'] = duration_hours
+                if volume_gb is not None:
+                    config_dict['test_volume_gb'] = volume_gb
+                if inbound_id is not None:
+                    config_dict['test_inbound_id'] = inbound_id
+                
+                # Save back
+                new_config = json.dumps(config_dict)
+                cursor.execute('''
+                    UPDATE panels 
+                    SET extra_config = %s, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                ''', (new_config, panel_id))
+                conn.commit()
+                return True
+        except Exception as e:
+            logger.error(f"Error setting panel test config: {e}")
+            return False
+
+    def set_panel_test_panel_settings(self, panel_id: int, enabled: bool = None, display_name: str = None) -> bool:
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute('SELECT extra_config FROM panels WHERE id = %s', (panel_id,))
+                result = cursor.fetchone()
+                if not result:
+                    return False
+
+                current_config = result.get('extra_config')
+                if isinstance(current_config, str):
+                    try:
+                        config_dict = json.loads(current_config) if current_config else {}
+                    except Exception:
+                        config_dict = {}
+                elif isinstance(current_config, dict):
+                    config_dict = current_config
+                else:
+                    config_dict = {}
+
+                if enabled is not None:
+                    config_dict['test_enabled'] = bool(enabled)
+                if display_name is not None:
+                    config_dict['test_display_name'] = str(display_name).strip()
+
+                new_config = json.dumps(config_dict)
+                cursor.execute('''
+                    UPDATE panels
+                    SET extra_config = %s, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                ''', (new_config, panel_id))
+                conn.commit()
+                return True
+        except Exception as e:
+            logger.error(f"Error setting panel test panel settings: {e}")
+            return False
+
+    def get_test_panels(self, active_only: bool = True) -> List[Dict]:
+        try:
+            panels = self.get_panels(active_only=active_only)
+            result = []
+            for panel in panels:
+                extra_config = panel.get('extra_config')
+                if isinstance(extra_config, str):
+                    try:
+                        extra_config_dict = json.loads(extra_config) if extra_config else {}
+                    except Exception:
+                        extra_config_dict = {}
+                elif isinstance(extra_config, dict):
+                    extra_config_dict = extra_config
+                else:
+                    extra_config_dict = {}
+
+                enabled = bool(extra_config_dict.get('test_enabled') or extra_config_dict.get('is_test_panel'))
+                if not enabled:
+                    continue
+
+                display_name = extra_config_dict.get('test_display_name')
+                if display_name:
+                    panel['test_display_name'] = str(display_name)
+                result.append(panel)
+            return result
+        except Exception as e:
+            logger.error(f"Error getting test panels: {e}")
+            return []
+
+    def set_test_account_config(self, panel_id: int, inbound_id: int = None, duration_hours: int = 24, volume_gb: float = 1) -> bool:
         """Set test account configuration"""
         success = True
-        success &= self.set_system_setting(
+        success &= self.set_setting(
             'test_account_panel_id', 
             str(panel_id), 
             'Panel ID for test account purchases'
         )
         if inbound_id is not None:
-            success &= self.set_system_setting(
+            success &= self.set_setting(
                 'test_account_inbound_id', 
                 str(inbound_id), 
                 'Inbound ID for test account purchases'
             )
+            
+        success &= self.set_setting('test_account_duration', str(duration_hours), 'Test account duration in hours')
+        success &= self.set_setting('test_account_volume', str(volume_gb), 'Test account volume in GB')
+        
         return success
 
     # Service Status and Exhaustion Management Methods
+    def _update_client_field(self, client_id: int, field: str, value: Any) -> bool:
+        """Helper to update a single field in clients table"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(f"UPDATE clients SET {field} = %s WHERE id = %s", (value, client_id))
+                conn.commit()
+                return True
+        except Exception as e:
+            logger.error(f"Error updating client field {field}: {e}")
+            return False
+
+    def update_service_warned_one_week(self, service_id: int, warned: bool = True) -> bool:
+        """Update 3-day (one week) warning flag"""
+        return self._update_client_field(service_id, 'warned_one_week', 1 if warned else 0)
+
+    def update_service_warned_one_day(self, service_id: int, warned: bool = True) -> bool:
+        """Update 1-day warning flag"""
+        return self._update_client_field(service_id, 'warned_one_day', 1 if warned else 0)
+        
+    def update_service_warned_12_hours(self, service_id: int, warned: bool = True) -> bool:
+        """Update 12-hours warning flag"""
+        return self._update_client_field(service_id, 'warned_12_hours', 1 if warned else 0)
+
+    def update_service_warned_3_hours_before_deletion(self, service_id: int, warned: bool = True) -> bool:
+        return self._update_client_field(service_id, 'warned_3_hours_before_deletion', 1 if warned else 0)
+
+    def update_service_70_percent_warning(self, service_id: int, warned: bool = True) -> bool:
+        """Update 70% usage warning flag"""
+        return self._update_client_field(service_id, 'warned_70_percent', 1 if warned else 0)
+
+    def update_service_80_percent_warning(self, service_id: int, warned: bool = True) -> bool:
+        """Update 80% usage warning flag"""
+        return self._update_client_field(service_id, 'warned_80_percent', 1 if warned else 0)
+
+    def update_service_90_percent_warning(self, service_id: int, warned: bool = True) -> bool:
+        """Update 90% usage warning flag"""
+        return self._update_client_field(service_id, 'warned_90_percent', 1 if warned else 0)
+    
+    def update_service_expired_warning(self, service_id: int, warned: bool = True) -> bool:
+        """Update expired warning flag"""
+        return self._update_client_field(service_id, 'warned_expired', 1 if warned else 0)
+
     def update_service_status(self, service_id: int, status: str) -> bool:
         """Update service status"""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
+                cursor.execute('SELECT status, user_id, client_name FROM clients WHERE id = %s', (service_id,))
+                row = cursor.fetchone() or {}
+                old_status = str(row.get('status') or '')
+
+                is_active_value = 1 if str(status or '') == 'active' else 0
                 cursor.execute('''
                     UPDATE clients 
-                    SET status = %s, updated_at = CURRENT_TIMESTAMP
+                    SET status = %s, is_active = %s, updated_at = CURRENT_TIMESTAMP
                     WHERE id = %s
-                ''', (status, service_id))
+                ''', (status, is_active_value, service_id))
                 conn.commit()
+
+                if old_status != str(status or ''):
+                    client_name = row.get('client_name') or ''
+                    msg = f"Service {service_id}{f' ({client_name})' if client_name else ''} status: {old_status or 'unknown'} -> {status or 'unknown'}"
+                    self.log_system_event('INFO', msg, 'service_status', row.get('user_id'))
                 return True
         except Exception as e:
             logger.error(f"Error updating service status: {e}")
@@ -5595,6 +6596,7 @@ class ProfessionalDatabaseManager:
                 cursor.execute('''
                     UPDATE clients 
                     SET status = 'active',
+                        is_active = 1,
                         exhausted_at = NULL,
                         notified_exhausted = 0,
                         warned_70_percent = 0,
@@ -5718,7 +6720,7 @@ class ProfessionalDatabaseManager:
                     settings[row['setting_key']] = row['setting_value']
                 
                 return settings
-        except Error as e:
+        except Exception as e:
             logger.error(f"Error getting wheel settings: {e}")
             return {}
 
@@ -5749,7 +6751,7 @@ class ProfessionalDatabaseManager:
                 else:
                     cursor.execute('SELECT * FROM wheel_prizes ORDER BY display_order ASC')
                 return cursor.fetchall()
-        except Error as e:
+        except Exception as e:
             logger.error(f"Error getting prizes: {e}")
             return []
 
@@ -5757,6 +6759,7 @@ class ProfessionalDatabaseManager:
                  is_active: bool = True, display_order: int = 0) -> int:
         """Add a new prize"""
         try:
+            logger.info(f"Adding prize to DB: name={name}, type={type}, val={value}, prob={probability}, active={is_active}")
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
@@ -5765,7 +6768,9 @@ class ProfessionalDatabaseManager:
                     VALUES (%s, %s, %s, %s, %s, %s)
                 ''', (name, type, value, probability, 1 if is_active else 0, display_order))
                 conn.commit()
-                return cursor.lastrowid
+                new_id = cursor.lastrowid
+                logger.info(f"Prize added to DB with ID: {new_id}")
+                return new_id
         except Error as e:
             logger.error(f"Error adding prize: {e}")
             return 0
@@ -5773,6 +6778,7 @@ class ProfessionalDatabaseManager:
     def update_prize(self, prize_id: int, **kwargs) -> bool:
         """Update a prize"""
         try:
+            logger.info(f"Updating prize {prize_id} in DB with: {kwargs}")
             allowed_fields = ['name', 'type', 'value', 'probability', 'is_active', 'display_order']
             updates = []
             params = []
@@ -5783,6 +6789,7 @@ class ProfessionalDatabaseManager:
                     params.append(value)
             
             if not updates:
+                logger.warning(f"No valid fields to update for prize {prize_id}")
                 return False
                 
             params.append(prize_id)
@@ -5792,6 +6799,7 @@ class ProfessionalDatabaseManager:
                 cursor = conn.cursor()
                 cursor.execute(query, params)
                 conn.commit()
+                logger.info(f"Prize {prize_id} updated in DB successfully")
                 return True
         except Error as e:
             logger.error(f"Error updating prize {prize_id}: {e}")
@@ -5808,3 +6816,115 @@ class ProfessionalDatabaseManager:
         except Error as e:
             logger.error(f"Error deleting prize {prize_id}: {e}")
             return False
+
+    def get_system_stats(self) -> Dict:
+        """Unified, validated system statistics for dashboards and bot"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                try:
+                    cursor.execute('SELECT COUNT(*) as count FROM users')
+                    total_users = int((cursor.fetchone() or {}).get('count') or 0)
+                    
+                    cursor.execute('SELECT COUNT(*) as count FROM panels')
+                    total_panels = int((cursor.fetchone() or {}).get('count') or 0)
+                    
+                    cursor.execute('SELECT COUNT(*) as count FROM panels WHERE is_active = 1')
+                    active_panels = int((cursor.fetchone() or {}).get('count') or 0)
+                    
+                    cursor.execute('SELECT COUNT(*) as count FROM clients')
+                    total_services = int((cursor.fetchone() or {}).get('count') or 0)
+                    
+                    cursor.execute('''
+                        SELECT COUNT(*) as count FROM clients 
+                        WHERE (is_active = 1 OR status = 'active' OR COALESCE(status, '') = '')
+                          AND COALESCE(status, '') NOT IN ('disabled', 'expired', 'exhausted')
+                    ''')
+                    active_services = int((cursor.fetchone() or {}).get('count') or 0)
+                    
+                    cursor.execute('''
+                        SELECT COUNT(*) as count FROM clients 
+                        WHERE status IN ('disabled', 'expired', 'exhausted') OR is_active = 0
+                    ''')
+                    disabled_services = int((cursor.fetchone() or {}).get('count') or 0)
+                    
+                    cursor.execute('''
+                        SELECT COUNT(*) as count FROM clients 
+                        WHERE COALESCE(cached_is_online, 0) = 1
+                          AND (is_active = 1 OR status = 'active' OR COALESCE(status, '') = '')
+                          AND COALESCE(status, '') NOT IN ('disabled', 'expired', 'exhausted')
+                    ''')
+                    online_services = int((cursor.fetchone() or {}).get('count') or 0)
+                    
+                    cursor.execute('''
+                        SELECT
+                            COALESCE(SUM(COALESCE(total_gb, 0)), 0) AS total_volume,
+                            COALESCE(SUM(COALESCE(used_gb, cached_used_gb, 0)), 0) AS used_volume
+                        FROM clients
+                    ''')
+                    vol_row = cursor.fetchone() or {}
+                    total_volume_gb = float(vol_row.get('total_volume') or 0.0)
+                    used_volume_gb = float(vol_row.get('used_volume') or 0.0)
+                    
+                    cursor.execute('''
+                        SELECT SUM(amount) as total FROM invoices 
+                        WHERE status IN ('paid', 'completed')
+                    ''')
+                    total_revenue = int((cursor.fetchone() or {}).get('total') or 0)
+                    
+                    cursor.execute('''
+                        SELECT SUM(amount) as total FROM invoices 
+                        WHERE status IN ('paid', 'completed') 
+                          AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                    ''')
+                    monthly_revenue = int((cursor.fetchone() or {}).get('total') or 0)
+                    
+                    cursor.execute('''
+                        SELECT SUM(amount) as total FROM invoices 
+                        WHERE status IN ('paid', 'completed') 
+                          AND DATE(created_at) = CURDATE()
+                    ''')
+                    daily_revenue = int((cursor.fetchone() or {}).get('total') or 0)
+                finally:
+                    cursor.close()
+            
+            total_users = max(0, total_users)
+            total_panels = max(0, total_panels)
+            active_panels = max(0, min(active_panels, total_panels))
+            total_services = max(0, total_services)
+            active_services = max(0, min(active_services, total_services))
+            disabled_services = max(0, disabled_services)
+            online_services = max(0, min(online_services, active_services))
+            total_volume_gb = max(0.0, total_volume_gb)
+            used_volume_gb = max(0.0, min(used_volume_gb, total_volume_gb))
+            
+            return {
+                'total_users': total_users,
+                'total_panels': total_panels,
+                'active_panels': active_panels,
+                'total_services': total_services,
+                'active_services': active_services,
+                'disabled_services': disabled_services,
+                'online_services': online_services,
+                'total_volume_gb': total_volume_gb,
+                'used_volume_gb': used_volume_gb,
+                'total_revenue': total_revenue,
+                'monthly_revenue': monthly_revenue,
+                'daily_revenue': daily_revenue
+            }
+        except Exception as e:
+            logger.error(f"Error getting system stats: {e}")
+            return {
+                'total_users': 0,
+                'total_panels': 0,
+                'active_panels': 0,
+                'total_services': 0,
+                'active_services': 0,
+                'disabled_services': 0,
+                'online_services': 0,
+                'total_volume_gb': 0.0,
+                'used_volume_gb': 0.0,
+                'total_revenue': 0,
+                'monthly_revenue': 0,
+                'daily_revenue': 0
+            }

@@ -39,17 +39,12 @@
     <div class="logs-list" style="display: flex; flex-direction: column; gap: var(--sp-md);">
         {% if logs %}
         {% for log in logs %}
-        <div class="card log-card"
-            style="padding: var(--sp-md); transition: all 0.3s ease; border-right: 4px solid {% if log.level == 'ERROR' %}var(--p-error){% elif log.level == 'WARNING' %}var(--p-warning){% else %}var(--p-info){% endif %};">
+        <div class="card log-card border-{{ log.level|lower }}">
             <div style="display: flex; align-items: flex-start; gap: var(--sp-md);">
                 <!-- Icon -->
                 <div style="flex-shrink: 0;">
-                    <div
-                        style="width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; 
-                            background: {% if log.level == 'ERROR' %}rgba(239, 68, 68, 0.1){% elif log.level == 'WARNING' %}rgba(245, 158, 11, 0.1){% else %}rgba(59, 130, 246, 0.1){% endif %};
-                            color: {% if log.level == 'ERROR' %}var(--p-error){% elif log.level == 'WARNING' %}var(--p-warning){% else %}var(--p-info){% endif %};">
-                        <i
-                            class="fas {% if log.level == 'ERROR' %}fa-exclamation-circle{% elif log.level == 'WARNING' %}fa-exclamation-triangle{% else %}fa-info-circle{% endif %}"></i>
+                    <div class="log-icon icon-{{ log.level|lower }}">
+                        <i class="fas {% if log.level == 'ERROR' %}fa-exclamation-circle{% elif log.level == 'WARNING' %}fa-exclamation-triangle{% else %}fa-info-circle{% endif %}"></i>
                     </div>
                 </div>
 

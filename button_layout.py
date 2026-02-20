@@ -280,6 +280,58 @@ class ProfessionalButtonLayout:
     }
     
     @staticmethod
+    def _validate_and_format_url(url: str) -> Optional[str]:
+        if not url or not isinstance(url, str) or not url.strip():
+            return None
+        
+        url = url.strip()
+        
+        if not url.startswith('https://'):
+            if url.startswith('http://'):
+                url = url.replace('http://', 'https://', 1)
+            else:
+                url = f"https://{url}"
+        
+        if len(url) <= 8:
+            return None
+
+        try:
+            from urllib.parse import urlparse
+            import ipaddress
+
+            parsed = urlparse(url)
+            if parsed.scheme != "https":
+                return None
+
+            host = parsed.hostname
+            if not host:
+                return None
+
+            host_lower = host.lower()
+            if host_lower in {"localhost"}:
+                return None
+
+            try:
+                ip = ipaddress.ip_address(host_lower)
+                if (
+                    ip.is_private
+                    or ip.is_loopback
+                    or ip.is_reserved
+                    or ip.is_link_local
+                    or ip.is_multicast
+                    or ip.is_unspecified
+                ):
+                    return None
+            except ValueError:
+                if "." not in host_lower:
+                    return None
+
+        except Exception:
+            return None
+
+        return url
+
+    @staticmethod
     def create_main_menu(is_admin: bool = False, user_balance: int = 0, user_id: int = None, webapp_url: str = None, bot_name: str = None, db=None) -> ReplyKeyboardMarkup:
         """Create professional main menu with user context (Reply Keyboard)
         
@@ -293,6 +345,25 @@ class ProfessionalButtonLayout:
         """
         keyboard = []
         
+        # Prepare Web App Button
+        webapp_button = None
+         
+        webapp_url = ProfessionalButtonLayout._validate_and_format_url(webapp_url)
+         
+        if webapp_url:
+            # Add bot_name prefix if provided - DISABLED as per user request
+            # if bot_name:
+            #     from urllib.parse import quote
+            #     bot_segment = quote(str(bot_name).strip(), safe='')
+            #     base_url = webapp_url.rstrip('/')
+            #     # Check if bot_name is already in url to avoid double prefix
+            #     if bot_segment and (f"/{bot_name}" in base_url or f"/{bot_segment}" in base_url):
+            #         webapp_url = base_url
+            #     elif bot_segment:
+            #         webapp_url = f"{base_url}/{bot_segment}"
+            
+            webapp_button = KeyboardButton("💎 ورود به فروشگاه", web_app=WebAppInfo(url=webapp_url))
+
         # Try to load from database first
         try:
             if db is None:
@@ -332,6 +403,10 @@ class ProfessionalButtonLayout:
                     if row_buttons:
                         keyboard.append(row_buttons)
                 
+                # Place Web App button at the top
+                if webapp_button:
+                    keyboard.insert(0, [webapp_button])
+
                 if keyboard:
                     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         except Exception as e:
@@ -370,6 +445,10 @@ class ProfessionalButtonLayout:
             keyboard.append([
                 KeyboardButton("⚙️ پنل مدیریت")
             ])
+            
+        # Place Web App button at the top of fallback layout
+        if webapp_button:
+            keyboard.insert(0, [webapp_button])
         
         return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -383,12 +462,17 @@ class ProfessionalButtonLayout:
             import os
             webapp_url = os.getenv('BOT_WEBAPP_URL') or get_webapp_url()
         
-        # Add bot_name prefix if provided
-        if webapp_url and bot_name:
-            base_url = webapp_url.rstrip('/')
-            webapp_url = f"{base_url}/{bot_name}"
+        webapp_url = ProfessionalButtonLayout._validate_and_format_url(webapp_url)
         
         if webapp_url:
+            # Add bot_name prefix if provided - DISABLED as per user request
+            # if bot_name:
+            #     from urllib.parse import quote
+            #     bot_segment = quote(str(bot_name).strip(), safe='')
+            #     base_url = webapp_url.rstrip('/')
+            #     if bot_segment:
+            #         webapp_url = f"{base_url}/{bot_segment}"
+            
             keyboard.append([
                 InlineKeyboardButton("🌐 ورود به وب اپلیکیشن", web_app=WebAppInfo(url=webapp_url))
             ])
@@ -452,6 +536,14 @@ class ProfessionalButtonLayout:
             InlineKeyboardButton("📋 دریافت کانفیگ", callback_data=f"get_config_{service['id']}"),
             InlineKeyboardButton("📱 دریافت QR Code", callback_data=f"get_qr_code_{service['id']}")
         ])
+
+        toggle_is_enabled = service.get('is_enabled')
+        if toggle_is_enabled is None:
+            toggle_is_enabled = service.get('status') not in ['paused']
+        toggle_text = "🔌 خاموش کردن سرویس" if toggle_is_enabled else "🔌 روشن کردن سرویس"
+        keyboard.append([
+            InlineKeyboardButton(toggle_text, callback_data=f"toggle_service_{service['id']}")
+        ])
         
         # Link management and renewal (2 columns)
         # Link management and renewal (2 columns)
@@ -463,11 +555,7 @@ class ProfessionalButtonLayout:
             InlineKeyboardButton("🔗 دریافت لینک جدید", callback_data=f"reset_service_link_{service['id']}")
         ])
         
-        # Location/Panel change button (full width)
-        keyboard.append([
-            InlineKeyboardButton("🌍 تغییر لوکیشن/پنل", callback_data=f"change_panel_{service['id']}")
-        ])
-        
+
         # Delete service (full width)
         keyboard.append([
             InlineKeyboardButton("🗑️ حذف سرویس", callback_data=f"delete_service_{service['id']}")
@@ -637,13 +725,18 @@ class ProfessionalButtonLayout:
             import os
             webapp_url = os.getenv('BOT_WEBAPP_URL') or get_webapp_url()
         
+        webapp_url = ProfessionalButtonLayout._validate_and_format_url(webapp_url)
+        
         if webapp_url:
+            from urllib.parse import quote
             base_url = webapp_url.rstrip('/')
-            user_webapp_url = f"{base_url}/{bot_name}" if bot_name else base_url
+            # bot_segment = quote(str(bot_name).strip(), safe='') if bot_name else ""
+            # user_webapp_url = f"{base_url}/{bot_segment}" if bot_segment else base_url
             
             # Admin Web Panel - Only for ADMIN and SELLER
             if admin_role in [AdminRole.ADMIN, AdminRole.SELLER]:
-                admin_webapp_url = f"{base_url}/{bot_name}/admin/login" if bot_name else f"{base_url}/admin/login"
+                # admin_webapp_url = f"{base_url}/{bot_segment}/admin/login" if bot_segment else f"{base_url}/admin/login"
+                admin_webapp_url = f"{base_url}/admin/login"
                 keyboard.append([
                     InlineKeyboardButton(
                         "👑 ورود به پنل مدیریت وب (پیشرفته)",
@@ -665,9 +758,16 @@ class ProfessionalButtonLayout:
         prod_row = []
         if admin_role in [AdminRole.ADMIN, AdminRole.SELLER]:
             prod_row.append(InlineKeyboardButton("📦 مدیریت محصولات", callback_data="manage_products"))
-            prod_row.append(InlineKeyboardButton("🤝 پنل نمایندگان", web_app=WebAppInfo(url=f"{webapp_url}/reseller/dashboard" if webapp_url else "/reseller/dashboard")))
+            if webapp_url:
+                # reseller_url = f"{base_url}/{bot_segment}/reseller/dashboard" if bot_segment else f"{base_url}/reseller/dashboard"
+                reseller_url = f"{base_url}/reseller/dashboard"
+                prod_row.append(InlineKeyboardButton("🤝 پنل نمایندگان", web_app=WebAppInfo(url=reseller_url)))
+            else:
+                prod_row.append(InlineKeyboardButton("🤝 پنل نمایندگان (غیرفعال)", callback_data="webapp_not_configured"))
         if prod_row:
             keyboard.append(prod_row)
+
+        # Test Account Configuration moved under Products menu
 
         # --- Financial & Statistics Section ---
         fin_row = []
@@ -677,11 +777,20 @@ class ProfessionalButtonLayout:
         if fin_row:
             keyboard.append(fin_row)
 
+        # --- Marketing & Engagement Section ---
+        marketing_row = []
+        if admin_role in [AdminRole.ADMIN, AdminRole.SELLER]:
+            marketing_row.append(InlineKeyboardButton("🏷️ کدهای تخفیف", callback_data="admin_discount_codes"))
+            marketing_row.append(InlineKeyboardButton("🎁 کدهای هدیه", callback_data="admin_gift_codes_list"))
+        if marketing_row:
+            keyboard.append(marketing_row)
+
         # --- Advanced Features Section ---
-        # Wheel & Channels
+        # Wheel & Channels & Broadcast
         adv_row = []
         if admin_role == AdminRole.ADMIN:
             adv_row.append(InlineKeyboardButton("🎰 گردونه شانس", callback_data="admin_wheel"))
+            adv_row.append(InlineKeyboardButton("📢 ارسال همگانی", callback_data="broadcast_menu"))
         if admin_role in [AdminRole.ADMIN, AdminRole.SELLER]:
             adv_row.append(InlineKeyboardButton("📢 کانال‌های اجباری", callback_data="admin_channels"))
         if adv_row:
@@ -703,8 +812,7 @@ class ProfessionalButtonLayout:
                 InlineKeyboardButton("🤖 تنظیمات ربات", callback_data="bot_info_settings")
             ])
             keyboard.append([
-                InlineKeyboardButton("📋 مشاهده لاگ‌های سیستم", callback_data="system_logs"),
-                InlineKeyboardButton("💾 بکاپ و رستور", callback_data="admin_backup")
+                InlineKeyboardButton("📋 مشاهده لاگ‌های سیستم", callback_data="system_logs")
             ])
         
         # --- Navigation ---
@@ -716,10 +824,12 @@ class ProfessionalButtonLayout:
         return InlineKeyboardMarkup(keyboard)
 
     @staticmethod
-    def create_financial_management_menu() -> InlineKeyboardMarkup:
+    def create_financial_management_menu(auto_approve_receipts: bool = False) -> InlineKeyboardMarkup:
         """Create financial management menu"""
+        auto_text = "✅ تایید خودکار رسید: روشن" if auto_approve_receipts else "❌ تایید خودکار رسید: خاموش"
         keyboard = [
             [InlineKeyboardButton("💳 ثبت شماره کارت", callback_data="card_settings")],
+            [InlineKeyboardButton(auto_text, callback_data="toggle_auto_approve_receipts")],
             [InlineKeyboardButton("🔙 بازگشت", callback_data="admin_panel")]
         ]
         return InlineKeyboardMarkup(keyboard)
@@ -842,13 +952,73 @@ class ProfessionalButtonLayout:
                 InlineKeyboardButton("📋 لاگ‌های سیستم", callback_data="sys_logs"),
                 InlineKeyboardButton("🔄 بروزرسانی تاپیک‌ها", callback_data="sys_topics")
             ],
-            # Row 3: Restart (Full width for safety)
+            # Row 3: Link Delivery Settings
+            [
+                InlineKeyboardButton("📨 تنظیمات ارسال لینک", callback_data="sys_delivery")
+            ],
+            # Row 4: Restart (Full width for safety)
             [
                 InlineKeyboardButton("🔄 ریستارت سرویس‌ها", callback_data="sys_restart")
             ],
-            # Row 4: Back
+            # Row 5: Back
             [
                 InlineKeyboardButton("🔙 بازگشت", callback_data="admin_panel")
+            ]
+        ]
+        return InlineKeyboardMarkup(keyboard)
+
+    @staticmethod
+    def create_delivery_settings_menu(current_method: str = 'subscription') -> InlineKeyboardMarkup:
+        """Create link delivery settings menu"""
+        # Define methods and their labels
+        methods = {
+            'subscription': 'فقط لینک سابسکریپشن',
+            'config': 'فقط کانفیگ تکی',
+            'both': 'هر دو (سابسکریپشن + کانفیگ)'
+        }
+        
+        keyboard = []
+        for method, label in methods.items():
+            # Add checkmark if selected
+            prefix = "✅ " if method == current_method else ""
+            keyboard.append([
+                InlineKeyboardButton(f"{prefix}{label}", callback_data=f"delivery_set_{method}")
+            ])
+            
+        keyboard.append([
+            InlineKeyboardButton("🔙 بازگشت", callback_data="system_settings")
+        ])
+        
+        return InlineKeyboardMarkup(keyboard)
+
+    @staticmethod
+    def create_backup_settings_menu(frequency: int = 24, enabled: bool = True, unit: str = 'hours') -> InlineKeyboardMarkup:
+        """Create backup settings menu"""
+        status_emoji = "✅" if enabled else "❌"
+        
+        freq_text = f"{frequency} ساعت" if unit == 'hours' else f"{frequency} دقیقه"
+        
+        keyboard = [
+            # Row 1: Manual Backup & Restore
+            [
+                InlineKeyboardButton("📥 بکاپ فوری", callback_data="backup_create_now"),
+                InlineKeyboardButton("📤 بازیابی بکاپ", callback_data="backup_restore")
+            ],
+            # Row 2: Frequency
+            [
+                InlineKeyboardButton(f"⏰ فرکانس: هر {freq_text}", callback_data="backup_frequency_cycle")
+            ],
+            # Row 3: Custom Frequency
+            [
+                InlineKeyboardButton("✏️ تنظیم دستی زمان (دقیقه)", callback_data="backup_custom_frequency")
+            ],
+            # Row 4: Toggle
+            [
+                InlineKeyboardButton(f"{'🔴 غیرفعال کردن' if enabled else '🟢 فعال کردن'} بکاپ خودکار", callback_data=f"backup_toggle_{'off' if enabled else 'on'}")
+            ],
+            # Row 5: Back
+            [
+                InlineKeyboardButton("🔙 بازگشت", callback_data="system_settings")
             ]
         ]
         return InlineKeyboardMarkup(keyboard)
@@ -1017,6 +1187,36 @@ class ProfessionalButtonLayout:
             "◀️ بازگشت",
             callback_data=callback_data
         )]]
+        return InlineKeyboardMarkup(keyboard)
+
+    @staticmethod
+    def create_test_panels_manage(panels: List[Dict], back_callback: str = "configure_test_account") -> InlineKeyboardMarkup:
+        keyboard = []
+        for p in panels or []:
+            panel_id = p.get('id')
+            name = p.get('name', '')
+            enabled = bool(p.get('test_enabled'))
+            display_name = p.get('test_display_name') or name
+
+            if enabled:
+                label = f"✅ {display_name}"
+            else:
+                label = f"➕ {name}"
+
+            if panel_id is not None:
+                keyboard.append([InlineKeyboardButton(label, callback_data=f"test_panels_details_{panel_id}")])
+
+        keyboard.append([InlineKeyboardButton("🔙 بازگشت", callback_data=back_callback)])
+        return InlineKeyboardMarkup(keyboard)
+
+    @staticmethod
+    def create_test_panel_details(panel_id: int, enabled: bool, display_name: str, back_callback: str = "test_panels_manage") -> InlineKeyboardMarkup:
+        toggle_text = "⛔ غیرفعال کردن" if enabled else "✅ فعال کردن"
+        keyboard = [
+            [InlineKeyboardButton(toggle_text, callback_data=f"test_panels_toggle_{panel_id}")],
+            [InlineKeyboardButton("✏️ تغییر نام نمایش", callback_data=f"test_panels_rename_{panel_id}")],
+            [InlineKeyboardButton("🔙 بازگشت", callback_data=back_callback)]
+        ]
         return InlineKeyboardMarkup(keyboard)
     
     @staticmethod

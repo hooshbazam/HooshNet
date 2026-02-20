@@ -268,6 +268,7 @@ textarea {
     letter-spacing: -0.5px;
     background: linear-gradient(to right, #fff, #ccc);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
 }
 
@@ -531,6 +532,7 @@ textarea {
     margin: var(--sp-sm) 0;
     background: linear-gradient(to right, #fff, #e5e5e5);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
 }
 
@@ -822,6 +824,7 @@ textarea {
 .text-gradient {
     background: var(--p-gradient-red);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
 }
 
@@ -852,4 +855,209 @@ textarea {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: var(--sp-lg);
+}
+
+/* Log Cards Utilities */
+.log-card {
+    padding: var(--sp-md);
+    transition: all 0.3s ease;
+}
+
+.log-card.border-error {
+    border-right: 4px solid var(--p-error);
+}
+
+.log-card.border-warning {
+    border-right: 4px solid var(--p-warning);
+}
+
+.log-card.border-info {
+    border-right: 4px solid var(--p-info);
+}
+
+.log-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+}
+
+.log-icon.icon-error {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--p-error);
+}
+
+.log-icon.icon-warning {
+    background: rgba(245, 158, 11, 0.1);
+    color: var(--p-warning);
+}
+
+.log-icon.icon-info {
+    background: rgba(59, 130, 246, 0.1);
+    color: var(--p-info);
+}
+
+/* Products Page Utilities */
+.panel-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: var(--radius-lg);
+    background: var(--p-bg-hover);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+}
+
+.panel-icon.icon-marzban {
+    color: var(--p-accent);
+}
+
+.panel-icon.icon-sanaei {
+    color: var(--p-info);
+}
+
+.status-dot {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid var(--p-bg-card);
+}
+
+.status-dot.dot-active {
+    background: var(--p-success);
+}
+
+.status-dot.dot-inactive {
+    background: var(--p-error);
+}
+
+/* Service Card Utilities */
+.service-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: var(--radius-lg);
+    background: var(--p-bg-hover);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+}
+
+.service-icon.icon-active {
+    color: var(--p-success);
+}
+
+.service-icon.icon-inactive {
+    color: var(--p-error);
+}
+
+.progress-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.5s ease;
+}
+
+.bg-error { background: var(--p-error); }
+.bg-warning { background: var(--p-warning); }
+.bg-success { background: var(--p-success); }
+
+/* Ticket Card Utilities */
+.ticket-card {
+    margin-bottom: var(--sp-md);
+    padding: var(--sp-lg);
+    border-radius: var(--radius-lg);
+    border-left: 4px solid var(--p-text-muted);
+}
+
+.ticket-card.border-open {
+    border-left-color: var(--p-success);
+}
+
+.ticket-card.bg-pending-reply {
+    background: rgba(251, 191, 36, 0.05);
+    border-left-color: var(--p-warning);
+}
+
+.ticket-avatar {
+    width: 50px;
+    height: 50px;
+    border-radius: var(--radius-lg);
+    background: var(--p-bg-hover);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    color: var(--p-primary);
+    flex-shrink: 0;
+}
+
+/* Transaction Card Utilities */
+.transaction-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: var(--radius-lg);
+    background: var(--p-bg-hover);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+}
+
+.transaction-icon.icon-success {
+    color: var(--p-success);
+}
+
+.transaction-icon.icon-warning {
+    color: var(--p-warning);
+}
+
+.transaction-icon.icon-error {
+    color: var(--p-error);
+}
+
+.transaction-amount {
+    font-weight: 800;
+    font-size: 1.1rem;
+}
+
+.text-success { color: var(--p-success); }
+.text-warning { color: var(--p-warning); }
+.text-error { color: var(--p-error); }
+
+/* User Detail Utilities */
+.btn-unban {
+    background: var(--p-success);
+    border-color: var(--p-success);
+    color: white;
+}
+
+.btn-ban {
+    background: var(--p-warning);
+    border-color: var(--p-warning);
+    color: white;
+}
+
+.status-dot-large {
+    position: absolute;
+    bottom: 5px;
+    right: 5px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 3px solid var(--p-bg-card);
+}
+
+.status-dot-large.dot-active {
+    background: var(--p-success);
+}
+
+.status-dot-large.dot-banned {
+    background: var(--p-error);
 }

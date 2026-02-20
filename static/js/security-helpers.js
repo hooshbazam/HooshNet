@@ -92,12 +92,12 @@ function handleApiError(error, defaultMessage = 'خطایی رخ داد') {
     
     let message = defaultMessage;
     
-    if (error.message) {
+    if (error && error.message) {
         message = error.message;
-    } else if (error.response) {
+    } else if (error && error.response) {
         try {
             const data = error.response.json();
-            message = data.message || defaultMessage;
+            message = (data && data.message) ? data.message : defaultMessage;
         } catch {
             message = defaultMessage;
         }

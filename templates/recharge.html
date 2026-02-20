@@ -355,8 +355,8 @@
 </div>
 
 <script>
-    const currentBalance = {{ user.balance or 0 }};
-    const predefinedAmounts = [20000, 50000, 100000, 200000, 500000, 1000000];
+    const currentBalance = Number("{{ user.balance or 0 }}");
+    const predefinedAmounts = [10000, 20000, 50000, 100000, 200000, 500000, 1000000];
     let selectedAmount = 0;
 
     function init() {

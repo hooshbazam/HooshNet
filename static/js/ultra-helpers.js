@@ -56,12 +56,11 @@ function getToastTitle(type) {
     return titles[type] || 'اطلاعات';
 }
 
-@keyframes slideOutRight {
-    to {
-        transform: translateX(400px);
-        opacity: 0;
-    }
-}
+/* 
+ * Keyframes should be in CSS files.
+ * This file is for JavaScript logic.
+ * The slideOutRight animation is handled by CSS classes.
+ */
 
 // Loading Toast
 let loadingToast = null;
@@ -256,7 +255,7 @@ async function apiCall(url, options = {}) {
         
         return { success: true, data };
     } catch (error) {
-        return { success: false, error: error.message };
+        return { success: false, error: (error && error.message) || 'خطا در ارتباط با سرور' };
     }
 }
 

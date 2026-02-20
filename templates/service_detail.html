@@ -473,7 +473,7 @@
     <div class="hero-section">
         <div class="hero-status-ring">
             <div class="status-ring-bg"></div>
-            {% if service.is_online %}
+            {% if service.is_active %}
             <div class="status-ring-glow"></div>
             {% endif %}
             <div class="status-icon-box">
@@ -485,9 +485,17 @@
         <div class="service-id">ID: #{{ service.id }}</div>
 
         <div>
-            <div class="status-chip {% if not service.is_online %}offline{% endif %}">
+            <div class="status-chip {% if not service.is_active %}offline{% endif %}">
                 <span class="status-dot"></span>
-                <span>{% if service.is_online %}سرویس فعال{% else %}سرویس غیرفعال{% endif %}</span>
+                <span>
+                    {% if not service.is_active %}
+                    غیرفعال
+                    {% elif service.usage_percentage|default(0)|float == 0 %}
+                    استفاده نشده
+                    {% else %}
+                    فعال
+                    {% endif %}
+                </span>
             </div>
         </div>
     </div>
@@ -564,7 +572,7 @@
             </div>
 
             {% if service.subscription_link %}
-            <div class="config-link-box" onclick="copyConfig()">
+            <div class="config-link-box" onclick="copyToClipboard('{{ service.subscription_link }}')">
                 <div class="link-text">{{ service.subscription_link }}</div>
                 <div class="copy-icon">
                     <i class="fas fa-copy"></i>
@@ -572,9 +580,24 @@
             </div>
             <div
                 style="text-align: center; margin-top: 0.5rem; font-size: 0.75rem; color: var(--text-secondary); opacity: 0.7;">
-                برای کپی کردن ضربه بزنید
+                لینک اتصال (Subscription) - برای کپی ضربه بزنید
             </div>
-            {% else %}
+            {% endif %}
+
+            {% if service.config_link %}
+            <div class="config-link-box" style="margin-top: 1rem;" onclick="copyToClipboard('{{ service.config_link }}')">
+                <div class="link-text">{{ service.config_link }}</div>
+                <div class="copy-icon">
+                    <i class="fas fa-copy"></i>
+                </div>
+            </div>
+            <div
+                style="text-align: center; margin-top: 0.5rem; font-size: 0.75rem; color: var(--text-secondary); opacity: 0.7;">
+                کانفیگ مستقیم (Config) - برای کپی ضربه بزنید
+            </div>
+            {% endif %}
+
+            {% if not service.subscription_link and not service.config_link %}
             <div class="text-center text-muted py-3">
                 لینک اتصال موجود نیست
             </div>
@@ -601,13 +624,24 @@
             </a>
             {% endif %}
 
-            <a href="javascript:void(0)" onclick="showChangePanelModal()" class="action-card">
-                <div class="action-icon" style="background: rgba(59, 130, 246, 0.1); color: #3b82f6;">
-                    <i class="fas fa-globe"></i>
-                </div>
-                <div class="action-title">تغییر لوکیشن</div>
-                <div class="action-desc">تغییر سرور سرویس</div>
-            </a>
+            <form method="POST" action="{{ url_for('toggle_service', service_id=service.id) }}" style="margin: 0;">
+                <button type="submit" class="action-card" style="border: 0; cursor: pointer; text-align: right;">
+                    {% if service.status == 'paused' %}
+                    <div class="action-icon" style="background: rgba(16, 185, 129, 0.1); color: #10b981;">
+                        <i class="fas fa-power-off"></i>
+                    </div>
+                    <div class="action-title">روشن کردن سرویس</div>
+                    <div class="action-desc">فعالسازی کانفیگ</div>
+                    {% else %}
+                    <div class="action-icon" style="background: rgba(239, 68, 68, 0.1); color: #ef4444;">
+                        <i class="fas fa-power-off"></i>
+                    </div>
+                    <div class="action-title">خاموش کردن سرویس</div>
+                    <div class="action-desc">غیرفعالسازی کانفیگ</div>
+                    {% endif %}
+                </button>
+            </form>
+
         </div>
 
         <a href="{{ url_for('services') }}"
@@ -646,7 +680,7 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script>
     const configLink = '{{ service.subscription_link }}';
-    const usagePercentage = {{ service.usage_percentage|default (0) | int }};
+    const usagePercentage = Number("{{ service.usage_percentage|default(0)|int }}");
 
     document.addEventListener('DOMContentLoaded', () => {
         // Animate Circular Progress
@@ -713,67 +747,6 @@
         }, 300);
     }
 
-    function showChangePanelModal() {
-        const modal = document.getElementById('changePanelModal');
-        const content = document.getElementById('changePanelContent');
-        modal.style.display = 'flex';
-        modal.offsetHeight;
-        modal.classList.add('visible');
 
-        fetch(`/api/service/{{ service.id }}/compatible-panels`)
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    let html = '<div class="d-flex flex-column gap-2">';
-                    data.panels.forEach(panel => {
-                        html += `
-                            <div class="p-3 border border-secondary rounded-3 d-flex justify-content-between align-items-center cursor-pointer" 
-                                 style="background: rgba(255,255,255,0.05);"
-                                 onclick="selectPanel(${panel.id})">
-                                <div>
-                                    <div class="fw-bold text-white">${panel.name}</div>
-                                    <div class="small text-muted">${panel.price_per_gb} تومان/GB</div>
-                                </div>
-                                <i class="fas fa-chevron-left text-muted"></i>
-                            </div>
-                        `;
-                    });
-                    html += '</div>';
-                    content.innerHTML = html;
-                } else {
-                    content.innerHTML = `<p class="text-danger text-center">${data.message}</p>`;
-                }
-            })
-            .catch(err => {
-                content.innerHTML = '<p class="text-danger text-center">خطا در دریافت اطلاعات</p>';
-            });
-    }
-
-    function closeChangePanelModal() {
-        const modal = document.getElementById('changePanelModal');
-        modal.classList.remove('visible');
-        setTimeout(() => {
-            modal.style.display = 'none';
-        }, 300);
-    }
-
-    function selectPanel(panelId) {
-        if (confirm('آیا از تغییر لوکیشن اطمینان دارید؟')) {
-            fetch(`/api/service/{{ service.id }}/change-panel`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ panel_id: panelId })
-            })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.success) {
-                        showToast('تغییر لوکیشن انجام شد', 'success');
-                        location.reload();
-                    } else {
-                        showToast(data.message, 'error');
-                    }
-                });
-        }
-    }
 </script>
 {% endblock %}

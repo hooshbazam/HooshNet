@@ -105,8 +105,11 @@ def get_user_input():
     # WebApp Configuration
     print(f"\n{Colors.HEADER}--- WebApp Settings ---{Colors.ENDC}")
     config['WEBAPP_URL'] = input(f"{Colors.BOLD}Enter Your Domain URL (e.g., https://mydomain.com):{Colors.ENDC} ").strip()
-    if config['WEBAPP_URL'] and not config['WEBAPP_URL'].startswith('http'):
-        config['WEBAPP_URL'] = 'https://' + config['WEBAPP_URL']
+    if config['WEBAPP_URL']:
+        if config['WEBAPP_URL'].startswith('http://'):
+            config['WEBAPP_URL'] = config['WEBAPP_URL'].replace('http://', 'https://', 1)
+        elif not config['WEBAPP_URL'].startswith('https://'):
+            config['WEBAPP_URL'] = 'https://' + config['WEBAPP_URL']
 
     return config
 

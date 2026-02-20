@@ -59,10 +59,27 @@
             <p class="status-text" id="status">در حال بررسی امنیت...</p>
         </div>
 
+        <!-- Fallback Action -->
+        <div id="fallbackAction" style="display:none; margin-top: 16px;">
+            <a id="openBotBtn" href="#" style="
+                display: block;
+                width: 100%;
+                text-align: center;
+                background: #0f172a;
+                color: #e5e7eb;
+                padding: 12px 16px;
+                border-radius: 10px;
+                font-weight: 700;
+                text-decoration: none;
+            ">ورود به فروشگاه</a>
+        </div>
+
     </div>
 
     <!-- Logic -->
     <script>
+        const botUsername = "{{ bot_username }}";
+
         // Initialize Telegram WebApp
         if (window.Telegram && window.Telegram.WebApp) {
             const tg = window.Telegram.WebApp;
@@ -195,6 +212,24 @@
             } else {
                 updateStatus('لطفاً از طریق ربات وارد شوید');
                 document.querySelector('.loader-bar').style.display = 'none';
+                // Show deep link fallback
+                const fallback = document.getElementById('fallbackAction');
+                const btn = document.getElementById('openBotBtn');
+                if (botUsername) {
+                    const deepLink = `https://t.me/${botUsername}?startapp=1`;
+                    const tgScheme = `tg://resolve?domain=${botUsername}&startapp=1`;
+                    btn.href = deepLink;
+                    btn.onclick = function (e) {
+                        // Prefer tg:// on mobile Telegram
+                        const ua = navigator.userAgent.toLowerCase();
+                        const isMobile = /android|iphone|ipad|ipod/.test(ua);
+                        if (isMobile) {
+                            window.location.href = tgScheme;
+                            e.preventDefault();
+                        }
+                    };
+                }
+                fallback.style.display = 'block';
             }
         }, 1500); // Slight delay for animation to play
     </script>

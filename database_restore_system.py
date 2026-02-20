@@ -353,6 +353,8 @@ class DatabaseRestoreManager:
                 for product in products:
                     product['is_active'] = 1
                     product['panel_id'] = 1  # Default panel
+                    product['is_visible_to_users'] = 1
+                    product['is_visible_to_resellers'] = 1
                 count = self._restore_table(cursor, 'products', products, product_mapping)
                 self.restore_stats['products'] = count
                 
@@ -514,8 +516,8 @@ class DatabaseRestoreManager:
                         
                         cursor.execute("""
                             INSERT IGNORE INTO products 
-                            (panel_id, name, volume_gb, duration_days, price, is_active, created_at)
-                            VALUES (%s, %s, %s, %s, %s, 1, NOW())
+                            (panel_id, name, volume_gb, duration_days, price, is_active, created_at, is_visible_to_users, is_visible_to_resellers)
+                            VALUES (%s, %s, %s, %s, %s, 1, NOW(), 1, 1)
                         """, (
                             panel_id,
                             title,

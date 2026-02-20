@@ -31,6 +31,9 @@ class PanelManager:
         import logging
         logger = logging.getLogger(__name__)
         
+        # Sanitize URL if it looks like a subscription link
+        self._sanitize_url()
+        
         try:
             login_data = {
                 'username': self.username,
@@ -60,7 +63,9 @@ class PanelManager:
                         logger.warning(f"Login returned success=False: {result}")
                 except:
                     # If not JSON, check for success indicators
-                    if 'success' in response.text.lower() or 'dashboard' in response.url:
+                    # STRICTER CHECK: Don't accept just 'success' word to avoid false positives with subscription text
+                    # Real panel login usually redirects to dashboard or returns JSON
+                    if 'dashboard' in response.url or ('success' in response.text.lower() and len(response.text) < 500 and '{' in response.text):
                         logger.info(f"✅ Login successful (indirect check) to {self.base_url}")
                         return True
                     else:
@@ -85,15 +90,60 @@ class PanelManager:
                 logger.error("⚠️ ProxyError detected! This suggests a system proxy is interfering despite trust_env=False.")
             elif "WinError 10061" in str(e):
                 logger.error("⚠️ Connection Refused (WinError 10061). Target machine actively refused connection. Check if panel is running and port is correct.")
-            raise  # Re-raise to be caught by caller
+            # Don't raise, return False so we can try other things or show error
+            return False
         except requests.exceptions.Timeout as e:
             logger.error(f"❌ Timeout during login to {self.base_url}: {str(e)}")
-            raise  # Re-raise to be caught by caller
+            return False
         except Exception as e:
             logger.error(f"❌ Login error to {self.base_url}: {str(e)}", exc_info=True)
-            raise  # Re-raise to be caught by caller
+            return False
             
         return False
+
+    def _sanitize_url(self):
+        """Sanitize base_url to remove subscription paths"""
+        if not self.base_url:
+            return
+            
+        import urllib.parse
+        import re
+        
+        try:
+            # Remove trailing slash
+            self.base_url = self.base_url.rstrip('/')
+            
+            parsed = urllib.parse.urlparse(self.base_url)
+            # If path is long and suspicious (likely a token)
+            # Valid paths: /xui, /panel, /2053, /secret_path, /
+            # Suspicious: /zXBA4sv1evSLfFU (random string)
+            
+            path = parsed.path
+            
+            # Check for known subscription patterns
+            if any(x in path.lower() for x in ['/sub/', '/subscribe/', '/link/']):
+                 # Likely a subscription link
+                 import logging
+                 logger = logging.getLogger(__name__)
+                 new_url = f"{parsed.scheme}://{parsed.netloc}"
+                 logger.warning(f"⚠️ Suspicious panel URL detected (looks like subscription): {self.base_url}")
+                 logger.warning(f"💡 Auto-correcting to: {new_url}")
+                 self.base_url = new_url
+            
+            # Disable the generic length check as it breaks 3x-ui secret paths
+            # if len(path) > 1 and not any(x in path.lower() for x in ['panel', 'xui', 'admin', 'api', 'login']):
+            #    # Check if it looks like a token (alphanumeric, no slashes except maybe one)
+            #    path_parts = path.strip('/').split('/')
+            #    if len(path_parts) == 1 and len(path_parts[0]) > 8:
+            #         # Likely a token
+            #         import logging
+            #         logger = logging.getLogger(__name__)
+            #         new_url = f"{parsed.scheme}://{parsed.netloc}"
+            #         logger.warning(f"⚠️ Suspicious panel URL detected (looks like subscription): {self.base_url}")
+            #         logger.warning(f"💡 Auto-correcting to: {new_url}")
+            #         self.base_url = new_url
+        except:
+            pass
     
     def get_inbounds(self) -> List[Dict]:
         """Get list of all inbounds from the panel"""
@@ -236,19 +286,20 @@ class PanelManager:
                                         # Convert to string for comparison if needed
                                         stat_id_str = str(stat_id) if stat_id else ''
                                         stat_uuid_str = str(stat_uuid) if stat_uuid else ''
-                                        
-                                        # Extract UUID from email if it contains one (format: username@domain)
-                                        email_uuid = ''
-                                        if '@' in str(stat_email):
-                                            # Email might be like: user@domain or uuid@domain
-                                            email_parts = str(stat_email).split('@')[0]
-                                            if len(email_parts) > 30:  # UUID-like length
-                                                email_uuid = email_parts
-                                        
-                                        # Try to match with client_uuid (exact match or UUID match)
-                                        if (stat_id_str == str(client_uuid) or 
-                                            stat_uuid_str == str(client_uuid) or
-                                            email_uuid == str(client_uuid)):
+
+                                        client_email = str(client.get('email', '') or '')
+                                        client_email_prefix = client_email.split('@')[0] if '@' in client_email else client_email
+                                        stat_email_str = str(stat_email) if stat_email is not None else ''
+                                        stat_email_prefix = stat_email_str.split('@')[0] if '@' in stat_email_str else stat_email_str
+
+                                        client_uuid_str = str(client_uuid)
+
+                                        if (
+                                            stat_id_str == client_uuid_str or
+                                            stat_uuid_str == client_uuid_str or
+                                            (client_email and stat_email_str == client_email) or
+                                            (client_email_prefix and stat_email_prefix == client_email_prefix)
+                                        ):
                                             # Get used traffic (up + down in bytes)
                                             up_bytes = stat.get('up', 0) or 0
                                             down_bytes = stat.get('down', 0) or 0
@@ -262,6 +313,14 @@ class PanelManager:
                                     up_bytes = client.get('up', 0) or 0
                                     down_bytes = client.get('down', 0) or 0
                                     used_traffic = up_bytes + down_bytes
+
+                                try:
+                                    last_activity_num = int(float(last_activity)) if last_activity else 0
+                                except Exception:
+                                    last_activity_num = 0
+                                if 0 < last_activity_num < 1000000000000:
+                                    last_activity_num = last_activity_num * 1000
+                                last_activity = last_activity_num
                                 
                                 # Add some default values if missing
                                 client_details = {
@@ -430,7 +489,7 @@ class PanelManager:
     
     def create_client(self, inbound_id: int, client_name: str, 
                      protocol: str = 'vmess', expire_days: int = 0, 
-                     total_gb: int = 0, sub_id: str = None) -> Optional[Dict]:
+                     total_gb: float = 0, sub_id: str = None, limit_ip: int = 0) -> Optional[Dict]:
         """Create a new client on specified inbound with comprehensive validation"""
         try:
             if not self.login():
@@ -439,6 +498,7 @@ class PanelManager:
             print(f"🔍 Creating client: {client_name}")
             print(f"   Expire Days: {expire_days if expire_days > 0 else 'Unlimited'}")
             print(f"   Total GB: {total_gb if total_gb > 0 else 'Unlimited'}")
+            print(f"   IP Limit: {limit_ip if limit_ip > 0 else 'Unlimited'}")
             
             # Get the inbound details first
             response = self.session.get(
@@ -482,12 +542,12 @@ class PanelManager:
             # Convert days to milliseconds for expiry time
             expire_time = 0
             if expire_days > 0:
-                expire_time = int(time.time() * 1000) + (expire_days * 24 * 60 * 60 * 1000)
+                expire_time = int(int(time.time() * 1000) + (expire_days * 24 * 60 * 60 * 1000))
             
             # Convert GB to bytes for total traffic
             total_traffic = 0
             if total_gb > 0:
-                total_traffic = total_gb * 1024 * 1024 * 1024  # Convert GB to bytes
+                total_traffic = int(total_gb * 1024 * 1024 * 1024)  # Convert GB to bytes
             
             # Generate client credentials
             client_uuid = str(uuid.uuid4())
@@ -510,9 +570,9 @@ class PanelManager:
                 "email": client_email,
                 "enable": True,
                 "expiryTime": expire_time,
-                "flow": "",
+                "flow": validation.get('flow', ''),
                 "id": client_uuid,
-                "limitIp": 0,
+                "limitIp": limit_ip,
                 "reset": 0,
                 "subId": sub_id,
                 "tgId": "",
@@ -569,6 +629,94 @@ class PanelManager:
             
             print(f"✅ Successfully added client to panel!")
             
+            # Generate config link using validated settings
+            import urllib.parse
+            remark_value = f"{validation['inbound_remark']} - {client_name}" if client_name else validation['inbound_remark']
+            clean_remark_encoded = urllib.parse.quote(remark_value)
+            config_link = ""
+            
+            try:
+                if validation['inbound_protocol'] == 'vless':
+                    params = {
+                        'type': validation['network_type'],
+                        'security': validation['security_type'],
+                        'encryption': 'none'
+                    }
+                    
+                    if validation.get('flow'): params['flow'] = validation['flow']
+                    if validation.get('sni'): params['sni'] = validation['sni']
+                    if validation.get('fingerprint'): params['fp'] = validation['fingerprint']
+                    if validation.get('alpn'): params['alpn'] = validation['alpn']
+                    if validation.get('pbk'): params['pbk'] = validation['pbk']
+                    if validation.get('sid'): params['sid'] = validation['sid']
+                    if validation.get('spx'): params['spx'] = validation['spx']
+                    
+                    if validation['network_type'] == 'ws':
+                        params['path'] = urllib.parse.quote(validation['path_value'])
+                        if validation['host_header']: params['host'] = validation['host_header']
+                    elif validation['network_type'] == 'grpc':
+                        params['serviceName'] = validation.get('service_name', '')
+                        params['mode'] = 'gun'
+                    elif validation['network_type'] == 'tcp':
+                        if validation['header_type'] == 'http':
+                            params['headerType'] = 'http'
+                            params['host'] = validation['host_header']
+                            params['path'] = urllib.parse.quote(validation['path_value'])
+                    
+                    query_string = "&".join([f"{k}={v}" for k, v in params.items() if v])
+                    config_link = f"vless://{client_uuid}@{validation['server_host']}:{validation['inbound_port']}?{query_string}#{clean_remark_encoded}"
+
+                elif validation['inbound_protocol'] == 'vmess':
+                    vmess_config = {
+                        "v": "2",
+                        "ps": remark_value,
+                        "add": validation['server_host'],
+                        "port": str(validation['inbound_port']),
+                        "id": client_uuid,
+                        "aid": "0",
+                        "scy": "auto",
+                        "net": validation['network_type'],
+                        "type": "http" if validation['network_type'] == 'tcp' and validation['header_type'] == 'http' else "none",
+                        "host": validation['host_header'],
+                        "path": validation['path_value'],
+                        "tls": validation['security_type'],
+                        "sni": validation['sni'] or validation['server_host'],
+                        "alpn": validation['alpn'],
+                        "fp": validation['fingerprint']
+                    }
+                    import base64
+                    config_json = json.dumps(vmess_config)
+                    config_b64 = base64.b64encode(config_json.encode()).decode()
+                    config_link = f"vmess://{config_b64}"
+                elif validation['inbound_protocol'] == 'trojan':
+                    params = {
+                        'type': validation['network_type'],
+                        'security': validation['security_type'],
+                    }
+                    if validation.get('sni'): params['sni'] = validation['sni']
+                    if validation.get('alpn'): params['alpn'] = validation['alpn']
+                    if validation.get('fingerprint'): params['fp'] = validation['fingerprint']
+                    
+                    if validation['network_type'] == 'ws':
+                        params['path'] = urllib.parse.quote(validation['path_value'])
+                        if validation['host_header']: params['host'] = validation['host_header']
+                    elif validation['network_type'] == 'grpc':
+                        params['serviceName'] = validation.get('service_name', '')
+                        params['mode'] = 'gun'
+                    elif validation['network_type'] == 'tcp':
+                         if validation['header_type'] == 'http':
+                            params['headerType'] = 'http'
+                            params['host'] = validation['host_header']
+                            params['path'] = urllib.parse.quote(validation['path_value'])
+                    
+                    query_string = "&".join([f"{k}={v}" for k, v in params.items() if v])
+                    config_link = f"trojan://{client_uuid}@{validation['server_host']}:{validation['inbound_port']}?{query_string}#{clean_remark_encoded}"
+                    
+                elif validation['inbound_protocol'] == 'shadowsocks':
+                    config_link = f"ss://{client_uuid}@{validation['server_host']}:{validation['inbound_port']}#{clean_remark_encoded}"
+            except Exception as e:
+                print(f"⚠️ Error generating config link: {e}")
+
             # Return client info with validation details
             client = {
                 'id': client_uuid,
@@ -590,6 +738,7 @@ class PanelManager:
                 'status': 'active',
                 'uuid': client_uuid,
                 'sub_id': sub_id,
+                'config_link': config_link,
                 'created_at': int(time.time())
             }
             
@@ -667,7 +816,7 @@ class PanelManager:
         try:
             # Extract basic inbound info
             inbound_id = inbound_data.get('id')
-            inbound_remark = inbound_data.get('remark', 'Unknown')
+            inbound_remark = inbound_data.get('remark') or inbound_data.get('tag') or f"Inbound {inbound_id}"
             inbound_protocol = inbound_data.get('protocol', 'vless')
             inbound_port = inbound_data.get('port', 443)
             
@@ -686,29 +835,91 @@ class PanelManager:
                 stream_settings = {}
             
             # Extract server details from stream settings
-            server_host = "gr.astonnetwork.xyz"  # Default
+            # Default to panel host if not found in settings
+            try:
+                import urllib.parse
+                parsed_base = urllib.parse.urlparse(self.base_url)
+                default_host = parsed_base.hostname or parsed_base.netloc
+                if ':' in default_host:
+                    default_host = default_host.split(':')[0]
+            except:
+                default_host = "localhost"
+
+            server_host = default_host
             if 'externalProxy' in stream_settings and stream_settings['externalProxy']:
                 proxy = stream_settings['externalProxy'][0]
                 server_host = proxy.get('dest', server_host)
+            
+            if server_host in ['localhost', '127.0.0.1', '::1']:
+                server_host = default_host
             
             # Extract network and security settings
             network_type = stream_settings.get('network', 'tcp')
             security_type = stream_settings.get('security', 'none')
             
-            # Extract TCP settings for HTTP header
+            # Extract Transport Settings (WS, GRPC, TCP)
             host_header = ""
             path_value = "/"
             header_type = "none"
+            service_name = ""
             
-            if 'tcpSettings' in stream_settings and 'header' in stream_settings['tcpSettings']:
-                header = stream_settings['tcpSettings']['header']
-                header_type = header.get('type', 'none')
-                if header_type == 'http' and 'request' in header:
-                    request = header['request']
-                    if 'headers' in request and 'Host' in request['headers']:
-                        host_header = request['headers']['Host'][0] if request['headers']['Host'] else ""
-                    if 'path' in request and request['path']:
-                        path_value = request['path'][0] if request['path'] else "/"
+            # TCP Settings
+            if network_type == 'tcp':
+                if 'tcpSettings' in stream_settings and 'header' in stream_settings['tcpSettings']:
+                    header = stream_settings['tcpSettings']['header']
+                    header_type = header.get('type', 'none')
+                    if header_type == 'http' and 'request' in header:
+                        request = header['request']
+                        if 'headers' in request and 'Host' in request['headers']:
+                            host_header = request['headers']['Host'][0] if request['headers']['Host'] else ""
+                        if 'path' in request and request['path']:
+                            path_value = request['path'][0] if request['path'] else "/"
+
+            # WS Settings
+            elif network_type == 'ws':
+                if 'wsSettings' in stream_settings:
+                    ws_settings = stream_settings['wsSettings']
+                    path_value = ws_settings.get('path', '/')
+                    if 'headers' in ws_settings and 'Host' in ws_settings['headers']:
+                        host_header = ws_settings['headers']['Host']
+
+            # GRPC Settings
+            elif network_type == 'grpc':
+                if 'grpcSettings' in stream_settings:
+                    service_name = stream_settings['grpcSettings'].get('serviceName', '')
+
+            # Extract Security Settings (TLS, XTLS, Reality)
+            sni = ""
+            flow = ""
+            fingerprint = ""
+            alpn = ""
+            pbk = ""
+            sid = ""
+            spx = ""
+
+            if security_type == 'tls':
+                tls_settings = stream_settings.get('tlsSettings', {})
+                sni = tls_settings.get('serverName', '')
+                alpn = ",".join(tls_settings.get('alpn', []))
+                
+            elif security_type == 'xtls':
+                xtls_settings = stream_settings.get('xtlsSettings', {})
+                sni = xtls_settings.get('serverName', '')
+                flow = xtls_settings.get('flow', '')
+                alpn = ",".join(xtls_settings.get('alpn', []))
+                
+            elif security_type == 'reality':
+                reality_settings = stream_settings.get('realitySettings', {})
+                sni = reality_settings.get('serverName', '')
+                flow = reality_settings.get('flow', '')
+                fingerprint = reality_settings.get('fingerprint', 'chrome')
+                pbk = reality_settings.get('publicKey', '')
+                sid = reality_settings.get('shortId', '')
+                spx = reality_settings.get('spiderX', '')
+
+            # Use SNI as host header if not already set and we have SNI
+            if not host_header and sni:
+                host_header = sni
             
             # Validate client capacity
             current_clients = len(settings.get('clients', []))
@@ -726,6 +937,14 @@ class PanelManager:
                 'host_header': host_header,
                 'path_value': path_value,
                 'header_type': header_type,
+                'service_name': service_name,
+                'sni': sni,
+                'flow': flow,
+                'fingerprint': fingerprint,
+                'alpn': alpn,
+                'pbk': pbk,
+                'sid': sid,
+                'spx': spx,
                 'current_clients': current_clients,
                 'max_clients': max_clients,
                 'can_add_client': current_clients < max_clients,
@@ -748,6 +967,7 @@ class PanelManager:
             print(f"   Security: {security_type}")
             print(f"   Host Header: {host_header}")
             print(f"   Path: {path_value}")
+            print(f"   SNI: {sni}, Flow: {flow}, FP: {fingerprint}, PBK: {pbk}")
             print(f"   Current Clients: {current_clients}/{max_clients}")
             print(f"   Can Add Client: {validation_result['can_add_client']}")
             
@@ -761,7 +981,7 @@ class PanelManager:
             }
     
     def get_client_config_link(self, inbound_id: int, client_id: str, 
-                              protocol: str) -> Optional[str]:
+                              protocol: str, client_name: str = None) -> Optional[str]:
         """
         Generate configuration link for client
         NOTE: This returns direct config link. For subscription link, use get_subscription_link()
@@ -816,58 +1036,101 @@ class PanelManager:
                         break
             
             if not client_uuid:
-                print(f"❌ Client {client_id} not found in inbound settings")
-                return None
+                # Fallback for VLESS/VMess where we can use the provided client_id as UUID
+                # This helps when the panel hasn't updated the list yet but we know the client exists
+                if validation['inbound_protocol'] in ['vless', 'vmess']:
+                    print(f"⚠️ Client {client_id} not found in inbound settings, using as UUID (Fallback)")
+                    client_uuid = client_id
+                else:
+                    print(f"❌ Client {client_id} not found in inbound settings")
+                    return None
             
             # Generate configuration using validated settings
             import urllib.parse
-            clean_remark = urllib.parse.quote(validation['inbound_remark'])
+            remark_value = f"{validation['inbound_remark']} - {client_name}" if client_name else validation['inbound_remark']
+            clean_remark = urllib.parse.quote(remark_value)
             
             if validation['inbound_protocol'] == 'vless':
-                # VLess configuration with validated settings
-                if validation['network_type'] == 'tcp' and validation['security_type'] == 'none':
-                    # TCP with HTTP header
-                    if validation['host_header']:
-                        config = f"vless://{client_uuid}@{validation['server_host']}:{validation['inbound_port']}/?type=tcp&encryption=none&path={urllib.parse.quote(validation['path_value'])}&host={validation['host_header']}&headerType=http&security=none#{clean_remark}"
-                    else:
-                        config = f"vless://{client_uuid}@{validation['server_host']}:{validation['inbound_port']}/?type=tcp&encryption=none&security=none#{clean_remark}"
-                else:
-                    # WebSocket or other configurations
-                    config = f"vless://{client_uuid}@{validation['server_host']}:{validation['inbound_port']}?encryption=none&security={validation['security_type']}&type={validation['network_type']}&host={validation['server_host']}&path={urllib.parse.quote(validation['path_value'])}#{clean_remark}"
+                params = {
+                    'type': validation['network_type'],
+                    'security': validation['security_type'],
+                    'encryption': 'none'
+                }
+                
+                if validation.get('flow'): params['flow'] = validation['flow']
+                if validation.get('sni'): params['sni'] = validation['sni']
+                if validation.get('fingerprint'): params['fp'] = validation['fingerprint']
+                if validation.get('alpn'): params['alpn'] = validation['alpn']
+                if validation.get('pbk'): params['pbk'] = validation['pbk']
+                if validation.get('sid'): params['sid'] = validation['sid']
+                if validation.get('spx'): params['spx'] = validation['spx']
+                
+                if validation['network_type'] == 'ws':
+                    params['path'] = urllib.parse.quote(validation['path_value'])
+                    if validation['host_header']: params['host'] = validation['host_header']
+                elif validation['network_type'] == 'grpc':
+                    params['serviceName'] = validation.get('service_name', '')
+                    params['mode'] = 'gun'
+                elif validation['network_type'] == 'tcp':
+                    if validation['header_type'] == 'http':
+                        params['headerType'] = 'http'
+                        params['host'] = validation['host_header']
+                        params['path'] = urllib.parse.quote(validation['path_value'])
+                
+                query_string = "&".join([f"{k}={v}" for k, v in params.items() if v])
+                config = f"vless://{client_uuid}@{validation['server_host']}:{validation['inbound_port']}?{query_string}#{clean_remark}"
+
             elif validation['inbound_protocol'] == 'vmess':
-                # VMess configuration with validated settings
                 vmess_config = {
                     "v": "2",
-                    "ps": validation['inbound_remark'],
+                    "ps": remark_value,
                     "add": validation['server_host'],
                     "port": str(validation['inbound_port']),
                     "id": client_uuid,
                     "aid": "0",
                     "scy": "auto",
                     "net": validation['network_type'],
-                    "type": "http" if validation['network_type'] == 'tcp' and validation['host_header'] else "none",
-                    "host": validation['host_header'] if validation['host_header'] else validation['server_host'],
+                    "type": "http" if validation['network_type'] == 'tcp' and validation['header_type'] == 'http' else "none",
+                    "host": validation['host_header'],
                     "path": validation['path_value'],
                     "tls": validation['security_type'],
-                    "sni": validation['server_host']
+                    "sni": validation['sni'] or validation['server_host'],
+                    "alpn": validation['alpn'],
+                    "fp": validation['fingerprint']
                 }
                 import base64
                 config_json = json.dumps(vmess_config)
                 config_b64 = base64.b64encode(config_json.encode()).decode()
                 config = f"vmess://{config_b64}"
             elif validation['inbound_protocol'] == 'trojan':
-                if validation['network_type'] == 'tcp' and validation['security_type'] == 'none':
-                    config = f"trojan://{client_uuid}@{validation['server_host']}:{validation['inbound_port']}/?type=tcp&security=none&path={urllib.parse.quote(validation['path_value'])}&host={validation['host_header']}&headerType=http#{clean_remark}"
-                else:
-                    config = f"trojan://{client_uuid}@{validation['server_host']}:{validation['inbound_port']}?security={validation['security_type']}&type={validation['network_type']}&host={validation['server_host']}&path={urllib.parse.quote(validation['path_value'])}#{clean_remark}"
+                params = {
+                    'type': validation['network_type'],
+                    'security': validation['security_type'],
+                }
+                if validation.get('sni'): params['sni'] = validation['sni']
+                if validation.get('alpn'): params['alpn'] = validation['alpn']
+                if validation.get('fingerprint'): params['fp'] = validation['fingerprint']
+                
+                if validation['network_type'] == 'ws':
+                    params['path'] = urllib.parse.quote(validation['path_value'])
+                    if validation['host_header']: params['host'] = validation['host_header']
+                elif validation['network_type'] == 'grpc':
+                    params['serviceName'] = validation.get('service_name', '')
+                    params['mode'] = 'gun'
+                elif validation['network_type'] == 'tcp':
+                     if validation['header_type'] == 'http':
+                        params['headerType'] = 'http'
+                        params['host'] = validation['host_header']
+                        params['path'] = urllib.parse.quote(validation['path_value'])
+                
+                query_string = "&".join([f"{k}={v}" for k, v in params.items() if v])
+                config = f"trojan://{client_uuid}@{validation['server_host']}:{validation['inbound_port']}?{query_string}#{clean_remark}"
+
             elif validation['inbound_protocol'] == 'shadowsocks':
                 config = f"ss://{client_uuid}@{validation['server_host']}:{validation['inbound_port']}#{clean_remark}"
             else:
-                # Default to VLess with validated settings
-                if validation['network_type'] == 'tcp' and validation['security_type'] == 'none':
-                    config = f"vless://{client_uuid}@{validation['server_host']}:{validation['inbound_port']}/?type=tcp&encryption=none&path={urllib.parse.quote(validation['path_value'])}&host={validation['host_header']}&headerType=http&security=none#{clean_remark}"
-                else:
-                    config = f"vless://{client_uuid}@{validation['server_host']}:{validation['inbound_port']}?encryption=none&security={validation['security_type']}&type={validation['network_type']}&host={validation['server_host']}&path={urllib.parse.quote(validation['path_value'])}#{clean_remark}"
+                 # Default to VLess
+                 config = f"vless://{client_uuid}@{validation['server_host']}:{validation['inbound_port']}?encryption=none&security={validation['security_type']}&type={validation['network_type']}#{clean_remark}"
             
             print(f"✅ Generated {validation['inbound_protocol']} config using validated settings")
             print(f"   Server: {validation['server_host']}:{validation['inbound_port']}")
@@ -882,7 +1145,7 @@ class PanelManager:
             
         return None
     
-    def update_client_traffic(self, inbound_id: int, client_uuid: str, new_total_gb: int) -> bool:
+    def update_client_traffic(self, inbound_id: int, client_uuid: str, new_total_gb: int, client_name: str = None) -> bool:
         """
         Update client traffic (for renewal)
         
@@ -890,6 +1153,7 @@ class PanelManager:
             inbound_id: The inbound ID (used as hint, will search all if not found)
             client_uuid: Client UUID
             new_total_gb: New total GB limit
+            client_name: Optional client name (not used in 3x-ui but kept for compatibility)
             
         Returns:
             True if successful, False otherwise
@@ -1036,6 +1300,165 @@ class PanelManager:
         except Exception as e:
             print(f"❌ Error updating client traffic: {e}")
             return False
+
+    def update_client_expiration(self, inbound_id: int, client_uuid: str, expiry_timestamp: int, client_name: str = None) -> bool:
+        """
+        Update client expiration time
+        
+        Args:
+            inbound_id: The inbound ID (used as hint, will search all if not found)
+            client_uuid: Client UUID
+            expiry_timestamp: New expiration timestamp (Unix timestamp in seconds)
+            client_name: Optional client name (not used in 3x-ui but kept for compatibility)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Login first
+            if not self.login():
+                print("❌ Failed to login to panel")
+                return False
+            
+            # First, try the specified inbound
+            print(f"🔍 Getting inbound {inbound_id} details...")
+            inbound = None
+            actual_inbound_id = inbound_id
+            client_found = False
+            
+            response = self.session.get(
+                f"{self.base_url}/panel/api/inbounds/get/{inbound_id}",
+                verify=False,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('success'):
+                    inbound = result.get('obj')
+                    if inbound:
+                        # Parse settings and check if client exists
+                        settings_str = inbound.get('settings', '{}')
+                        if isinstance(settings_str, str):
+                            settings = json.loads(settings_str)
+                        else:
+                            settings = settings_str
+                        
+                        clients = settings.get('clients', [])
+                        for client in clients:
+                            if client.get('id') == client_uuid:
+                                client_found = True
+                                break
+            
+            # If client not found in specified inbound, search all inbounds
+            if not client_found:
+                print(f"⚠️ Client {client_uuid} not found in inbound {inbound_id}, searching all inbounds...")
+                # Get all inbounds
+                response = self.session.get(
+                    f"{self.base_url}/panel/api/inbounds/list",
+                    verify=False,
+                    timeout=30
+                )
+                
+                if response.status_code != 200:
+                    print(f"❌ Failed to get inbounds list: {response.status_code}")
+                    return False
+                
+                result = response.json()
+                if not result.get('success') or 'obj' not in result:
+                    print("❌ Failed to get inbounds list")
+                    return False
+                
+                # Search all inbounds for the client
+                for inbound_item in result['obj']:
+                    settings_str = inbound_item.get('settings', '{}')
+                    if isinstance(settings_str, str):
+                        settings = json.loads(settings_str)
+                    else:
+                        settings = settings_str
+                    
+                    clients = settings.get('clients', [])
+                    for client in clients:
+                        if client.get('id') == client_uuid:
+                            inbound = inbound_item
+                            actual_inbound_id = inbound_item.get('id')
+                            client_found = True
+                            print(f"✅ Found client in inbound {actual_inbound_id} ({inbound_item.get('remark', 'Unknown')})")
+                            break
+                    
+                    if client_found:
+                        break
+            
+            if not inbound or not client_found:
+                print(f"❌ Client {client_uuid} not found in any inbound")
+                return False
+            
+            # Parse settings (in case we found it in a different inbound)
+            settings_str = inbound.get('settings', '{}')
+            if isinstance(settings_str, str):
+                settings = json.loads(settings_str)
+            else:
+                settings = settings_str
+            
+            # Find and update the client
+            clients = settings.get('clients', [])
+            
+            for client in clients:
+                if client.get('id') == client_uuid:
+                    # Update expiryTime
+                    # 3x-ui uses milliseconds for expiryTime
+                    # If expiry_timestamp is None or 0, it means unlimited (0)
+                    new_expiry_ms = expiry_timestamp * 1000 if expiry_timestamp and expiry_timestamp > 0 else 0
+                    client['expiryTime'] = new_expiry_ms
+                    print(f"✅ Found client, updating expiryTime to {new_expiry_ms} (Date: {expiry_timestamp})")
+                    break
+            
+            # Update settings
+            settings['clients'] = clients
+            
+            # Prepare update data
+            update_data = {
+                'up': inbound.get('up', 0),
+                'down': inbound.get('down', 0),
+                'total': inbound.get('total', 0),
+                'remark': inbound.get('remark', ''),
+                'enable': inbound.get('enable', True),
+                'expiryTime': inbound.get('expiryTime', 0),
+                'trafficReset': inbound.get('trafficReset', 0),
+                'lastTrafficResetTime': inbound.get('lastTrafficResetTime', 0),
+                'listen': inbound.get('listen', ''),
+                'port': inbound.get('port', 0),
+                'protocol': inbound.get('protocol', ''),
+                'settings': json.dumps(settings, ensure_ascii=False, separators=(',', ':')),
+                'streamSettings': inbound.get('streamSettings', '{}'),
+                'sniffing': inbound.get('sniffing', '{}')
+            }
+            
+            # Update the inbound (use actual_inbound_id in case we found it in a different inbound)
+            print(f"🔍 Updating inbound {actual_inbound_id} with new client expiration...")
+            response = self.session.post(
+                f"{self.base_url}/panel/api/inbounds/update/{actual_inbound_id}",
+                json=update_data,
+                verify=False,
+                timeout=30
+            )
+            
+            if response.status_code != 200:
+                print(f"❌ Failed to update inbound: {response.status_code}")
+                return False
+            
+            result = response.json()
+            if not result.get('success'):
+                print(f"❌ Failed to update client expiration: {result.get('msg', 'Unknown error')}")
+                return False
+            
+            print(f"✅ Successfully updated client expiration")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error updating client expiration: {e}")
+            return False
+
     
     def disable_client(self, inbound_id: int, client_uuid: str, client_name: str = None) -> bool:
         """Disable client on panel"""
@@ -1113,6 +1536,78 @@ class PanelManager:
             
         except Exception as e:
             print(f"❌ Error disabling client: {e}")
+            return False
+
+    def enable_client(self, inbound_id: int, client_uuid: str, client_name: str = None) -> bool:
+        """Enable client on panel"""
+        try:
+            if not self.login():
+                return False
+            
+            response = self.session.get(
+                f"{self.base_url}/panel/api/inbounds/list",
+                verify=False,
+                timeout=30
+            )
+            
+            if response.status_code != 200:
+                return False
+            
+            result = response.json()
+            if not result.get('success') or 'obj' not in result:
+                return False
+            
+            inbounds = result['obj']
+            for inbound in inbounds:
+                if inbound.get('id') == inbound_id:
+                    settings = inbound.get('settings', {})
+                    if isinstance(settings, str):
+                        try:
+                            import json
+                            settings = json.loads(settings)
+                        except:
+                            return False
+                    
+                    if isinstance(settings, dict) and 'clients' in settings:
+                        clients = settings['clients']
+                        for client in clients:
+                            if client.get('id') == client_uuid:
+                                client['enable'] = True
+                                break
+                        
+                        settings['clients'] = clients
+                        
+                        update_data = {
+                            'up': inbound.get('up', 0),
+                            'down': inbound.get('down', 0),
+                            'total': inbound.get('total', 0),
+                            'remark': inbound.get('remark', ''),
+                            'enable': inbound.get('enable', True),
+                            'expiryTime': inbound.get('expiryTime', 0),
+                            'trafficReset': inbound.get('trafficReset', 0),
+                            'lastTrafficResetTime': inbound.get('lastTrafficResetTime', 0),
+                            'listen': inbound.get('listen', ''),
+                            'port': inbound.get('port', 0),
+                            'protocol': inbound.get('protocol', ''),
+                            'settings': json.dumps(settings, ensure_ascii=False, separators=(',', ':')),
+                            'streamSettings': inbound.get('streamSettings', '{}'),
+                            'sniffing': inbound.get('sniffing', '{}')
+                        }
+                        
+                        update_response = self.session.post(
+                            f"{self.base_url}/panel/api/inbounds/update/{inbound_id}",
+                            json=update_data,
+                            verify=False,
+                            timeout=30
+                        )
+                        
+                        if update_response.status_code == 200:
+                            result = update_response.json()
+                            return result.get('success', False)
+            return False
+            
+        except Exception as e:
+            print(f"❌ Error enabling client: {e}")
             return False
     
     def delete_client(self, inbound_id: int, client_uuid: str) -> bool:

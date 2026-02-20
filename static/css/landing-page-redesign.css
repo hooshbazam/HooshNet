@@ -157,22 +157,21 @@ body {
 
     50% {
         transform: scale(0.95);
-        border-radius: 4px;
-        overflow: hidden;
-        position: relative;
+        opacity: 0.8;
     }
+}
 
-    .loader-progress {
-        position: absolute;
-        top: 0;
-        left: 0;
-        height: 100%;
-        width: 30%;
-        background: var(--primary);
-        border-radius: 4px;
-        box-shadow: 0 0 10px var(--primary);
-        animation: loading 1.5s infinite ease-in-out;
-    }
+.loader-progress {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 30%;
+    background: var(--primary);
+    border-radius: 4px;
+    box-shadow: 0 0 10px var(--primary);
+    animation: loading 1.5s infinite ease-in-out;
+}
 
     @keyframes loading {
         0% {

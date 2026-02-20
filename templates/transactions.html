@@ -285,7 +285,7 @@
 </div>
 
 <script>
-    const transactions = {{ transactions| tojson | safe }};
+    const transactions = JSON.parse('{{ transactions| tojson | safe }}');
     const itemsPerPage = 10;
     let currentPage = 1;
 

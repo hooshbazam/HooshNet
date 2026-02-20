@@ -1,7 +1,17 @@
 /* Ticket System Ultra-Modern Redesign */
 /* Inherits variables from ultra-modern-redesign-v2.css */
 
-/* --- Layout & Container --- */
+.status-badge {
+    font-weight: 600;
+}
+
+.status-badge.status-open {
+    color: #10b981;
+}
+
+.status-badge.status-closed {
+    color: #a1a1aa;
+}
 .tickets-page-container {
     max-width: 1000px;
     margin: 0 auto;
@@ -23,6 +33,7 @@
     margin: 0;
     background: linear-gradient(to right, #fff, #ccc);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
     letter-spacing: -0.5px;
 }

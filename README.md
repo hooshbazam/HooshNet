@@ -35,7 +35,7 @@
 ### 🚀 دستور نصب سریع
 
 ```bash
-git clone https://github.com/hooshbazam/HooshNet.git && cd HooshNet && chmod +x installer.sh && sudo ./installer.sh
+git clone https://github.com/KillHosein/hoshnetsc.git && cd hoshnetsc && chmod +x installer.sh && sudo ./installer.sh
 ```
 
 پس از اجرای دستور، منوی نصب ظاهر می‌شود. گزینه **Install** را انتخاب کنید و مراحل را دنبال نمایید.
@@ -46,7 +46,7 @@ git clone https://github.com/hooshbazam/HooshNet.git && cd HooshNet && chmod +x 
 
 1.  ابتدا مخزن را کلون کنید:
     ```bash
-    git clone https://github.com/hooshbazam/HooshNet.git && cd HooshNet
+    git clone https://github.com/KillHosein/hoshnetsc.git && cd hoshnetsc
     ```
 2.  فایل کانفیگ را ایجاد کنید:
     ```bash
@@ -100,7 +100,7 @@ hooshnet
 
 ما همواره در حال بهبود هوش‌نت هستیم. نظرات و پیشنهادات شما برای ما ارزشمند است.
 
-*   **گزارش باگ:** از بخش [Issues](https://github.com/hooshbazam/HooshNet/issues) در گیتهاب استفاده کنید.
+*   **گزارش باگ:** از بخش [Issues](https://github.com/KillHosein/hoshnetsc/issues) در گیتهاب استفاده کنید.
 *   **کانال اطلاع‌رسانی:** [@HooshNet](https://t.me/HooshNet)
 *   **گروه پشتیبانی:** [@HooshNetGp](https://t.me/HooshNetGp)
 

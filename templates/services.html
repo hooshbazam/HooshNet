@@ -28,7 +28,7 @@
             <div class="stat-label">کل سرویس‌ها</div>
         </div>
         <div class="stat-box" style="--stat-color: #00c851;">
-            <div class="stat-value">{{ online_services }}</div>
+            <div class="stat-value">{{ active_services }}</div>
             <div class="stat-label">فعال</div>
         </div>
         <div class="stat-box" style="--stat-color: #ffbb33;">
@@ -49,11 +49,11 @@
             <div class="filter-pill active" onclick="setFilter('all')" data-filter="all">
                 <i class="fas fa-th-large"></i> همه
             </div>
-            <div class="filter-pill" onclick="setFilter('online')" data-filter="online">
-                <i class="fas fa-wifi"></i> آنلاین
+            <div class="filter-pill" onclick="setFilter('active')" data-filter="active">
+                <i class="fas fa-check-circle"></i> فعال
             </div>
-            <div class="filter-pill" onclick="setFilter('offline')" data-filter="offline">
-                <i class="fas fa-power-off"></i> آفلاین
+            <div class="filter-pill" onclick="setFilter('inactive')" data-filter="inactive">
+                <i class="fas fa-times-circle"></i> غیرفعال
             </div>
         </div>
     </div>
@@ -89,7 +89,7 @@
 
 {% block extra_js %}
 <script>
-    const allServices = {{ (services or[]) | tojson | safe }};
+    const allServices = JSON.parse('{{ (services or []) | tojson | safe }}');
     const servicesPerPage = 10;
     let currentServicesPage = 1;
     let filteredServices = Array.isArray(allServices) ? [...allServices] : [];
@@ -126,9 +126,10 @@
             const usedGb = parseFloat(service.used_gb || 0).toFixed(2);
             const totalGb = parseFloat(service.total_gb || 0).toFixed(2);
 
-            const isOnline = Boolean(service.is_online === true || service.is_online === 'true' || service.is_online === 1);
-            const statusClass = isOnline ? 'online' : 'offline';
-            const statusText = isOnline ? 'آنلاین' : 'آفلاین';
+            const isActive = Boolean(service.is_active === true || service.is_active === 'true' || service.is_active === 1);
+            const isUnused = isActive && parseFloat(service.used_gb || 0) === 0;
+            const statusClass = isActive ? 'online' : 'offline';
+            const statusText = isActive ? (isUnused ? 'استفاده نشده' : 'فعال') : 'غیرفعال';
 
             // Animation delay stagger
             const delay = index * 0.05;
@@ -144,7 +145,7 @@
                         </div>
                         <div class="service-info">
                             <h3>${(service.client_name || 'سرویس').substring(0, 20)}</h3>
-                            <span>${(service.panel_name || 'پنل اصلی').substring(0, 15)}</span>
+                            <span>${(service.panel_name || 'پنل اصلی').substring(0, 15)}${service.inbound_name ? ' • ' + service.inbound_name : ''}</span>
                         </div>
                     </div>
                     <div class="status-indicator ${statusClass}">
@@ -180,6 +181,7 @@
                         <i class="fas fa-copy"></i>
                     </button>
                 </div>
+
             </div>
             `;
         }).join('');
@@ -215,10 +217,10 @@
             const matchesSearch = (s.client_name || '').toLowerCase().includes(search) ||
                 (s.panel_name || '').toLowerCase().includes(search);
 
-            const isOnline = Boolean(s.is_online === true || s.is_online === 'true' || s.is_online === 1);
+            const isActive = Boolean(s.is_active === true || s.is_active === 'true' || s.is_active === 1);
             const matchesFilter = currentFilter === 'all' ||
-                (currentFilter === 'online' && isOnline) ||
-                (currentFilter === 'offline' && !isOnline);
+                (currentFilter === 'active' && isActive) ||
+                (currentFilter === 'inactive' && !isActive);
 
             return matchesSearch && matchesFilter;
         });

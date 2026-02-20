@@ -3,40 +3,99 @@
 {% block page_title %}تنظیمات گردونه شانس{% endblock %}
 {% block page_subtitle %}مدیریت جوایز و تنظیمات گردونه{% endblock %}
 
+{% block extra_css %}
+<style>
+    /* ... existing styles ... */
+    .preview-container {
+        position: relative;
+        width: 300px;
+        height: 300px;
+        margin: 0 auto;
+    }
+    
+    #previewCanvas {
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        box-shadow: 0 0 15px rgba(0,0,0,0.1);
+    }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
 {% block content %}
 <div class="fade-in">
-    <!-- Settings Section -->
-    <div class="card" style="margin-bottom: var(--sp-xl);">
-        <div class="card-header">
-            <div class="card-title">
-                <i class="fas fa-cogs"></i>
-                تنظیمات عمومی
+    <!-- Top Grid: Settings & Distribution -->
+    <div class="grid-2" style="margin-bottom: var(--sp-xl);">
+        <!-- Settings Section -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">
+                    <i class="fas fa-cogs"></i>
+                    تنظیمات عمومی
+                </div>
+            </div>
+            <div class="card-body">
+                <form id="settingsForm">
+                    <div class="form-group">
+                        <label class="form-label">وضعیت گردونه</label>
+                        <select class="form-control" id="is_active">
+                            <option value="true">فعال</option>
+                            <option value="false">غیرفعال</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">هزینه هر چرخش (تومان)</label>
+                        <input type="number" class="form-control" id="spin_cost" value="0">
+                        <div class="form-text">0 برای رایگان</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">محدودیت چرخش روزانه</label>
+                        <input type="number" class="form-control" id="daily_limit" value="1">
+                    </div>
+                    <div class="form-group" style="margin-top: var(--sp-lg);">
+                        <button type="submit" class="btn btn-primary" style="width: 100%;">
+                            <i class="fas fa-save"></i> ذخیره تنظیمات
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
-        <div class="card-body">
-            <form id="settingsForm" class="grid-2">
-                <div class="form-group">
-                    <label class="form-label">وضعیت گردونه</label>
-                    <select class="form-control" id="is_active">
-                        <option value="true">فعال</option>
-                        <option value="false">غیرفعال</option>
-                    </select>
+
+        <!-- Distribution Chart & Preview -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">
+                    <i class="fas fa-chart-pie"></i>
+                    توزیع شانس و پیش‌نمایش
                 </div>
-                <div class="form-group">
-                    <label class="form-label">هزینه هر چرخش (تومان)</label>
-                    <input type="number" class="form-control" id="spin_cost" value="0">
-                    <div class="form-text">0 برای رایگان</div>
+                <div class="card-actions">
+                    <button class="btn btn-sm btn-outline" onclick="toggleView('chart')" id="btnChart">نمودار</button>
+                    <button class="btn btn-sm btn-outline" onclick="toggleView('preview')" id="btnPreview">پیش‌نمایش</button>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">محدودیت چرخش روزانه</label>
-                    <input type="number" class="form-control" id="daily_limit" value="1">
+            </div>
+            <div class="card-body" style="display: flex; align-items: center; justify-content: center; min-height: 300px;">
+                <div id="chartContainer" style="width: 100%; height: 250px;">
+                    <canvas id="probabilityChart"></canvas>
                 </div>
-                <div class="form-group" style="display: flex; align-items: flex-end;">
-                    <button type="submit" class="btn btn-primary" style="width: 100%;">
-                        <i class="fas fa-save"></i> ذخیره تنظیمات
-                    </button>
+                <div id="previewContainer" style="display: none; text-align: center;">
+                    <div class="preview-container">
+                        <canvas id="previewCanvas" width="300" height="300"></canvas>
+                    </div>
+                    <div style="margin-top: 10px; font-size: 0.9rem; color: var(--p-text-muted);">
+                        نمای تقریبی گردونه در ربات
+                    </div>
                 </div>
-            </form>
+            </div>
+            <div class="card-footer" style="border-top: 1px solid var(--border-color); padding: var(--sp-md);">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 0.9rem; color: var(--p-text-muted);">مجموع شانس:</span>
+                    <span id="totalProbability" style="font-weight: 700; font-size: 1.1rem;">0%</span>
+                </div>
+                <div class="progress-bar" style="height: 6px; margin-top: 8px; background: var(--p-bg-hover); border-radius: 3px; overflow: hidden;">
+                    <div id="probabilityBar" style="height: 100%; width: 0%; background: var(--p-primary); transition: width 0.3s ease, background-color 0.3s ease;"></div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -47,9 +106,14 @@
                 <i class="fas fa-gift"></i>
                 لیست جوایز
             </div>
-            <button class="btn btn-success btn-sm" onclick="openAddModal()">
-                <i class="fas fa-plus"></i> افزودن جایزه
-            </button>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn btn-outline btn-sm" onclick="loadPrizes()">
+                    <i class="fas fa-sync"></i> بروزرسانی
+                </button>
+                <button class="btn btn-sm" style="background-color: #ff4d4d; color: white; border: none;" onclick="openAddModal()">
+                    <i class="fas fa-plus"></i> افزودن جایزه
+                </button>
+            </div>
         </div>
         <div class="table-responsive">
             <table class="table">
@@ -178,6 +242,8 @@
 
 {% block extra_js %}
 <script>
+    let allPrizes = [];
+
     // Load data on page load
     document.addEventListener('DOMContentLoaded', () => {
         loadSettings();
@@ -187,13 +253,13 @@
     // Settings Functions
     async function loadSettings() {
         try {
-            const response = await fetch('/api/admin/wheel/settings');
+            const response = await fetch(fixUrl('/api/admin/wheel/settings'));
             const data = await response.json();
             if (data.success) {
-                const s = data.settings;
-                document.getElementById('is_active').value = s.is_active || 'true';
-                document.getElementById('spin_cost').value = s.spin_cost || 0;
-                document.getElementById('daily_limit').value = s.daily_limit || 1;
+                const settings = data.settings;
+                document.getElementById('is_active').value = settings.is_active || 'true';
+                document.getElementById('spin_cost').value = settings.spin_cost || 0;
+                document.getElementById('daily_limit').value = settings.daily_limit || 1;
             }
         } catch (error) {
             console.error('Error loading settings:', error);
@@ -210,39 +276,159 @@
         };
 
         try {
-            const response = await fetch('/api/admin/wheel/settings', {
+            const response = await fetch(fixUrl('/api/admin/wheel/settings'), {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json'
+                },
                 body: JSON.stringify(settings)
             });
             const data = await response.json();
             if (data.success) {
-                showToast(data.message, 'success');
+                showToast('تنظیمات با موفقیت ذخیره شد', 'success');
             } else {
-                showToast(data.message, 'error');
+                showToast(data.message || 'خطا در ذخیره تنظیمات', 'error');
             }
         } catch (error) {
             console.error('Error saving settings:', error);
-            showToast('خطا در ذخیره تنظیمات', 'error');
+            showToast('خطا در ارتباط با سرور', 'error');
         }
     });
+
+    function toggleView(view) {
+        const chartContainer = document.getElementById('chartContainer');
+        const previewContainer = document.getElementById('previewContainer');
+        const btnChart = document.getElementById('btnChart');
+        const btnPreview = document.getElementById('btnPreview');
+
+        if (view === 'chart') {
+            chartContainer.style.display = 'block';
+            previewContainer.style.display = 'none';
+            btnChart.classList.add('btn-primary');
+            btnChart.classList.remove('btn-outline');
+            btnPreview.classList.add('btn-outline');
+            btnPreview.classList.remove('btn-primary');
+        } else {
+            chartContainer.style.display = 'none';
+            previewContainer.style.display = 'block';
+            btnPreview.classList.add('btn-primary');
+            btnPreview.classList.remove('btn-outline');
+            btnChart.classList.add('btn-outline');
+            btnChart.classList.remove('btn-primary');
+            updatePreview();
+        }
+    }
 
     // Prize Functions
     async function loadPrizes() {
         try {
-            const response = await fetch('/api/admin/wheel/prizes');
+            const response = await fetch(fixUrl('/api/admin/wheel/prizes'));
             const data = await response.json();
             if (data.success) {
-                renderPrizes(data.prizes);
+                allPrizes = data.prizes;
+                renderPrizes(allPrizes);
+                try {
+                    updateChart();
+                } catch (e) {
+                    console.warn('Chart update failed:', e);
+                }
+                try {
+                    updatePreview();
+                } catch (e) {
+                    console.warn('Preview update failed:', e);
+                }
+            } else {
+                showToast(data.message || 'خطا در دریافت جوایز', 'error');
             }
         } catch (error) {
             console.error('Error loading prizes:', error);
+            showToast('خطا در برقراری ارتباط با سرور', 'error');
+        }
+    }
+
+    async function savePrize() {
+        const id = document.getElementById('prize_id').value;
+        const prizeData = {
+            name: document.getElementById('prize_name').value,
+            type: document.getElementById('prize_type').value,
+            value: document.getElementById('prize_value').value,
+            probability: document.getElementById('prize_probability').value,
+            display_order: document.getElementById('prize_order').value,
+            is_active: document.getElementById('prize_active').checked
+        };
+
+        if (!prizeData.name) {
+            showToast('نام جایزه الزامی است', 'error');
+            return;
+        }
+
+        const url = id ? fixUrl(`/api/admin/wheel/prizes/${id}`) : fixUrl('/api/admin/wheel/prizes');
+        const method = id ? 'PUT' : 'POST';
+
+        try {
+            const response = await fetch(url, {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(prizeData)
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                showToast(result.message, 'success');
+                closeModal();
+                loadPrizes();
+            } else {
+                showToast(result.message || 'خطا در ذخیره جایزه', 'error');
+            }
+        } catch (error) {
+            console.error('Error saving prize:', error);
+            showToast('خطا در برقراری ارتباط با سرور', 'error');
         }
     }
 
     function renderPrizes(prizes) {
         const tbody = document.getElementById('prizesTableBody');
         tbody.innerHTML = '';
+
+        if (!prizes || prizes.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding: 20px;">هیچ جایزه‌ای یافت نشد. یک جایزه اضافه کنید.</td></tr>';
+            
+            // Update UI for empty state
+            const totalElem = document.getElementById('totalProbability');
+            const barElem = document.getElementById('probabilityBar');
+            if (totalElem && barElem) {
+                totalElem.innerText = '0%';
+                barElem.style.width = '0%';
+            }
+            return;
+        }
+
+        let totalProb = 0;
+        prizes.forEach(prize => {
+            if(prize.is_active) totalProb += parseFloat(prize.probability);
+        });
+        
+        // Update total probability UI
+        const totalElem = document.getElementById('totalProbability');
+        const barElem = document.getElementById('probabilityBar');
+        if (totalElem && barElem) {
+            totalElem.innerText = totalProb.toFixed(1) + '%';
+            barElem.style.width = Math.min(100, totalProb) + '%';
+            
+            if (Math.abs(totalProb - 100) < 0.1) {
+                barElem.style.backgroundColor = 'var(--p-success)';
+                totalElem.style.color = 'var(--p-success)';
+            } else if (totalProb > 100) {
+                barElem.style.backgroundColor = 'var(--p-error)';
+                totalElem.style.color = 'var(--p-error)';
+            } else {
+                barElem.style.backgroundColor = 'var(--p-warning)';
+                totalElem.style.color = 'var(--p-warning)';
+            }
+        }
 
         prizes.forEach(prize => {
             const tr = document.createElement('tr');
@@ -258,7 +444,7 @@
                     </span>
                 </td>
                 <td>
-                    <button class="btn-icon" onclick='editPrize(${JSON.stringify(prize)})'>
+                    <button class="btn-icon" onclick="prepareEditPrize(${prize.id})">
                         <i class="fas fa-edit"></i>
                     </button>
                     <button class="btn-icon text-danger" onclick="deletePrize(${prize.id})">
@@ -268,6 +454,160 @@
             `;
             tbody.appendChild(tr);
         });
+    }
+
+    // Chart & Preview Functions
+    let chartInstance = null;
+    
+    function updateChart() {
+        const ctx = document.getElementById('probabilityChart');
+        if (!ctx) return;
+        
+        // Check if Chart.js is loaded
+        if (typeof Chart === 'undefined') {
+            console.warn('Chart.js not loaded');
+            // Show fallback or error message in chart container
+            const container = document.getElementById('chartContainer');
+            if (container) {
+                container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--p-text-muted);">نمودار در دسترس نیست (Chart.js بارگذاری نشد)</div>';
+            }
+            return;
+        }
+        
+        const activePrizes = allPrizes.filter(p => p.is_active);
+        const labels = activePrizes.map(p => p.name);
+        const data = activePrizes.map(p => p.probability);
+        const colors = [
+            '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40',
+            '#8AC926', '#FF6B6B', '#C7F464', '#4ECDC4'
+        ];
+        
+        if (chartInstance) {
+            chartInstance.destroy();
+        }
+        
+        try {
+            chartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: colors.slice(0, data.length),
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                boxWidth: 12,
+                                font: {
+                                    family: 'Vazirmatn'
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.label + ': ' + context.raw + '%';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        } catch (e) {
+            console.error('Error creating chart:', e);
+        }
+    }
+    
+    function updatePreview() {
+        const canvas = document.getElementById('previewCanvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width;
+        const height = canvas.height;
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const radius = width / 2 - 10;
+        
+        ctx.clearRect(0, 0, width, height);
+        
+        const activePrizes = allPrizes.filter(p => p.is_active);
+        if (activePrizes.length === 0) return;
+        
+        const arc = 2 * Math.PI / activePrizes.length;
+        const colors = [
+            '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40',
+            '#8AC926', '#FF6B6B', '#C7F464', '#4ECDC4'
+        ];
+        
+        for(let i = 0; i < activePrizes.length; i++) {
+            const angle = i * arc;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, angle, angle + arc);
+            ctx.lineTo(centerX, centerY);
+            ctx.fillStyle = colors[i % colors.length];
+            ctx.fill();
+            ctx.stroke();
+            
+            // Text
+            ctx.save();
+            ctx.translate(centerX, centerY);
+            ctx.rotate(angle + arc / 2);
+            ctx.textAlign = "right";
+            ctx.fillStyle = "#fff";
+            ctx.font = "bold 14px Vazirmatn, Arial";
+            ctx.shadowColor = "rgba(0,0,0,0.5)";
+            ctx.shadowBlur = 4;
+            ctx.fillText(activePrizes[i].name, radius - 20, 5);
+            ctx.restore();
+        }
+        
+        // Center Star
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, 20, 0, 2 * Math.PI);
+        ctx.fillStyle = '#fff';
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, 15, 0, 2 * Math.PI);
+        ctx.fillStyle = '#FFD700';
+        ctx.fill();
+    }
+    
+    function toggleView(view) {
+        const chartContainer = document.getElementById('chartContainer');
+        const previewContainer = document.getElementById('previewContainer');
+        const btnChart = document.getElementById('btnChart');
+        const btnPreview = document.getElementById('btnPreview');
+        
+        if (view === 'chart') {
+            chartContainer.style.display = 'block';
+            previewContainer.style.display = 'none';
+            btnChart.classList.add('btn-primary');
+            btnChart.classList.remove('btn-outline');
+            btnPreview.classList.add('btn-outline');
+            btnPreview.classList.remove('btn-primary');
+        } else {
+            chartContainer.style.display = 'none';
+            previewContainer.style.display = 'block';
+            btnPreview.classList.add('btn-primary');
+            btnPreview.classList.remove('btn-outline');
+            btnChart.classList.add('btn-outline');
+            btnChart.classList.remove('btn-primary');
+            updatePreview(); // Redraw to ensure correct size
+        }
+    }
+
+    function prepareEditPrize(id) {
+        const prize = allPrizes.find(p => p.id === id);
+        if (prize) {
+            editPrize(prize);
+        }
     }
 
     function getTypeLabel(type) {
@@ -295,7 +635,9 @@
         document.getElementById('prizeForm').reset();
         document.getElementById('prize_id').value = '';
         document.getElementById('modalTitle').innerText = 'افزودن جایزه';
-        document.getElementById('prizeModal').classList.add('active');
+        const modal = document.getElementById('prizeModal');
+        modal.style.display = 'flex';
+        modal.classList.add('active');
         toggleValueInput();
     }
 
@@ -309,12 +651,16 @@
         document.getElementById('prize_active').checked = prize.is_active;
 
         document.getElementById('modalTitle').innerText = 'ویرایش جایزه';
-        document.getElementById('prizeModal').classList.add('active');
+        const modal = document.getElementById('prizeModal');
+        modal.style.display = 'flex';
+        modal.classList.add('active');
         toggleValueInput();
     }
 
     function closeModal() {
-        document.getElementById('prizeModal').classList.remove('active');
+        const modal = document.getElementById('prizeModal');
+        modal.style.display = 'none';
+        modal.classList.remove('active');
     }
 
     function toggleValueInput() {
@@ -344,7 +690,7 @@
             is_active: document.getElementById('prize_active').checked
         };
 
-        const url = id ? `/api/admin/wheel/prizes/${id}` : '/api/admin/wheel/prizes';
+        const url = id ? fixUrl(`/api/admin/wheel/prizes/${id}`) : fixUrl('/api/admin/wheel/prizes');
         const method = id ? 'PUT' : 'POST';
 
         try {
@@ -372,7 +718,7 @@
         if (!confirm('آیا از حذف این جایزه اطمینان دارید؟')) return;
 
         try {
-            const response = await fetch(`/api/admin/wheel/prizes/${id}`, {
+            const response = await fetch(fixUrl(`/api/admin/wheel/prizes/${id}`), {
                 method: 'DELETE'
             });
             const result = await response.json();

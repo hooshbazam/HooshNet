@@ -168,7 +168,7 @@
 
 <script>
     const textKey = '{{ text_key }}';
-    const defaultText = {{ (db_text.text_content if db_text else text_def.default)| tojson }};
+    const defaultText = JSON.parse('{{ (db_text.text_content if db_text else text_def.default)| tojson }}');
 
     document.getElementById('textContent').addEventListener('input', function () {
         const charCount = this.value.length;

@@ -12,7 +12,7 @@ import logging
 import threading
 import time
 from datetime import datetime, timedelta
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for, Response, flash
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, Response, flash, send_from_directory
 from flask_cors import CORS
 from functools import wraps
 from professional_database import ProfessionalDatabaseManager
@@ -26,7 +26,7 @@ from security_utils import (
     validate_telegram_id, validate_amount, validate_positive_int, 
     validate_panel_id, validate_discount_code, secure_before_request, 
     secure_after_request, get_client_ip, block_ip, is_ip_blocked,
-    record_suspicious_activity, sanitize_error_message
+    record_suspicious_activity, sanitize_error_message, check_waf
 )
 
 import httpx
@@ -68,6 +68,44 @@ def secure_error_response(error: Exception, default_message: str = 'خطای س�
         safe_message = default_message
     
     return jsonify({'success': False, 'message': safe_message}), 500
+
+# Helper to run ReportingSystem methods synchronously
+def send_report_sync(report_func_name, *args, **kwargs):
+    """
+    Synchronous wrapper to run ReportingSystem methods
+    """
+    try:
+        from telegram_helper import TelegramHelper
+        from reporting_system import ReportingSystem
+        import asyncio
+        
+        bot = TelegramHelper.get_bot()
+        bot_config = get_bot_config()
+        db = get_db()
+        
+        reporting_system = ReportingSystem(bot, bot_config=bot_config, db_manager=db)
+        
+        # Get the method
+        method = getattr(reporting_system, report_func_name, None)
+        if not method:
+            logger.error(f"ReportingSystem method '{report_func_name}' not found")
+            return
+            
+        # Run async method
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_closed():
+                raise RuntimeError("Loop is closed")
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+        loop.run_until_complete(method(*args, **kwargs))
+        logger.info(f"✅ Report '{report_func_name}' sent successfully via sync wrapper")
+        
+    except Exception as e:
+        logger.error(f"Error in send_report_sync: {e}")
+        # Don't crash the request if reporting fails
 from cache_utils import cache, cache_key_user, cache_key_user_services, cache_key_stats, invalidate_user_cache
 
 # Configure logging with UTF-8 encoding to handle emoji and Persian characters
@@ -317,6 +355,11 @@ def security_check():
     security_result = secure_before_request()
     if security_result is not None:
         return security_result
+        
+    # Apply WAF check
+    waf_result = check_waf(request)
+    if waf_result is not None:
+        return waf_result
     
     # Additional protection: Block access to .env and other sensitive files at root
     # But allow legitimate paths
@@ -628,14 +671,38 @@ def sync_all_clients_data():
                         
                         clients = settings.get('clients', [])
                         client_stats = inbound.get('clientStats', [])
-                        stats_map = {str(stat.get('id') or stat.get('uuid', '')): stat for stat in client_stats if stat.get('id') or stat.get('uuid')}
+                        stats_by_key = {}
+                        if isinstance(client_stats, list):
+                            for stat in client_stats:
+                                if not isinstance(stat, dict):
+                                    continue
+                                stat_id = stat.get('id')
+                                stat_uuid = stat.get('uuid')
+                                stat_email = stat.get('email')
+                                if stat_id is not None and str(stat_id):
+                                    stats_by_key[str(stat_id)] = stat
+                                if stat_uuid is not None and str(stat_uuid):
+                                    stats_by_key[str(stat_uuid)] = stat
+                                if stat_email is not None:
+                                    stat_email_str = str(stat_email)
+                                    if stat_email_str:
+                                        stats_by_key[stat_email_str] = stat
+                                        if '@' in stat_email_str:
+                                            stats_by_key[stat_email_str.split('@')[0]] = stat
                         
                         for client in clients:
                             client_uuid = str(client.get('id', ''))
                             if not client_uuid:
                                 continue
                             
-                            stat = stats_map.get(client_uuid, {})
+                            client_email = str(client.get('email', '') or '')
+                            client_email_prefix = client_email.split('@')[0] if '@' in client_email else client_email
+                            stat = (
+                                stats_by_key.get(client_uuid) or
+                                (stats_by_key.get(client_email) if client_email else None) or
+                                (stats_by_key.get(client_email_prefix) if client_email_prefix else None) or
+                                {}
+                            )
                             used_traffic = 0
                             if stat:
                                 used_traffic = (stat.get('up', 0) or 0) + (stat.get('down', 0) or 0)
@@ -646,7 +713,7 @@ def sync_all_clients_data():
                                 'used_traffic': used_traffic,
                                 'total_traffic': client.get('totalGB', 0),
                                 'expiryTime': client.get('expiryTime', 0),
-                                'last_activity': stat.get('lastOnline', 0) or 0
+                                'last_activity': (stat.get('lastOnline', 0) or 0) if stat else 0
                             }
                     
                     # Process each database client
@@ -667,10 +734,22 @@ def sync_all_clients_data():
                             used_traffic = panel_client['used_traffic']
                             used_gb = round(used_traffic / (1024**3), 4) if used_traffic > 0 else 0
                             last_activity = panel_client['last_activity']
+                            try:
+                                last_activity_num = int(float(last_activity)) if last_activity else 0
+                            except Exception:
+                                last_activity_num = 0
+                            last_activity_ms = last_activity_num if last_activity_num > 1000000000000 else (last_activity_num * 1000 if last_activity_num > 0 else 0)
                             
                             # Check if online
                             current_time = int(time.time() * 1000)
-                            is_online = (current_time - last_activity) < 120000 if last_activity > 0 else False
+                            recent_activity = (0 <= (current_time - last_activity_ms) <= 300000) if last_activity_ms > 0 else False
+                            prev_used_gb = 0.0
+                            try:
+                                prev_used_gb = float(db_client.get('used_gb') or db_client.get('cached_used_gb') or 0)
+                            except Exception:
+                                prev_used_gb = 0.0
+                            traffic_increased = (used_gb - prev_used_gb) > 0.0001
+                            is_online = bool(recent_activity or traffic_increased)
                             
                             # Process expiry
                             expiry_time = panel_client['expiryTime']
@@ -692,13 +771,27 @@ def sync_all_clients_data():
                                     pass
                             
                             # Prepare batch update
+                            # Fallback total_gb from panel if missing in DB
+                            total_gb_current = 0.0
+                            try:
+                                total_gb_current = float(db_client.get('total_gb') or 0)
+                            except Exception:
+                                total_gb_current = 0.0
+                            total_gb_from_panel = 0.0
+                            try:
+                                total_gb_from_panel = float(panel_client.get('total_traffic') or 0) / (1024**3)
+                            except Exception:
+                                total_gb_from_panel = 0.0
+                            total_gb_to_update = round(total_gb_from_panel, 4) if (total_gb_current <= 0 and total_gb_from_panel > 0) else None
+
                             panel_updates.append({
                                 'client_id': int(db_client.get('id', 0)),
                                 'used_gb': used_gb,
-                                'last_activity': last_activity,
-                                'is_online': is_online,
+                                'last_activity': last_activity_ms,
+                                'is_online': 1 if is_online else 0,
                                 'remaining_days': remaining_days,
                                 'expires_at': expires_at.isoformat() if expires_at else None,
+                                'total_gb': total_gb_to_update,
                                 'user_id': db_client.get('user_id')
                             })
                             
@@ -744,18 +837,31 @@ def sync_all_clients_data():
                         try:
                             update_query = '''
                                 UPDATE clients 
-                                SET used_gb = %s,
+                                SET total_gb = COALESCE(NULLIF(total_gb, 0), %s),
+                                    used_gb = %s,
+                                    cached_used_gb = %s,
+                                    cached_last_activity = %s,
                                     last_activity = %s,
                                     cached_is_online = %s,
-                                    remaining_days = %s,
+                                    cached_remaining_days = %s,
                                     expires_at = %s,
+                                    data_last_synced = NOW(),
                                     updated_at = NOW()
                                 WHERE id = %s
                             '''
                             
                             values = [
-                                (u['used_gb'], u['last_activity'], u['is_online'], 
-                                 u['remaining_days'], u['expires_at'], u['client_id'])
+                                (
+                                    u.get('total_gb'),
+                                    u['used_gb'],
+                                    u['used_gb'],
+                                    u['last_activity'],
+                                    u['last_activity'],
+                                    u['is_online'],
+                                    u.get('remaining_days'),
+                                    u['expires_at'],
+                                    u['client_id']
+                                )
                                 for u in batch_updates
                             ]
                             
@@ -953,14 +1059,12 @@ def verify_telegram_webapp_data(init_data: str, user_data: dict) -> bool:
 
 # Helper function to generate URLs with bot prefix if needed
 def bot_url_for(endpoint, **values):
-    """Generate URL with bot prefix if present in current request path"""
     url = url_for(endpoint, **values)
-    # Check if we are in a bot-specific path
     path_parts = request.path.split('/')
-    if len(path_parts) > 1 and path_parts[1].isdigit(): # Assuming bot_id is numeric or specific pattern
-        # This logic might need adjustment based on how you handle bot prefixes
-        # For now, we'll stick to standard url_for as the blueprint/prefix logic seems custom
-        pass
+    if len(path_parts) > 1 and path_parts[1].isdigit():
+        prefix = f"/{path_parts[1]}"
+        if not url.startswith(prefix + "/"):
+            url = prefix + url
     return url
 
 # Add bot_url_for to template context
@@ -988,20 +1092,32 @@ def ensure_photo_url():
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if 'user_id' not in session:
-            # SECURITY: Preserve bot_name in redirect
-            redirect_url = url_for('index')
-            return redirect(redirect_url)
-        
-        # Check if user is banned
-        user_id = session.get('user_id')
-        db_instance = get_db()
-        user = db_instance.get_user(user_id)
-        if user and user.get('is_banned', 0) == 1:
-            return redirect(url_for('blocked'))
-        
-        # Ensure photo_url is available
-        ensure_photo_url()
+        try:
+            if 'user_id' not in session:
+                # SECURITY: Preserve bot_name in redirect
+                # Pass next parameter so user is redirected back to the requested page after login
+                next_page = request.path
+                if request.query_string:
+                    next_page = f"{next_page}?{request.query_string.decode('utf-8')}"
+                    
+                redirect_url = url_for('index', next=next_page)
+                return redirect(redirect_url)
+            
+            # Check if user is banned
+            user_id = session.get('user_id')
+            db_instance = get_db()
+            user = db_instance.get_user(user_id)
+            if user and user.get('is_banned', 0) == 1:
+                return redirect(url_for('blocked'))
+            
+            # Ensure photo_url is available
+            ensure_photo_url()
+        except Exception as e:
+            logger.error(f"Error in login_required: {e}")
+            # Continue even if check fails, to avoid blocking legitimate users on db error
+            # But if user_id is missing, we already redirected.
+            pass
+            
         return f(*args, **kwargs)
     return decorated_function
 
@@ -1092,6 +1208,15 @@ def force_join():
     bot_config = get_bot_config()
     channel_link = bot_config.get('channel_link', 'https://t.me/channel')
     return render_template('force_join.html', channel_link=channel_link)
+
+@app.route('/favicon.ico')
+def favicon():
+    """Serve favicon from static directory"""
+    return send_from_directory(
+        os.path.join(os.path.dirname(__file__), 'static'),
+        'favicon.ico',
+        mimetype='image/vnd.microsoft.icon'
+    )
 
 @app.route('/')
 @app.route('/<bot_name>')
@@ -1262,17 +1387,13 @@ def telegram_webapp_auth(bot_name=None):
                 'message': 'اطلاعات کاربری نامعتبر است'
             }), 400
         
-        # SECURITY: Verify init_data is authentic from Telegram
-        # Note: Verification is lenient to prevent blocking legitimate users
-        # In production, you may want to make this stricter
         verify_result = verify_telegram_webapp_data(init_data, user)
         if not verify_result:
             logger.warning(f"Telegram WebApp authentication verification failed for user {user.get('id')}")
-            # Still allow authentication but log the warning
-            # return jsonify({
-            #     'success': False,
-            #     'message': 'احراز هویت نامعتبر است'
-            # }), 401
+            return jsonify({
+                'success': False,
+                'message': 'احراز هویت نامعتبر است'
+            }), 401
         
         user_id = int(user.get('id'))
         username = user.get('username', '')
@@ -1384,10 +1505,10 @@ def admin_telegram_webapp_auth(bot_name=None):
         if not user or not user.get('id'):
             return jsonify({'success': False, 'message': 'اطلاعات کاربری نامعتبر است'}), 400
         
-        # Verify init_data
         verify_result = verify_telegram_webapp_data(init_data, user)
         if not verify_result:
             logger.warning(f"Admin WebApp auth verification failed for user {user.get('id')}")
+            return jsonify({'success': False, 'message': 'احراز هویت نامعتبر است'}), 401
         
         user_id = int(user.get('id'))
         
@@ -1475,6 +1596,11 @@ def dashboard():
     all_panels = db_instance.get_panels(active_only=False)
     panels_map = {p['id']: p for p in all_panels}
     
+    # Get delivery settings
+    from settings_manager import SettingsManager
+    settings_mgr = SettingsManager(db_manager=db_instance)
+    delivery_method = settings_mgr.get_setting('delivery_method', 'subscription')
+    
     # Use real-time monitoring data from database (updated every 3 minutes by monitoring system)
     total_used_traffic_bytes = 0
     online_services_count = 0
@@ -1482,7 +1608,8 @@ def dashboard():
     for service in services:
         # Generate subscription link
         # Default to saved config_link
-        subscription_link = service.get('config_link', '')
+        raw_config_link = service.get('config_link', '')
+        subscription_link = raw_config_link
         
         # For 3x-ui, ALWAYS try to regenerate to ensure correct format (UUID without dashes)
         panel = panels_map.get(service.get('panel_id'))
@@ -1490,7 +1617,8 @@ def dashboard():
             panel_type = panel.get('panel_type', '3x-ui')
             if panel_type == '3x-ui':
                 sub_id_to_use = service.get('sub_id')
-                if service.get('client_uuid'):
+                # Only fall back to client_uuid if sub_id is missing or empty
+                if not sub_id_to_use and service.get('client_uuid'):
                     sub_id_to_use = service.get('client_uuid').replace('-', '')
                 
                 if sub_id_to_use:
@@ -1507,6 +1635,13 @@ def dashboard():
                         # Use the regenerated link
                         subscription_link = new_link
         
+        # Apply delivery method logic for dashboard copy button
+        if delivery_method == 'config':
+            # If user wants config only, try to provide raw config (vless://...)
+            # Check if raw_config_link looks like a config (not http)
+            if raw_config_link and not raw_config_link.startswith(('http://', 'https://')):
+                subscription_link = raw_config_link
+        
         service['subscription_link'] = subscription_link or ''
 
         # Use actual monitoring data (updated by monitoring system every 3 minutes)
@@ -1517,7 +1652,7 @@ def dashboard():
         
         # Use actual monitoring online status
         # Priority: is_online (from monitoring) > cached_is_online (fallback)
-        is_online = service.get('is_online', False) if service.get('is_online') is not None else service.get('cached_is_online', False)
+        is_online = service.get('is_online') if service.get('is_online') is not None else service.get('cached_is_online', False)
         service['is_online'] = bool(is_online)
         if service['is_online']:
             online_services_count += 1
@@ -1541,6 +1676,9 @@ def dashboard():
                     service['last_seen_seconds'] = time_since_last_activity // 1000
                 else:
                     service['last_seen_minutes'] = time_since_last_activity // (60 * 1000)
+            
+            recent_activity = (0 <= (time_since_last_activity) <= 300000)
+            service['is_online'] = bool(service['is_online'] or recent_activity)
         
         # Get remaining days from monitoring data
         # Priority: remaining_days (from monitoring) > cached_remaining_days (fallback) > calculate from expires_at
@@ -1560,20 +1698,20 @@ def dashboard():
     
     # Get user statistics
     total_services = len(services)
-    active_services = online_services_count  # Only count online services
+    active_services = len([s for s in services if s.get('is_active', 1) == 1])
     
     # Calculate total traffic
     total_traffic_gb = sum([s.get('total_gb', 0) for s in services])
     used_traffic_gb = round(total_used_traffic_bytes / (1024**3), 2)  # From monitoring data
     
     stats = {
-        'total_services': total_services,
-        'active_services': active_services,
-        'balance': user.get('balance', 0),
-        'total_traffic_gb': total_traffic_gb,
-        'used_traffic_gb': used_traffic_gb,
-        'total_referrals': user.get('total_referrals', 0),
-        'referral_earnings': user.get('total_referral_earnings', 0)
+        'total_services': int(total_services or 0),
+        'active_services': int(active_services or 0),
+        'balance': int(user.get('balance', 0) or 0),
+        'total_traffic_gb': float(total_traffic_gb or 0),
+        'used_traffic_gb': float(used_traffic_gb or 0),
+        'total_referrals': int(user.get('total_referrals', 0) or 0),
+        'referral_earnings': int(user.get('total_referral_earnings', 0) or 0)
     }
     
     # Prepare data for ultra template
@@ -1597,12 +1735,16 @@ def dashboard():
     
     # Theme Selection
     from settings_manager import SettingsManager
-    settings_mgr = SettingsManager()
+    settings_mgr = SettingsManager(db_manager=db_instance)
     current_theme = settings_mgr.get_theme()
     
     template_name = 'dashboard.html'
     if current_theme == 'modern':
         template_name = 'themes/modern/dashboard.html'
+    
+    # Check if user is masquerading as admin
+    is_masquerading = session.get('is_masquerading', False)
+    original_admin_id = session.get('original_admin_id') if is_masquerading else None
     
     return render_template(template_name, 
                          user=user,
@@ -1611,7 +1753,9 @@ def dashboard():
                          active_services=active_services,
                          total_traffic_gb=total_traffic_gb,
                          used_traffic_gb=used_traffic_gb,
-                         services=services[:6])
+                         services=services[:6],
+                         is_masquerading=is_masquerading,
+                         original_admin_id=original_admin_id)
 
 @app.route('/services')
 @login_required
@@ -1648,12 +1792,18 @@ def services():
     all_panels = db_instance.get_panels(active_only=False)
     panels_map = {p['id']: p for p in all_panels}
     
+    # Get delivery settings
+    from settings_manager import SettingsManager
+    settings_mgr = SettingsManager()
+    delivery_method = settings_mgr.get_setting('delivery_method', 'subscription')
+    
     # Use real-time monitoring data from database (updated every 3 minutes by monitoring system)
     for service in user_services:
         try:
             # Get subscription link
             # Default to saved config_link
-            subscription_link = service.get('config_link', '')
+            raw_config_link = service.get('config_link', '')
+            subscription_link = raw_config_link
             
             # For 3x-ui, ALWAYS try to regenerate to ensure correct format (UUID without dashes)
             panel = panels_map.get(service.get('panel_id'))
@@ -1664,7 +1814,8 @@ def services():
                     # For 3x-ui, use subscription link (not direct config link)
                     # User requested full UUID without dashes
                     sub_id_to_use = service.get('sub_id')
-                    if service.get('client_uuid'):
+                    # Only fall back to client_uuid if sub_id is missing or empty
+                    if not sub_id_to_use and service.get('client_uuid'):
                         sub_id_to_use = service.get('client_uuid').replace('-', '')
                         
                     if sub_id_to_use:
@@ -1678,6 +1829,12 @@ def services():
                 # OPTIMIZATION: Removed synchronous Marzban API call
                 # For Marzban, we rely on the background sync to populate config_link
             
+            # Apply delivery method logic for list copy button
+            if delivery_method == 'config':
+                # If user wants config only, try to provide raw config (vless://...)
+                if raw_config_link and not raw_config_link.startswith(('http://', 'https://')):
+                    subscription_link = raw_config_link
+            
             service['subscription_link'] = subscription_link or ''
             
             # Use actual monitoring data (updated by monitoring system every 3 minutes)
@@ -1687,7 +1844,7 @@ def services():
             
             # Use actual monitoring online status
             # Priority: is_online (from monitoring) > cached_is_online (fallback)
-            is_online = service.get('is_online', False) if service.get('is_online') is not None else service.get('cached_is_online', False)
+            is_online = service.get('is_online') if service.get('is_online') is not None else service.get('cached_is_online', False)
             service['is_online'] = bool(is_online)
             
             # Calculate last seen time from monitoring data
@@ -1709,6 +1866,9 @@ def services():
                         service['last_seen_seconds'] = time_since_last_activity // 1000
                     else:
                         service['last_seen_minutes'] = time_since_last_activity // (60 * 1000)
+                
+                recent_activity = (0 <= (time_since_last_activity) <= 300000)
+                service['is_online'] = bool(service['is_online'] or recent_activity)
             
             # Get remaining days from monitoring data
             # Priority: remaining_days (from monitoring) > cached_remaining_days (fallback) > calculate from expires_at
@@ -1742,6 +1902,28 @@ def services():
                 service['usage_percentage'] = min(100, round((used_gb / total_gb) * 100, 1))
             else:
                 service['usage_percentage'] = 0
+
+            try:
+                status = str(service.get('status') or '')
+            except Exception:
+                status = ''
+
+            expired = False
+            expires_at_dt = None
+            if service.get('expires_at'):
+                try:
+                    expires_at_dt = parse_datetime_safe(service.get('expires_at'))
+                except Exception:
+                    expires_at_dt = None
+            if expires_at_dt:
+                from datetime import datetime
+                expired = expires_at_dt <= datetime.now()
+
+            exhausted = bool(service.get('usage_percentage', 0) >= 100) or status == 'exhausted'
+            is_active = bool(service.get('is_active', False))
+            if status in ('disabled', 'expired', 'exhausted') or expired or exhausted:
+                is_active = False
+            service['is_active'] = is_active
             
             # Ensure subscription_link exists
             if 'subscription_link' not in service:
@@ -1776,9 +1958,31 @@ def services():
             # Ensure subscription_link exists
             if 'subscription_link' not in service:
                 service['subscription_link'] = service.get('config_link', '')
+
+            try:
+                status = str(service.get('status') or '')
+            except Exception:
+                status = ''
+
+            expired = False
+            expires_at_dt = None
+            if service.get('expires_at'):
+                try:
+                    expires_at_dt = parse_datetime_safe(service.get('expires_at'))
+                except Exception:
+                    expires_at_dt = None
+            if expires_at_dt:
+                from datetime import datetime
+                expired = expires_at_dt <= datetime.now()
+
+            exhausted = bool(service.get('usage_percentage', 0) >= 100) or status == 'exhausted'
+            is_active = bool(service.get('is_active', False))
+            if status in ('disabled', 'expired', 'exhausted') or expired or exhausted:
+                is_active = False
+            service['is_active'] = is_active
     
-    # Count online services for stats
-    online_services_count = len([s for s in user_services if s.get('is_online', False)])
+    # Count active services for stats
+    active_services_count = len([s for s in user_services if s.get('is_active', False)])
     total_services_count = len(user_services)
     
     # Theme Selection
@@ -1794,7 +1998,7 @@ def services():
                          user=user,
                          photo_url=photo_url,
                          services=user_services,
-                         online_services=online_services_count,
+                         active_services=active_services_count,
                          total_services=total_services_count)
 
 @app.route('/services/<int:service_id>')
@@ -1929,12 +2133,18 @@ def service_detail(service_id):
     except Exception as e:
         logger.error(f"Error getting service details: {e}")
     
-    # Get subscription link - always construct subscription link (not direct config)
-    subscription_link = service.get('config_link', '')
+    # Get delivery settings
+    from settings_manager import SettingsManager
+    settings_mgr = SettingsManager()
+    delivery_method = settings_mgr.get_setting('delivery_method', 'subscription')
+    
+    # Get subscription link and config link
+    subscription_link = ''
+    config_link = service.get('config_link', '')
+    
     db_instance = get_db()
     panel = db_instance.get_panel(service.get('panel_id'))
     
-    # Always construct subscription link, never use direct config link
     if panel:
         panel_type = panel.get('panel_type', '3x-ui')
         
@@ -1947,21 +2157,23 @@ def service_detail(service_id):
             if panel_mgr:
                 try:
                     # Get subscription URL from panel (Marzban returns subscription link)
-                    subscription_link = panel_mgr.get_client_config_link(
+                    new_link = panel_mgr.get_client_config_link(
                         service.get('inbound_id'),
                         service.get('client_uuid'),
                         service.get('protocol', 'vless')
                     )
-                    if subscription_link:
-                        db_instance = get_db()
-                        db_instance.update_client_config(service['id'], subscription_link)
+                    if new_link:
+                        # Marzban returns subscription link usually
+                        subscription_link = new_link
+                        # Try to get config link if possible (Marzban API might return it separately or we construct it)
+                        # For now, we assume config_link is stored in DB or same as sub link
                 except Exception as e:
                     logger.error(f"Error getting subscription from panel API: {e}")
         else:
             # For 3x-ui, ALWAYS construct subscription link from subscription_url + sub_id (or client_uuid)
-            # User requested full UUID without dashes
             sub_id_to_use = service.get('sub_id')
-            if service.get('client_uuid'):
+            # Only fall back to client_uuid if sub_id is missing or empty
+            if not sub_id_to_use and service.get('client_uuid'):
                 sub_id_to_use = service.get('client_uuid').replace('-', '')
 
             if sub_id_to_use:
@@ -1975,42 +2187,51 @@ def service_detail(service_id):
                     else:
                         subscription_link = f"{sub_url}/sub/{sub_id_to_use}"
 
-                    # Save subscription link to database
-                    if subscription_link:
-                        db_instance = get_db()
-                        db_instance.update_client_config(service['id'], subscription_link)
-        
-        # Fallback: check if saved config_link is actually a subscription link
-        if not subscription_link and service.get('config_link'):
-            config_link = service.get('config_link', '')
-            # Check if it's a subscription link (contains /sub/ or /sub or ends with sub_id)
-            if '/sub/' in config_link or '/sub' in config_link or (service.get('sub_id') and service.get('sub_id') in config_link):
-                # Only use if it's NOT a direct config link
-                if not config_link.startswith(('vless://', 'vmess://', 'trojan://', 'ss://')):
-                    subscription_link = config_link
-            else:
-                # If it's a direct config link (starts with vless://, vmess://, etc.), construct subscription link
-                if config_link.startswith(('vless://', 'vmess://', 'trojan://', 'ss://')):
-                    # This is a direct config link, not subscription - construct subscription link
-                    # User requested full UUID without dashes
-                    sub_id_to_use = service.get('sub_id')
-                    if service.get('client_uuid'):
-                        sub_id_to_use = service.get('client_uuid').replace('-', '')
-
-                    if panel.get('subscription_url') and sub_id_to_use:
-                        sub_url = panel.get('subscription_url', '')
-                        if sub_url.endswith('/sub') or sub_url.endswith('/sub/'):
-                            sub_url = sub_url.rstrip('/')
-                            subscription_link = f"{sub_url}/{sub_id_to_use}"
-                        elif '/sub' in sub_url:
-                            subscription_link = f"{sub_url}/{sub_id_to_use}"
-                        else:
-                            subscription_link = f"{sub_url}/sub/{sub_id_to_use}"
-                        if subscription_link:
-                            db_instance = get_db()
-                        db_instance.update_client_config(service['id'], subscription_link)
+    # Logic to populate links based on what we have
     
-    service['subscription_link'] = subscription_link or ''
+    # 1. If config_link looks like a subscription link, move it to subscription_link
+    if not subscription_link and config_link:
+        if '/sub/' in config_link or '/sub' in config_link or (service.get('sub_id') and service.get('sub_id') in config_link):
+             if not config_link.startswith(('vless://', 'vmess://', 'trojan://', 'ss://')):
+                 subscription_link = config_link
+                 # If it was in config_link, we might not have the actual config link. 
+                 # But if delivery_method requires config, we might need to fetch it or rely on user to get it from sub.
+    
+    # 2. If config_link is actually a config link (vless://...), keep it as config_link
+    # If we don't have config_link but need it, try to get from panel if possible
+    
+    # Try to fetch direct config link from panel if missing (especially for 3x-ui)
+    if (not config_link or not config_link.startswith(('vless://', 'vmess://', 'trojan://', 'ss://'))) and panel and panel_type == '3x-ui':
+        try:
+             from admin_manager import AdminManager
+             admin_mgr = AdminManager(db_instance)
+             panel_mgr_fetch = admin_mgr.get_panel_manager(service.get('panel_id'))
+             if panel_mgr_fetch and panel_mgr_fetch.login():
+                fetched_config = panel_mgr_fetch.get_client_config_link(
+                    service.get('inbound_id'),
+                    service.get('client_uuid'),
+                    service.get('protocol', 'vless'),
+                    service.get('client_name')
+                )
+                if fetched_config and fetched_config.startswith(('vless://', 'vmess://', 'trojan://', 'ss://')):
+                     config_link = fetched_config
+                     # Update service object in DB to cache it? Maybe later.
+        except Exception as e:
+             logger.error(f"Error fetching direct config from panel in service_detail: {e}")
+
+    # Update service object for template
+    service['subscription_link'] = subscription_link
+    service['config_link'] = config_link
+    service['delivery_method'] = delivery_method
+    
+    # Determine QR link based on delivery method
+    qr_link = subscription_link
+    if delivery_method == 'config' and config_link:
+        qr_link = config_link
+    elif not qr_link and config_link:
+        qr_link = config_link
+        
+    service['qr_link'] = qr_link
     
     # Calculate statistics - ensure total_gb is float and rounded to 2 decimal places
     total_gb = float(service.get('total_gb', 0) or 0)
@@ -2029,6 +2250,40 @@ def service_detail(service_id):
     service['used_gb'] = used_gb  # Update with rounded value
     service['remaining_gb'] = remaining_gb
     service['usage_percentage'] = usage_percentage
+
+    try:
+        status = str(service.get('status') or '')
+    except Exception:
+        status = ''
+
+    expired = False
+    expires_at_dt = None
+    if service.get('expires_at'):
+        try:
+            expires_at_dt = parse_datetime_safe(service.get('expires_at'))
+        except Exception:
+            expires_at_dt = None
+    if expires_at_dt:
+        from datetime import datetime
+        now = datetime.now()
+        expired = expires_at_dt <= now
+        
+        # Calculate remaining days for template if not already set
+        if 'remaining_days' not in service:
+            if expires_at_dt > now:
+                delta = expires_at_dt - now
+                service['remaining_days'] = delta.days
+            else:
+                service['remaining_days'] = 0
+    else:
+        if 'remaining_days' not in service:
+            service['remaining_days'] = None
+
+    exhausted = bool(usage_percentage >= 100) or status == 'exhausted'
+    is_active = bool(service.get('is_active', False))
+    if status in ('disabled', 'expired', 'exhausted') or expired or exhausted:
+        is_active = False
+    service['is_active'] = is_active
     
     # Theme Selection
     from settings_manager import SettingsManager
@@ -2040,6 +2295,85 @@ def service_detail(service_id):
         template_name = 'themes/modern/service_detail.html'
     
     return render_template(template_name, user=user, photo_url=photo_url, service=service)
+
+@app.route('/services/<int:service_id>/toggle', methods=['POST'])
+@login_required
+def toggle_service(service_id):
+    user_telegram_id = session.get('user_id')
+    db_instance = get_db()
+    user = db_instance.get_user(user_telegram_id)
+    if not user:
+        return redirect(url_for('services'))
+    
+    service = db_instance.get_user_service(service_id, user['id'])
+    if not service:
+        return redirect(url_for('services'))
+    
+    try:
+        from admin_manager import AdminManager
+        import inspect
+        
+        admin_mgr = AdminManager(db_instance)
+        panel_mgr = admin_mgr.get_panel_manager(service.get('panel_id'))
+        if not panel_mgr or not panel_mgr.login():
+            flash('خطا در اتصال به پنل', 'error')
+            return redirect(url_for('service_detail', service_id=service_id))
+        
+        client_details = None
+        try:
+            sig = inspect.signature(panel_mgr.get_client_details)
+            params = list(sig.parameters.keys())
+            if 'client_name' in params:
+                client_details = panel_mgr.get_client_details(
+                    service.get('inbound_id'),
+                    service.get('client_uuid'),
+                    client_name=service.get('client_name')
+                )
+            else:
+                client_details = panel_mgr.get_client_details(
+                    service.get('inbound_id'),
+                    service.get('client_uuid')
+                )
+        except Exception:
+            client_details = None
+        
+        is_enabled = None
+        if isinstance(client_details, dict) and client_details.get('enable') is not None:
+            is_enabled = bool(client_details.get('enable'))
+        else:
+            is_enabled = (service.get('status') != 'paused')
+        
+        if is_enabled:
+            ok = panel_mgr.disable_client(
+                service.get('inbound_id'),
+                service.get('client_uuid'),
+                client_name=service.get('client_name')
+            )
+            if ok:
+                db_instance.update_service_status(service_id, 'paused')
+                flash('سرویس خاموش شد', 'success')
+            else:
+                flash('خطا در خاموش کردن سرویس', 'error')
+        else:
+            if not hasattr(panel_mgr, 'enable_client'):
+                flash('این پنل از روشن کردن پشتیبانی نمی‌کند', 'error')
+                return redirect(url_for('service_detail', service_id=service_id))
+            ok = panel_mgr.enable_client(
+                service.get('inbound_id'),
+                service.get('client_uuid'),
+                client_name=service.get('client_name')
+            )
+            if ok:
+                db_instance.update_service_status(service_id, 'active')
+                flash('سرویس روشن شد', 'success')
+            else:
+                flash('خطا در روشن کردن سرویس', 'error')
+        
+    except Exception as e:
+        logger.error(f"Error toggling service from web: {e}", exc_info=True)
+        flash('خطا در تغییر وضعیت سرویس', 'error')
+    
+    return redirect(url_for('service_detail', service_id=service_id))
 
 @app.route('/buy-service')
 @login_required
@@ -2131,6 +2465,89 @@ def buy_service():
                          panels=panels,
                          renew_service_id=renew_service_id,
                          renew_panel_id=renew_panel_id)
+
+@app.route('/get-test-account')
+@login_required
+def get_test_account():
+    """Get test account page"""
+    user_id = session.get('user_id')
+    db_instance = get_db()
+    user = db_instance.get_user(user_id)
+    photo_url = session.get('photo_url', '')
+    
+    if not user:
+        return redirect(url_for('index'))
+        
+    # Check max test accounts limit
+    from settings_manager import SettingsManager
+    settings_mgr = SettingsManager(db_manager=db_instance)
+    max_test_accounts = settings_mgr.get_setting('max_test_accounts', 1)
+    
+    # Use robust method that handles missing table
+    current_count = db_instance.get_user_test_accounts_count(user['id'])
+    
+    if current_count >= max_test_accounts:
+        flash(f"شما به سقف مجاز دریافت اکانت تست ({max_test_accounts} عدد) رسیده‌اید.", "error")
+        return redirect(url_for('dashboard'))
+    
+    panels = db_instance.get_test_panels(active_only=True)
+    if not panels:
+        panels = db_instance.get_panels(active_only=True)
+    eligible_panels = []
+    
+    for panel in panels:
+        # Check if panel supports gigabyte sales
+        sale_type = panel.get('sale_type', 'gigabyte')
+        if sale_type not in ['gigabyte', 'both']:
+            continue
+        
+        # Check if user already got test from this panel
+        if db_instance.has_user_received_test_account_from_panel(user['id'], panel['id']):
+            continue
+            
+        # Translate country
+        panel['country_fa'] = extract_country_from_panel_name(panel.get('name', ''))
+        display_name = panel.get('test_display_name')
+        if not display_name:
+            extra_config = panel.get('extra_config')
+            if isinstance(extra_config, str):
+                try:
+                    extra_config = json.loads(extra_config) if extra_config else {}
+                except Exception:
+                    extra_config = {}
+            if isinstance(extra_config, dict):
+                display_name = extra_config.get('test_display_name')
+        panel['display_name'] = str(display_name) if display_name else panel.get('name', '')
+        eligible_panels.append(panel)
+    
+    if not eligible_panels:
+        flash("هیچ سرور تستی در دسترس نیست یا شما از همه سرورها استفاده کرده‌اید.", "error")
+        return redirect(url_for('dashboard'))
+        
+    # Get test config for volume/duration display
+    test_config = db_instance.get_test_account_config()
+    duration = test_config.get('duration_hours', 24)
+    volume = test_config.get('volume_gb', 1)
+    
+    # Theme Selection
+    current_theme = settings_mgr.get_theme()
+    # Prepare categories map for frontend
+    panel_categories_map = {}
+    for panel in eligible_panels:
+        if panel.get('test_categories'):
+            panel_categories_map[str(panel['id'])] = panel['test_categories']
+
+    template_name = 'get_test_account.html'
+    if current_theme == 'modern':
+        template_name = 'themes/modern/get_test_account.html'
+        
+    return render_template(template_name, 
+                         user=user, 
+                         photo_url=photo_url, 
+                         panels=eligible_panels,
+                         panel_categories_map=panel_categories_map,
+                         duration=duration,
+                         volume=volume)
 
 @app.route('/renew-service')
 @login_required
@@ -2401,7 +2818,7 @@ def api_get_panel_products(panel_id):
             # Get products without category (when category_id is None or not provided)
             products = db_instance.get_products(panel_id, category_id=False, active_only=True)
         
-        # Calculate discounts for resellers
+        # Calculate discounts for resellers and determine user type
         telegram_id = session.get('telegram_id')
         discount_rate = 0
         is_reseller = False
@@ -2409,11 +2826,36 @@ def api_get_panel_products(panel_id):
             from reseller_panel.models import ResellerManager
             reseller_manager = ResellerManager(db_instance)
             reseller = reseller_manager.get_reseller_by_telegram_id(telegram_id)
-            if reseller and reseller.get('discount_rate', 0) > 0:
-                discount_rate = float(reseller['discount_rate'])
+            if reseller:
                 is_reseller = True
+                if reseller.get('discount_rate', 0) > 0:
+                    discount_rate = float(reseller['discount_rate'])
         except Exception as e:
             logger.warning(f"Could not get reseller discount: {e}")
+            
+        # Filter products based on visibility
+        visible_products = []
+        for product in products:
+            # Check visibility
+            # Default to True (1) if keys are missing to ensure backward compatibility
+            is_visible_to_users = product.get('is_visible_to_users', 1)
+            is_visible_to_resellers = product.get('is_visible_to_resellers', 1)
+            
+            # Normalize to boolean/int
+            if is_visible_to_users is None: is_visible_to_users = 1
+            if is_visible_to_resellers is None: is_visible_to_resellers = 1
+            
+            # Filter logic
+            if is_reseller:
+                if not is_visible_to_resellers:
+                    continue
+            else:
+                if not is_visible_to_users:
+                    continue
+            
+            visible_products.append(product)
+        
+        products = visible_products
             
         # Add discount info to products
         for product in products:
@@ -2443,7 +2885,7 @@ def api_get_product(product_id):
         if not product:
             return jsonify({'success': False, 'message': 'محصول یافت نشد'}), 404
         
-        # Calculate discounts for resellers
+        # Calculate discounts for resellers and determine user type
         telegram_id = session.get('telegram_id')
         discount_rate = 0
         is_reseller = False
@@ -2451,11 +2893,26 @@ def api_get_product(product_id):
             from reseller_panel.models import ResellerManager
             reseller_manager = ResellerManager(db_instance)
             reseller = reseller_manager.get_reseller_by_telegram_id(telegram_id)
-            if reseller and reseller.get('discount_rate', 0) > 0:
-                discount_rate = float(reseller['discount_rate'])
+            if reseller:
                 is_reseller = True
+                if reseller.get('discount_rate', 0) > 0:
+                    discount_rate = float(reseller['discount_rate'])
         except Exception as e:
             logger.warning(f"Could not get reseller discount: {e}")
+            
+        # Check visibility
+        is_visible_to_users = product.get('is_visible_to_users', 1)
+        is_visible_to_resellers = product.get('is_visible_to_resellers', 1)
+        
+        if is_visible_to_users is None: is_visible_to_users = 1
+        if is_visible_to_resellers is None: is_visible_to_resellers = 1
+        
+        if is_reseller:
+            if not is_visible_to_resellers:
+                return jsonify({'success': False, 'message': 'این محصول برای شما قابل مشاهده نیست'}), 403
+        else:
+            if not is_visible_to_users:
+                return jsonify({'success': False, 'message': 'این محصول برای شما قابل مشاهده نیست'}), 403
             
         # Add discount info
         original_price = product['price']
@@ -2524,6 +2981,20 @@ def api_calculate_price():
             product = db_instance.get_product(product_id)
             if not product:
                 return jsonify({'success': False, 'message': 'محصول یافت نشد'}), 404
+            
+            # Check visibility
+            is_visible_to_users = product.get('is_visible_to_users', 1)
+            is_visible_to_resellers = product.get('is_visible_to_resellers', 1)
+            
+            if is_visible_to_users is None: is_visible_to_users = 1
+            if is_visible_to_resellers is None: is_visible_to_resellers = 1
+            
+            if is_reseller:
+                if not is_visible_to_resellers:
+                    return jsonify({'success': False, 'message': 'این محصول برای شما قابل خرید نیست'}), 403
+            else:
+                if not is_visible_to_users:
+                    return jsonify({'success': False, 'message': 'این محصول برای شما قابل خرید نیست'}), 403
             
             original_price = product['price']
             volume_gb = product['volume_gb']
@@ -2608,6 +3079,21 @@ def api_create_service():
         
         if not panel.get('is_active'):
             return jsonify({'success': False, 'message': 'این پنل غیرفعال است'}), 400
+            
+        # Get reseller discount for current user
+        telegram_id = session.get('telegram_id')
+        discount_rate = 0
+        is_reseller = False
+        try:
+            from reseller_panel.models import ResellerManager
+            reseller_manager = ResellerManager(db_instance)
+            reseller = reseller_manager.get_reseller_by_telegram_id(telegram_id)
+            if reseller:
+                is_reseller = True
+                if reseller.get('discount_rate', 0) > 0:
+                    discount_rate = float(reseller['discount_rate'])
+        except Exception as e:
+            logger.warning(f"Could not get reseller discount: {e}")
         
         # Handle plan-based purchase
         if purchase_type == 'plan':
@@ -2619,6 +3105,20 @@ def api_create_service():
             product = db_instance.get_product(product_id)
             if not product or not product.get('is_active'):
                 return jsonify({'success': False, 'message': 'محصول یافت نشد یا غیرفعال است'}), 404
+            
+            # Check visibility
+            is_visible_to_users = product.get('is_visible_to_users', 1)
+            is_visible_to_resellers = product.get('is_visible_to_resellers', 1)
+            
+            if is_visible_to_users is None: is_visible_to_users = 1
+            if is_visible_to_resellers is None: is_visible_to_resellers = 1
+            
+            if is_reseller:
+                if not is_visible_to_resellers:
+                    return jsonify({'success': False, 'message': 'این محصول برای شما قابل خرید نیست'}), 403
+            else:
+                if not is_visible_to_users:
+                    return jsonify({'success': False, 'message': 'این محصول برای شما قابل خرید نیست'}), 403
             
             if product['panel_id'] != panel_id:
                 return jsonify({'success': False, 'message': 'محصول متعلق به این پنل نیست'}), 400
@@ -2638,20 +3138,6 @@ def api_create_service():
             price_per_gb = panel.get('price_per_gb', 0)
             original_price = int(price_per_gb * volume_gb)
         
-        # Get reseller discount for current user
-        telegram_id = session.get('telegram_id')
-        discount_rate = 0
-        is_reseller = False
-        try:
-            from reseller_panel.models import ResellerManager
-            reseller_manager = ResellerManager(db_instance)
-            reseller = reseller_manager.get_reseller_by_telegram_id(telegram_id)
-            if reseller and reseller.get('discount_rate', 0) > 0:
-                discount_rate = float(reseller['discount_rate'])
-                is_reseller = True
-        except Exception as e:
-            logger.warning(f"Could not get reseller discount: {e}")
-            
         # Apply reseller discount
         if is_reseller and discount_rate > 0:
             total_price = int(original_price * (1 - discount_rate / 100))
@@ -2799,7 +3285,8 @@ def api_create_service():
                     panel_manager.update_client_expiration(
                         existing_service['inbound_id'],
                         existing_service['client_uuid'],
-                        expires_timestamp
+                        expires_timestamp,
+                        client_name=existing_service.get('client_name')
                     )
                 
                 # Enable client on panel if it was disabled
@@ -2888,12 +3375,50 @@ def api_create_service():
                 if not inbounds or len(inbounds) == 0:
                     return jsonify({'success': False, 'message': 'هیچ اینباند فعالی برای این پنل یافت نشد'}), 404
                 
-                # Get first active inbound
-                inbound_id = inbounds[0]['id']
+                # Check if product has specific inbound
+                target_inbound_id = None
+                if purchase_type == 'plan' and product.get('inbound_id'):
+                    # Verify inbound exists
+                    product_inbound = next((i for i in inbounds if i['id'] == product['inbound_id']), None)
+                    if product_inbound:
+                        target_inbound_id = product_inbound['id']
+                
+                # Fallback to first active inbound if not specified
+                if not target_inbound_id:
+                    target_inbound_id = inbounds[0]['id']
             
             # Generate unique username
             from username_formatter import UsernameFormatter
             
+            # Fetch inbound name to append
+            inbound_name_suffix = ""
+            try:
+                # We need to know which inbound will be used
+                target_inbound_id_for_name = None
+                if purchase_type == 'plan' and product.get('inbound_id'):
+                    target_inbound_id_for_name = product.get('inbound_id')
+                elif target_inbound_id:
+                    target_inbound_id_for_name = target_inbound_id
+                
+                # If we have a target inbound, find its name
+                if target_inbound_id_for_name:
+                    # We might need to fetch inbounds again if not already fetched
+                    if 'inbounds' not in locals() or not inbounds:
+                         inbounds = admin_manager.get_panel_inbounds(panel_id)
+                    
+                    for inbound in inbounds:
+                        if inbound.get('id') == target_inbound_id_for_name:
+                            # Use remark/tag
+                            raw_name = inbound.get('remark') or inbound.get('tag') or ""
+                            # Sanitize: keep only alphanumeric
+                            import re
+                            clean_name = re.sub(r'[^a-zA-Z0-9]', '', raw_name)
+                            if clean_name:
+                                inbound_name_suffix = f"-{clean_name}"
+                            break
+            except Exception as e:
+                logger.error(f"Error getting inbound name for suffix: {e}")
+
             if custom_name:
                 client_name = custom_name
                 # If naming method is 4 (Custom + Random), append random string
@@ -2903,6 +3428,10 @@ def api_create_service():
                      client_name = f"{custom_name}-{random_suffix}"
             else:
                 client_name = UsernameFormatter.format_client_name(user_id)
+                
+            # Append inbound name suffix if available
+            if inbound_name_suffix:
+                client_name += inbound_name_suffix
             
             # Calculate expiration date
             from datetime import datetime, timedelta
@@ -2910,33 +3439,80 @@ def api_create_service():
             if expire_days > 0:
                 expires_at = datetime.now() + timedelta(days=expire_days)
             
-            # Create client using admin_manager (same as bot)
+            # Create client using admin_manager
             logger.info(f"Creating service for user {user_id}: panel={panel_id}, volume={volume_gb}GB, expire_days={expire_days}")
             
-            success, message, client_data = admin_manager.create_client_on_all_panel_inbounds(
-                panel_id=panel_id,
-                client_name=client_name,
-                expire_days=expire_days,
-                total_gb=volume_gb
-            )
+            if purchase_type == 'plan' and product.get('inbound_id') and target_inbound_id == product.get('inbound_id'):
+                # Use specific inbound from product
+                # We should use create_client_on_all_panel_inbounds even for specific inbound, as it now supports inbound_id
+                success, message, client_data = admin_manager.create_client_on_all_panel_inbounds(
+                    panel_id=panel_id,
+                    client_name=client_name,
+                    expire_days=expire_days,
+                    total_gb=volume_gb,
+                    inbound_id=target_inbound_id
+                )
+            else:
+                # Use default logic (auto-select inbound)
+                success, message, client_data = admin_manager.create_client_on_all_panel_inbounds(
+                    panel_id=panel_id,
+                    client_name=client_name,
+                    expire_days=expire_days,
+                    total_gb=volume_gb
+                )
             
             if success and client_data:
                 # Save client to database
                 db_instance = get_db()
                 user_db = db_instance.get_user(user_id)
-                inbound_id = client_data.get('inbound_id', inbounds[0]['id']) if client_data.get('inbound_id') else inbounds[0]['id']
+                
+                # Determine used inbound ID
+                used_inbound_id = client_data.get('inbound_id')
+                if not used_inbound_id:
+                    if purchase_type == 'plan' and product.get('inbound_id'):
+                         used_inbound_id = product.get('inbound_id')
+                    elif target_inbound_id:
+                         used_inbound_id = target_inbound_id
+                    else:
+                         used_inbound_id = inbounds[0]['id']
+                
+                # Create paid invoice for balance purchase (for history and refund support)
+                discount_id = None
+                if discount_code:
+                    dc = db_instance.get_discount_code(discount_code)
+                    if dc:
+                        discount_id = dc['id']
+
+                invoice_id = db_instance.add_invoice(
+                    user_id=user_db['id'],
+                    panel_id=panel_id,
+                    gb_amount=volume_gb,
+                    amount=total_price,
+                    payment_method='balance',
+                    status='paid',
+                    discount_code_id=discount_id,
+                    discount_amount=discount_amount,
+                    original_amount=original_price,
+                    product_id=product_id if purchase_type == 'plan' else None,
+                    duration_days=expire_days,
+                    purchase_type=purchase_type,
+                    notes='Balance purchase'
+                )
+                
                 client_id = db_instance.add_client(
                     user_id=user_db['id'],
                     panel_id=panel_id,
                     client_name=client_name,
                     client_uuid=client_data.get('id', ''),
-                    inbound_id=inbound_id,
+                    inbound_id=used_inbound_id,
                     protocol=client_data.get('protocol', 'vless'),
                     expire_days=expire_days,
                     total_gb=volume_gb,
                     expires_at=expires_at.isoformat() if expires_at else None,
                     product_id=product_id if purchase_type == 'plan' else None,
-                    sub_id=client_data.get('sub_id')
+                    sub_id=client_data.get('sub_id'),
+                    invoice_id=invoice_id,
+                    config_link=client_data.get('config_link')
                 )
                 
                 if client_id > 0:
@@ -2948,7 +3524,7 @@ def api_create_service():
                             db_instance.apply_discount_code(
                                 code_id=discount_code_obj['id'],
                                 user_id=user_db['id'],
-                                invoice_id=None,  # No invoice for balance payment
+                                invoice_id=invoice_id,
                                 amount_before=original_price,
                                 discount_amount=discount_amount,
                                 amount_after=total_price
@@ -3011,11 +3587,74 @@ def api_create_service():
                     # Get subscription link from client_data
                     subscription_link = client_data.get('subscription_link') or client_data.get('subscription_url', '')
                     
+                    # Ensure subscription link uses the correct sub_id - DISABLED based on user feedback
+                    # User reported that short sub_id (16 chars) is incorrect for some panels, and long UUID (32 chars) is required.
+                    # We will use whatever the panel returns.
+                    # try:
+                    #     if subscription_link and client_data.get('sub_id') and '/sub/' in subscription_link:
+                    #         # Parse link to check if it uses UUID or sub_id
+                    #         # Example: https://sub.domain.com/sub/UUID
+                    #         base_part, token = subscription_link.rsplit('/', 1)
+                    #         # If token is long (UUID) but we have a short sub_id, use sub_id
+                    #         if len(token) > 20 and len(client_data['sub_id']) < 20:
+                    #             subscription_link = f"{base_part}/{client_data['sub_id']}"
+                    #             logger.info(f"🔧 Fixed subscription link to use short sub_id: {subscription_link}")
+                    # except Exception as e:
+                    #     logger.warning(f"Failed to fix subscription link: {e}")
+
+                    # Also provide config link if available
+                    config_link = client_data.get('config_link') or client_data.get('config_url', '')
+                    
+                    # Send success message to user via Telegram Bot with links
+                    try:
+                        from telegram_helper import TelegramHelper
+                        
+                        # Prepare links for message
+                        links_msg = ""
+                        if subscription_link:
+                            links_msg += f"\n🔗 لینک سابسکریپشن:\n`{subscription_link}`\n"
+                        
+                        # Only show direct config if different from sub link or if sub link missing
+                        if config_link and config_link != subscription_link:
+                             if config_link.startswith(('vless://', 'vmess://', 'trojan://', 'ss://')):
+                                links_msg += f"\n🔑 کانفیگ مستقیم:\n`{config_link}`\n"
+
+                        success_msg = f"""
+✅ *خرید سرویس با موفقیت انجام شد!*
+
+🎉 *جزئیات سرویس جدید:*
+🔧 نام سرویس: `{client_name}`
+🔗 پنل: {panel.get('name', 'نامشخص')}
+📊 حجم: {volume_gb} گیگابایت
+💰 مبلغ: {total_price:,} تومان
+⏰ مدت: {expire_days} روز
+
+{links_msg}
+🚀 *سرویس شما آماده استفاده است!*
+برای مشاهده جزئیات بیشتر و مدیریت سرویس، به بخش مدیریت سرویس مراجعه کنید.
+"""
+                        # Run in background to not block response
+                        def send_msg_async():
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                            loop.run_until_complete(TelegramHelper.send_message(user_id, success_msg))
+                            loop.close()
+                        
+                        threading.Thread(target=send_msg_async).start()
+                        
+                    except Exception as e:
+                        logger.error(f"Failed to send user success message: {e}")
+
                     return jsonify({
                         'success': True,
                         'message': 'سرویس با موفقیت ایجاد شد',
+                        'subscription_link': subscription_link,
+                        'config_link': config_link,
                         'service': {
-                            'config': subscription_link,
+                            'id': client_id,
+                            'config': subscription_link, # Keep backward compatibility for 'config' field usually showing sub link
+                            'subscription_link': subscription_link,
+                            'config_link': config_link,
                             'volume': volume_gb,
                             'price': total_price,
                             'client_name': client_name
@@ -3197,6 +3836,192 @@ def api_create_service():
             'message': f'خطا در ایجاد سرویس: {error_msg}',
             'error_detail': error_msg
         }), 500
+
+@app.route('/api/create-test-account', methods=['POST'])
+@login_required
+@rate_limit(max_requests=3, window_seconds=3600)  # Strict rate limit: 3 per hour
+def api_create_test_account():
+    """API endpoint to create test account"""
+    try:
+        user_id = session.get('user_id')
+        data = request.json
+        
+        # Input validation
+        panel_id = validate_panel_id(data.get('panel_id'))
+        category_id = data.get('category_id')
+        if category_id:
+            try:
+                category_id = int(category_id)
+            except:
+                category_id = None
+        
+        if not panel_id:
+            return jsonify({'success': False, 'message': 'اطلاعات ناقص است'}), 400
+            
+        db_instance = get_db()
+        user = db_instance.get_user(user_id)
+        if not user:
+            return jsonify({'success': False, 'message': 'کاربر یافت نشد'}), 404
+            
+        # Check max test accounts limit
+        from settings_manager import SettingsManager
+        settings_mgr = SettingsManager(db_instance)
+        max_test_accounts = settings_mgr.get_setting('max_test_accounts', 1)
+        
+        current_count = db_instance.get_user_test_accounts_count(user['id'])
+        
+        if current_count >= max_test_accounts:
+            return jsonify({'success': False, 'message': f'شما به سقف مجاز دریافت اکانت تست ({max_test_accounts} عدد) رسیده‌اید.'}), 400
+
+        configured_test_panels = db_instance.get_test_panels(active_only=True)
+        if configured_test_panels and not any(p.get('id') == panel_id for p in configured_test_panels):
+            return jsonify({'success': False, 'message': 'این سرور برای اکانت تست فعال نیست.'}), 400
+            
+        # Check if user already got test from this panel
+        if db_instance.has_user_received_test_account_from_panel(user['id'], panel_id):
+            return jsonify({'success': False, 'message': 'شما قبلاً از این سرور اکانت تست دریافت کرده‌اید.'}), 400
+            
+        # Get panel
+        panel = db_instance.get_panel(panel_id)
+        if not panel:
+            return jsonify({'success': False, 'message': 'پنل یافت نشد'}), 404
+            
+        if not panel.get('is_active'):
+            return jsonify({'success': False, 'message': 'این پنل غیرفعال است'}), 400
+            
+        # Verify category if provided
+        if category_id:
+            category = db_instance.get_category(category_id)
+            if not category or category['panel_id'] != panel_id:
+                return jsonify({'success': False, 'message': 'دسته‌بندی نامعتبر است'}), 400
+                
+        # Get test config (prioritize category)
+        test_config = db_instance.get_test_account_config(panel_id, category_id)
+        duration_hours = test_config.get('duration_hours', 24)
+        volume_gb = test_config.get('volume_gb', 1)
+        
+        # Check if volume is valid
+        if volume_gb <= 0:
+             return jsonify({'success': False, 'message': 'اکانت تست برای این گزینه غیرفعال است'}), 400
+        
+        # Convert hours to days (float)
+        expire_days = duration_hours / 24.0
+        
+        # Create client using admin manager
+        from admin_manager import AdminManager
+        admin_manager = AdminManager(db_instance)
+        
+        # Generate username
+        from username_formatter import UsernameFormatter
+        client_name = UsernameFormatter.format_client_name(user_id)
+        
+        # Use create_client_on_all_panel_inbounds
+        success, message, client_data = admin_manager.create_client_on_all_panel_inbounds(
+            panel_id=panel_id,
+            client_name=client_name,
+            expire_days=expire_days,
+            total_gb=volume_gb
+        )
+        
+        if success and client_data:
+            # Determine expiration time
+            from datetime import datetime, timedelta
+            expires_at = datetime.now() + timedelta(hours=duration_hours)
+            
+            # Save to database
+            client_id = db_instance.add_client(
+                user_id=user['id'],
+                panel_id=panel_id,
+                client_name=client_name,
+                client_uuid=client_data.get('id', ''),
+                inbound_id=client_data.get('inbound_id', 0),
+                protocol=client_data.get('protocol', 'vless'),
+                expire_days=expire_days,
+                total_gb=volume_gb,
+                expires_at=expires_at.isoformat(),
+                product_id=None,
+                sub_id=client_data.get('sub_id')
+            )
+            
+            # Log test account creation
+            try:
+                db_instance.log_test_account_creation(user['id'], panel_id, str(client_id))
+            except Exception as e:
+                logger.error(f"Error logging test account: {e}")
+
+            try:
+                send_report_sync(
+                    'report_test_account_created',
+                    user,
+                    panel.get('name', 'نامشخص'),
+                    float(volume_gb),
+                    int(duration_hours)
+                )
+            except Exception as e:
+                logger.error(f"Failed to report test account creation: {e}")
+                
+            # Get links
+            subscription_link = client_data.get('subscription_link') or client_data.get('subscription_url', '')
+            config_link = client_data.get('config_link') or client_data.get('config_url', '')
+            
+            # Send success message via Telegram
+            try:
+                from telegram_helper import TelegramHelper
+                
+                links_msg = ""
+                if subscription_link:
+                    links_msg += f"\n🔗 لینک سابسکریپشن:\n`{subscription_link}`\n"
+                
+                if config_link and config_link != subscription_link:
+                    if config_link.startswith(('vless://', 'vmess://', 'trojan://', 'ss://')):
+                        links_msg += f"\n🔑 کانفیگ مستقیم:\n`{config_link}`\n"
+                        
+                success_msg = f"""
+✅ *اکانت تست با موفقیت ایجاد شد!*
+
+🎉 *جزئیات سرویس تست:*
+🔧 نام سرویس: `{client_name}`
+🔗 پنل: {panel.get('name', 'نامشخص')}
+📊 حجم: {volume_gb} گیگابایت
+⏰ مدت: {duration_hours} ساعت
+
+{links_msg}
+🚀 *لطفاً سرویس را تست کنید و در صورت رضایت اقدام به خرید نمایید.*
+"""
+                # Run in background
+                def send_msg_async():
+                    import asyncio
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(TelegramHelper.send_message(user_id, success_msg))
+                    loop.close()
+                
+                threading.Thread(target=send_msg_async).start()
+                
+            except Exception as e:
+                logger.error(f"Failed to send test account success message: {e}")
+                
+            return jsonify({
+                'success': True,
+                'message': 'اکانت تست با موفقیت ایجاد شد',
+                'subscription_link': subscription_link,
+                'config_link': config_link,
+                'service': {
+                    'id': client_id,
+                    'volume': volume_gb,
+                    'duration_hours': duration_hours
+                }
+            })
+            
+        else:
+            logger.error(f"Failed to create test account: {message}")
+            return jsonify({'success': False, 'message': message or 'خطا در ایجاد اکانت تست'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error creating test account: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({'success': False, 'message': 'خطا در پردازش درخواست'}), 500
 
 @app.route('/api/validate-discount-code', methods=['POST'])
 @login_required
@@ -3682,12 +4507,163 @@ def profile():
     # Get photo_url from session
     photo_url = session.get('photo_url', '')
     
+    is_reseller = False
+    try:
+        from reseller_panel.models import ResellerManager
+        reseller_manager = ResellerManager(db_instance)
+        reseller_profile = reseller_manager.get_reseller_by_user_id(user['id']) if user else None
+        is_reseller = bool(reseller_profile and reseller_profile.get('status') == 'active')
+    except Exception:
+        is_reseller = False
+    
     return render_template('profile.html', 
                          user=user, 
                          transactions=persian_transactions,
                          referrals=referrals,
                          referral_link=referral_link,
-                         photo_url=photo_url)
+                         photo_url=photo_url,
+                         is_reseller=is_reseller)
+
+@app.route('/reseller-portal')
+@login_required
+def reseller_portal():
+    user_telegram_id = session.get('user_id')
+    db_instance = get_db()
+    user = db_instance.get_user(user_telegram_id)
+    if not user:
+        return redirect(url_for('dashboard'))
+    
+    from reseller_panel.models import ResellerManager
+    reseller_manager = ResellerManager(db_instance)
+    reseller_profile = reseller_manager.get_reseller_by_user_id(user['id'])
+    if not reseller_profile or reseller_profile.get('status') != 'active':
+        return redirect(url_for('profile'))
+    
+    with db_instance.get_connection() as conn:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute('''
+            SELECT c.*, p.name as panel_name, p.panel_type
+            FROM clients c
+            JOIN panels p ON c.panel_id = p.id
+            WHERE c.user_id = %s
+            ORDER BY c.created_at DESC
+            LIMIT 200
+        ''', (user['id'],))
+        services = cursor.fetchall()
+    
+    from datetime import datetime, timedelta
+    now = datetime.now()
+    for s in services:
+        created_at = s.get('created_at')
+        if isinstance(created_at, str):
+            try:
+                created_at = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+            except Exception:
+                created_at = None
+        refundable = False
+        if created_at:
+            refundable = (now - created_at) <= timedelta(days=1)
+        s['refundable'] = refundable and bool(s.get('invoice_id'))
+    
+    photo_url = session.get('photo_url', '')
+    return render_template('reseller_portal.html', user=user, photo_url=photo_url, reseller=reseller_profile, services=services)
+
+@app.route('/reseller-portal/services/<int:service_id>/refund-delete', methods=['POST'])
+@login_required
+def reseller_refund_delete(service_id):
+    user_telegram_id = session.get('user_id')
+    db_instance = get_db()
+    user = db_instance.get_user(user_telegram_id)
+    if not user:
+        return redirect(url_for('dashboard'))
+    
+    from reseller_panel.models import ResellerManager
+    reseller_manager = ResellerManager(db_instance)
+    reseller_profile = reseller_manager.get_reseller_by_user_id(user['id'])
+    if not reseller_profile or reseller_profile.get('status') != 'active':
+        return redirect(url_for('profile'))
+    
+    service = db_instance.get_client_by_id(service_id)
+    if not service or service.get('user_id') != user['id']:
+        flash('سرویس یافت نشد', 'error')
+        return redirect(url_for('reseller_portal'))
+    
+    from datetime import datetime, timedelta
+    now = datetime.now()
+    created_at = service.get('created_at')
+    if isinstance(created_at, str):
+        try:
+            created_at = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+        except Exception:
+            created_at = None
+    if not created_at or (now - created_at) > timedelta(days=1):
+        flash('مهلت حذف با برگشت وجه تمام شده است', 'error')
+        return redirect(url_for('reseller_portal'))
+    
+    invoice_id = service.get('invoice_id')
+    if not invoice_id:
+        flash('برای این سرویس فاکتور ثبت نشده است', 'error')
+        return redirect(url_for('reseller_portal'))
+    
+    invoice = db_instance.get_invoice(invoice_id)
+    if not invoice:
+        flash('فاکتور یافت نشد', 'error')
+        return redirect(url_for('reseller_portal'))
+    if str(invoice.get('status', '')).lower() in ['refunded', 'cancelled']:
+        flash('این فاکتور قبلاً برگشت خورده است', 'error')
+        return redirect(url_for('reseller_portal'))
+    
+    try:
+        from admin_manager import AdminManager
+        admin_mgr = AdminManager(db_instance)
+        panel_mgr = admin_mgr.get_panel_manager(service.get('panel_id'))
+        if not panel_mgr or not panel_mgr.login():
+            flash('خطا در اتصال به پنل', 'error')
+            return redirect(url_for('reseller_portal'))
+        
+        ok = panel_mgr.delete_client(service.get('inbound_id'), service.get('client_uuid'))
+        if not ok:
+            flash('حذف سرویس در پنل ناموفق بود', 'error')
+            return redirect(url_for('reseller_portal'))
+        
+        db_instance.delete_client(service_id)
+        
+        # Calculate refund amount based on REAL paid amount
+        invoice_amount = int(invoice.get('amount') or 0)
+        discount_amount = int(invoice.get('discount_amount') or 0)
+        original_amount = int(invoice.get('original_amount') or 0)
+        
+        # If original_amount exists and equals amount (meaning amount is original price), 
+        # and there is a discount, we must subtract the discount.
+        # However, typically 'amount' in invoice IS the final paid amount.
+        # But if the user reports 50,000 refund instead of 1,000, it means 'amount' is 50,000.
+        
+        refund_amount = invoice_amount
+        
+        # Safety check: If reseller, ensure we don't refund more than what makes sense
+        # If invoice amount seems to be the full price but user paid less
+        if reseller_profile and discount_amount > 0:
+             # If amount matches original, it means amount is NOT discounted
+             if invoice_amount == original_amount:
+                 refund_amount = invoice_amount - discount_amount
+        
+        # Ensure positive
+        refund_amount = max(0, refund_amount)
+        
+        if refund_amount > 0:
+            db_instance.add_balance(user['id'], refund_amount, 'refund', description=f"بازگشت وجه حذف سرویس #{service_id} (فاکتور #{invoice_id})")
+        try:
+            db_instance.update_invoice_status(invoice_id, 'refunded')
+        except Exception:
+            pass
+        
+        flash('سرویس حذف شد و مبلغ برگشت داده شد', 'success')
+        
+    except Exception as e:
+        logger.error(f"Error refund-deleting reseller service: {e}", exc_info=True)
+        flash('خطا در حذف سرویس', 'error')
+    
+    return redirect(url_for('reseller_portal'))
 
 @app.route('/referrals')
 @login_required
@@ -3746,6 +4722,14 @@ def get_service_config(service_id):
                         service.get('client_uuid'),
                         service.get('protocol', 'vless')
                     )
+                    # If Marzban returns None or empty, try to construct it manually if sub_url exists
+                    if not subscription_link and panel.get('subscription_url'):
+                        sub_url = panel.get('subscription_url', '').strip().rstrip('/')
+                        if sub_url and service.get('client_uuid'):
+                            if not sub_url.startswith(('http://', 'https://')):
+                                sub_url = 'https://' + sub_url
+                            subscription_link = f"{sub_url}/sub/{service.get('client_uuid')}"
+
                     if subscription_link:
                         db_instance = get_db()
                         db_instance.update_client_config(service['id'], subscription_link)
@@ -3757,13 +4741,25 @@ def get_service_config(service_id):
             if service.get('sub_id'):
                 sub_url = service.get('subscription_url') or panel.get('subscription_url', '')
                 if sub_url:
+                    sub_url = sub_url.strip()
+                    if not sub_url.startswith(('http://', 'https://')):
+                         # Assume https if missing, unless it's an IP
+                         if not sub_url[0].isdigit():
+                             sub_url = 'https://' + sub_url
+                         else:
+                             sub_url = 'http://' + sub_url
+                    
                     if sub_url.endswith('/sub') or sub_url.endswith('/sub/'):
                         sub_url = sub_url.rstrip('/')
                         subscription_link = f"{sub_url}/{service.get('sub_id')}"
                     elif '/sub' in sub_url:
                         # If sub is in the middle of URL
-                        subscription_link = f"{sub_url}/{service.get('sub_id')}"
+                        if sub_url.endswith('/'):
+                            subscription_link = f"{sub_url}{service.get('sub_id')}"
+                        else:
+                            subscription_link = f"{sub_url}/{service.get('sub_id')}"
                     else:
+                        sub_url = sub_url.rstrip('/')
                         subscription_link = f"{sub_url}/sub/{service.get('sub_id')}"
                     
                     if subscription_link:
@@ -3783,17 +4779,21 @@ def get_service_config(service_id):
                 if config_link.startswith(('vless://', 'vmess://', 'trojan://', 'ss://')):
                     # This is a direct config link, not subscription - construct subscription link
                     if panel.get('subscription_url') and service.get('sub_id'):
-                        sub_url = panel.get('subscription_url', '')
+                        sub_url = panel.get('subscription_url', '').strip()
+                        if not sub_url.startswith(('http://', 'https://')):
+                            sub_url = 'https://' + sub_url
+                            
                         if sub_url.endswith('/sub') or sub_url.endswith('/sub/'):
                             sub_url = sub_url.rstrip('/')
                             subscription_link = f"{sub_url}/{service.get('sub_id')}"
                         elif '/sub' in sub_url:
                             subscription_link = f"{sub_url}/{service.get('sub_id')}"
                         else:
+                            sub_url = sub_url.rstrip('/')
                             subscription_link = f"{sub_url}/sub/{service.get('sub_id')}"
                         if subscription_link:
                             db_instance = get_db()
-                        db_instance.update_client_config(service['id'], subscription_link)
+                            db_instance.update_client_config(service['id'], subscription_link)
     
     if not subscription_link:
         return jsonify({'success': False, 'message': 'No subscription link available'}), 404
@@ -4370,108 +5370,146 @@ def get_stats():
 @login_required
 def tickets():
     """User tickets list page"""
-    user_id = session.get('user_id')
-    db_instance = get_db()
-    user = db_instance.get_user(user_id)
-    
-    if not user:
-        return redirect(url_for('index'))
-    
-    # Get user tickets - returns (list, total) tuple
-    tickets_list, total = db_instance.get_user_tickets(user['id'])
-    
-    # Theme Selection
-    from settings_manager import SettingsManager
-    settings_mgr = SettingsManager()
-    current_theme = settings_mgr.get_theme()
-    
-    template_name = 'tickets.html'
-    if current_theme == 'modern':
-        template_name = 'themes/modern/tickets.html'
-    
-    return render_template(template_name, user=user, tickets=tickets_list, total=total, photo_url=session.get('photo_url', ''))
+    try:
+        logger.info("Accessing tickets route")
+        user_id = session.get('user_id')
+        db_instance = get_db()
+        user = db_instance.get_user(user_id)
+        
+        if not user:
+            logger.warning("User not found in tickets route")
+            return redirect(url_for('index'))
+        
+        # Pagination
+        page = request.args.get('page', 1, type=int)
+        per_page = 10
+        
+        # Get user tickets - returns (list, total) tuple
+        tickets_list, total = db_instance.get_user_tickets(user['id'], page=page, per_page=per_page)
+        logger.info(f"Retrieved {len(tickets_list) if tickets_list else 0} tickets for user {user_id}")
+        
+        # Calculate total pages
+        import math
+        safe_total = total or 0
+        total_pages = math.ceil(safe_total / per_page) if safe_total > 0 else 1
+        
+        # Theme Selection
+        from settings_manager import SettingsManager
+        try:
+            settings_mgr = SettingsManager(db_instance)
+        except:
+            settings_mgr = SettingsManager()
+            
+        current_theme = settings_mgr.get_theme()
+        
+        template_name = 'tickets.html'
+        if current_theme == 'modern':
+            template_name = 'themes/modern/tickets.html'
+        
+        return render_template(template_name, 
+                             user=user, 
+                             tickets=tickets_list, 
+                             total=safe_total, 
+                             current_page=page,
+                             total_pages=total_pages,
+                             photo_url=session.get('photo_url', ''))
+    except Exception as e:
+        logger.error(f"Error in tickets route: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return render_template('500.html'), 500
 
 @app.route('/tickets/new', methods=['GET', 'POST'])
 @login_required
 def new_ticket():
     """Create new ticket page"""
-    user_id = session.get('user_id')
-    db_instance = get_db()
-    user = db_instance.get_user(user_id)
-    
-    if not user:
-        return redirect(url_for('index'))
-    
-    if request.method == 'POST':
-        subject = request.form.get('subject')
-        message = request.form.get('message')
-        priority = request.form.get('priority', 'normal')
+    try:
+        user_id = session.get('user_id')
+        db_instance = get_db()
+        user = db_instance.get_user(user_id)
         
-        if not subject or not message:
-            flash('لطفاً عنوان و متن پیام را وارد کنید', 'error')
-        else:
-            ticket_id = db_instance.create_ticket(user['id'], subject, priority, message)
-            if ticket_id:
-                flash('تیکت با موفقیت ایجاد شد', 'success')
-                return redirect(url_for('ticket_detail', ticket_id=ticket_id))
+        if not user:
+            return redirect(url_for('index'))
+        
+        if request.method == 'POST':
+            subject = request.form.get('subject')
+            message = request.form.get('message')
+            priority = request.form.get('priority', 'normal')
+            
+            if not subject or not message:
+                flash('لطفاً عنوان و متن پیام را وارد کنید', 'error')
             else:
-                flash('خطا در ایجاد تیکت', 'error')
-    
-    # Theme Selection
-    from settings_manager import SettingsManager
-    settings_mgr = SettingsManager()
-    current_theme = settings_mgr.get_theme()
-    
-    template_name = 'new_ticket.html'
-    if current_theme == 'modern':
-        template_name = 'themes/modern/ticket_new.html'
-    
-    return render_template(template_name, user=user, photo_url=session.get('photo_url', ''))
+                ticket_id = db_instance.create_ticket(user['id'], subject, priority, message)
+                if ticket_id:
+                    flash('تیکت با موفقیت ایجاد شد', 'success')
+                    return redirect(url_for('ticket_detail', ticket_id=ticket_id))
+                else:
+                    flash('خطا در ایجاد تیکت', 'error')
+        
+        # Theme Selection
+        from settings_manager import SettingsManager
+        settings_mgr = SettingsManager()
+        current_theme = settings_mgr.get_theme()
+        
+        template_name = 'ticket_new.html'
+        if current_theme == 'modern':
+            template_name = 'themes/modern/ticket_new.html'
+        
+        return render_template(template_name, user=user, photo_url=session.get('photo_url', ''))
+    except Exception as e:
+        logger.error(f"Error in new_ticket route: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return render_template('500.html'), 500
 
 @app.route('/tickets/<int:ticket_id>', methods=['GET', 'POST'])
 @login_required
 def ticket_detail(ticket_id):
     """Ticket detail and reply page"""
-    user_id = session.get('user_id')
-    db_instance = get_db()
-    user = db_instance.get_user(user_id)
-    
-    if not user:
-        return redirect(url_for('index'))
-    
-    ticket = db_instance.get_ticket(ticket_id)
-    
-    # Check ownership
-    if not ticket or ticket['user_id'] != user['id']:
-        return redirect(url_for('tickets'))
-    
-    if request.method == 'POST':
-        message = request.form.get('message')
+    try:
+        user_id = session.get('user_id')
+        db_instance = get_db()
+        user = db_instance.get_user(user_id)
         
-        if not message:
-            flash('متن پیام نمی‌تواند خالی باشد', 'error')
-        else:
-            if ticket['status'] == 'closed':
-                flash('این تیکت بسته شده است', 'error')
+        if not user:
+            return redirect(url_for('index'))
+        
+        ticket = db_instance.get_ticket(ticket_id)
+        
+        # Check ownership
+        if not ticket or ticket['user_id'] != user['id']:
+            return redirect(url_for('tickets'))
+        
+        if request.method == 'POST':
+            message = request.form.get('message')
+            
+            if not message:
+                flash('متن پیام نمی‌تواند خالی باشد', 'error')
             else:
-                if db_instance.add_ticket_reply(ticket_id, user['id'], message, is_admin=False):
-                    flash('پاسخ شما ارسال شد', 'success')
-                    return redirect(url_for('ticket_detail', ticket_id=ticket_id))
+                if ticket['status'] == 'closed':
+                    flash('این تیکت بسته شده است', 'error')
                 else:
-                    flash('خطا در ارسال پاسخ', 'error')
-    
-    replies = db_instance.get_ticket_replies(ticket_id)
-    
-    # Theme Selection
-    from settings_manager import SettingsManager
-    settings_mgr = SettingsManager()
-    current_theme = settings_mgr.get_theme()
-    
-    template_name = 'ticket_detail.html'
-    if current_theme == 'modern':
-        template_name = 'themes/modern/ticket_detail.html'
-    
-    return render_template(template_name, user=user, ticket=ticket, replies=replies, photo_url=session.get('photo_url', ''))
+                    if db_instance.add_ticket_reply(ticket_id, user['id'], message, is_admin=False):
+                        flash('پاسخ شما ارسال شد', 'success')
+                        return redirect(url_for('ticket_detail', ticket_id=ticket_id))
+                    else:
+                        flash('خطا در ارسال پاسخ', 'error')
+        
+        replies = db_instance.get_ticket_replies(ticket_id)
+        
+        # Theme Selection
+        from settings_manager import SettingsManager
+        settings_mgr = SettingsManager()
+        current_theme = settings_mgr.get_theme()
+        
+        template_name = 'ticket_detail.html'
+        if current_theme == 'modern':
+            template_name = 'themes/modern/ticket_detail.html'
+        
+        return render_template(template_name, user=user, ticket=ticket, replies=replies, photo_url=session.get('photo_url', ''))
+    except Exception as e:
+        logger.error(f"Error in ticket_detail route: {e}")
+        return render_template('500.html'), 500
 
 @app.route('/api/tickets/create', methods=['POST'])
 @login_required
@@ -4500,26 +5538,26 @@ def api_create_ticket():
     ticket_id = db_instance.create_ticket(user_db_id, subject, message, priority)
     
     if ticket_id:
-        # Send notification to admin
+        # Send notification via ReportingSystem (Advanced)
         try:
-            from telegram_helper import TelegramHelper
-            bot_config = get_bot_config()
-            admin_id = bot_config.get('admin_id')
-            if admin_id:
-                notification_message = f"""🎫 **تیکت جدید ایجاد شد**
-
-🔢 تیکت: #{ticket_id}
-👤 کاربر: {user.get('first_name', 'Unknown')} {('(@' + user.get('username', '') + ')') if user.get('username') else ''}
-📝 موضوع: {subject}
-⚡ اولویت: {priority}
-
-💬 پیام:
-{message[:300]}{'...' if len(message) > 300 else ''}
-
-برای مشاهده و پاسخ، به پنل مدیریت مراجعه کنید."""
-                TelegramHelper.send_message_sync(admin_id, notification_message)
+            # Prepare user data for report
+            user_data_report = {
+                'id': user.get('id'),
+                'telegram_id': user.get('telegram_id'),
+                'username': user.get('username'),
+                'first_name': user.get('first_name'),
+                'last_name': user.get('last_name')
+            }
+            
+            send_report_sync(
+                "report_ticket_created", 
+                user_data=user_data_report, 
+                ticket_id=ticket_id, 
+                subject=subject, 
+                priority=priority
+            )
         except Exception as e:
-            logger.error(f"Error sending ticket creation notification: {e}")
+            logger.error(f"Error sending ticket creation report: {e}")
         
         return jsonify({'success': True, 'ticket_id': ticket_id, 'message': 'تیکت با موفقیت ایجاد شد'})
     else:
@@ -4554,28 +5592,33 @@ def api_ticket_reply():
     if ticket.get('status') != 'open':
         return jsonify({'success': False, 'message': 'این تیکت بسته شده است'}), 400
     
-        reply_id = db_instance.add_ticket_reply(ticket_id, user_db_id, message, is_admin=False)
+    reply_id = db_instance.add_ticket_reply(ticket_id, user_db_id, message, is_admin=False)
     
     if reply_id:
-        # Send notification to admin
+        # Send notification via ReportingSystem (Advanced)
         try:
-            from telegram_helper import TelegramHelper
-            bot_config = get_bot_config()
-            admin_id = bot_config.get('admin_id')
-            if admin_id:
-                notification_message = f"""📩 **پاسخ جدید به تیکت**
-
-🔢 تیکت: #{ticket_id}
-👤 کاربر: {user.get('first_name', 'Unknown')}
-📝 موضوع: {ticket.get('subject', 'بدون موضوع')}
-
-💬 پاسخ کاربر:
-{message[:200]}{'...' if len(message) > 200 else ''}
-
-برای مشاهده و پاسخ، به پنل مدیریت مراجعه کنید."""
-                TelegramHelper.send_message_sync(admin_id, notification_message)
+            # Prepare user data for report
+            user_data_report = {
+                'id': user.get('id'),
+                'telegram_id': user.get('telegram_id'),
+                'username': user.get('username'),
+                'first_name': user.get('first_name'),
+                'last_name': user.get('last_name')
+            }
+            
+            user_name = user.get('first_name', 'Unknown')
+            if user.get('last_name'):
+                user_name += f" {user.get('last_name')}"
+            
+            send_report_sync(
+                "report_ticket_replied", 
+                user_data=user_data_report, 
+                ticket_id=ticket_id, 
+                ticket_user_name=user_name, 
+                is_admin_reply=False
+            )
         except Exception as e:
-            logger.error(f"Error sending ticket notification: {e}")
+            logger.error(f"Error sending ticket reply report: {e}")
         
         return jsonify({'success': True, 'message': 'پاسخ با موفقیت ارسال شد'})
     else:
@@ -4737,7 +5780,26 @@ def api_admin_activity():
 
 # ==================== ADMIN PANEL ROUTES ====================
 
+
+@app.route('/admin/system-status')
+@app.route('/<bot_name>/admin/system-status')
+@admin_required
+def admin_system_status(bot_name=None):
+    """Admin System Status Page"""
+    if bot_name:
+        session['bot_name'] = bot_name
+        
+    user_id = session.get('user_id')
+    db_instance = get_db()
+    user = db_instance.get_user(user_id)
+    photo_url = session.get('photo_url', '')
+    
+    return render_template('admin/system_status.html', user=user, photo_url=photo_url)
+
+
+
 @app.route('/admin')
+
 @app.route('/<bot_name>/admin')
 @admin_required
 def admin_dashboard(bot_name=None):
@@ -4750,89 +5812,7 @@ def admin_dashboard(bot_name=None):
     db_instance = get_db()
     user = db_instance.get_user(user_id)
     
-    # Get statistics using efficient COUNT queries
-    with db_instance.get_connection() as conn:
-        cursor = conn.cursor(dictionary=True)
-        try:
-            # Count users efficiently
-            cursor.execute('SELECT COUNT(*) as count FROM users')
-            total_users = int(cursor.fetchone()['count'])
-            
-            # Count panels efficiently
-            cursor.execute('SELECT COUNT(*) as count FROM panels')
-            total_panels = cursor.fetchone()['count']
-            
-            cursor.execute('SELECT COUNT(*) as count FROM panels WHERE is_active = 1')
-            active_panels = cursor.fetchone()['count']
-            
-            # Count services efficiently
-            cursor.execute('SELECT COUNT(*) as count FROM clients')
-            result = cursor.fetchone()
-            total_services = int(result['count']) if result else 0
-            
-            # Count inactive services (exhausted or expired within 24 hour grace period)
-            # Inactive services = services that are exhausted or expired and still in grace period (within 24 hours)
-            cursor.execute('''
-                SELECT COUNT(*) as count FROM clients 
-                WHERE (
-                    (exhausted_at IS NOT NULL AND DATE_ADD(exhausted_at, INTERVAL 24 HOUR) > NOW())
-                    OR (expired_at IS NOT NULL AND DATE_ADD(expired_at, INTERVAL 24 HOUR) > NOW())
-                )
-            ''')
-            result = cursor.fetchone()
-            inactive_services = int(result['count']) if result else 0
-            
-            # Active services = Total services - Inactive services
-            # Ensure active_services is never negative
-            active_services = max(0, total_services - inactive_services)
-            
-            # Get online services count - use real-time is_online from monitoring database
-            # Use COALESCE to fallback to cached_is_online if is_online is NULL
-            cursor.execute('''
-                SELECT COUNT(*) as count FROM clients 
-                WHERE COALESCE(cached_is_online, 0) = 1
-            ''')
-            online_services = cursor.fetchone()['count']
-            
-            # Get revenue statistics - check both 'paid' and 'completed' statuses for consistency
-            cursor.execute('''
-                SELECT SUM(amount) as total FROM invoices 
-                WHERE status IN ('paid', 'completed')
-            ''')
-            result = cursor.fetchone()
-            total_revenue = int(result.get('total') or 0) if result else 0
-            
-            # Get monthly revenue
-            cursor.execute('''
-                SELECT SUM(amount) as total FROM invoices 
-                WHERE status IN ('paid', 'completed') 
-                AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-            ''')
-            result = cursor.fetchone()
-            monthly_revenue = int(result.get('total') or 0) if result else 0
-            
-            # Get daily revenue (today)
-            cursor.execute('''
-                SELECT SUM(amount) as total FROM invoices 
-                WHERE status IN ('paid', 'completed') 
-                AND DATE(created_at) = CURDATE()
-            ''')
-            result = cursor.fetchone()
-            daily_revenue = int(result.get('total') or 0) if result else 0
-        finally:
-            cursor.close()
-    
-    stats = {
-        'total_users': total_users,
-        'total_panels': total_panels,
-        'active_panels': active_panels,
-        'total_services': total_services,
-        'active_services': active_services,
-        'online_services': online_services,
-        'total_revenue': total_revenue,
-        'monthly_revenue': monthly_revenue,
-        'daily_revenue': daily_revenue
-    }
+    stats = db_instance.get_system_stats()
     
     photo_url = session.get('photo_url', '')
     
@@ -4989,9 +5969,11 @@ def admin_user_detail(user_id):
     if not user:
         return redirect(url_for('admin_users'))
     
-    # Ensure is_banned is set (default to 0 if not exists)
+    # Ensure required fields are set with defaults
     if 'is_banned' not in user:
         user['is_banned'] = 0
+    if 'balance' not in user:
+        user['balance'] = 0
     
     # Check if user has photo
     try:
@@ -5069,8 +6051,13 @@ def admin_products_panel(panel_id):
     # Exclude current panel from the list
     source_panels = [p for p in all_panels if p['id'] != panel_id]
     
+    # Get inbounds for the current panel to allow selection in product modal
+    from admin_manager import AdminManager
+    admin_mgr = AdminManager(db_instance)
+    inbounds = admin_mgr.get_panel_inbounds(panel_id)
+    
     photo_url = session.get('photo_url', '')
-    return render_template('admin/products_panel.html', user=user, panel=panel, categories=categories, products=products, source_panels=source_panels, photo_url=photo_url)
+    return render_template('admin/products_panel.html', user=user, panel=panel, categories=categories, products=products, source_panels=source_panels, inbounds=inbounds, photo_url=photo_url)
 
 @app.route('/admin/users')
 @admin_required
@@ -5088,15 +6075,6 @@ def admin_users():
     photo_url = session.get('photo_url', '')
     return render_template('admin/users.html', user=user, users=users, photo_url=photo_url, 
                          page=page, total_pages=total_pages, total=total, search=search)
-
-@app.route('/admin/broadcast')
-@admin_required
-def admin_broadcast():
-    """Admin broadcast page"""
-    user_id = session.get('user_id')
-    user = db.get_user(user_id)
-    photo_url = session.get('photo_url', '')
-    return render_template('admin/broadcast.html', user=user, photo_url=photo_url)
 
 @app.route('/admin/discounts')
 @admin_required
@@ -5394,21 +6372,35 @@ def api_approve_receipt(invoice_id):
     """Approve receipt and process payment"""
     try:
         db_instance = get_db()
+        success, message = _approve_invoice_logic(db_instance, invoice_id)
+        
+        if success:
+            return jsonify({'success': True, 'message': message})
+        else:
+            return jsonify({'success': False, 'message': message}), 400
+            
+    except Exception as e:
+        logger.error(f"Error approving receipt: {e}")
+        return secure_error_response(e)
+
+def _approve_invoice_logic(db_instance, invoice_id):
+    """Helper function to approve invoice and process service creation"""
+    try:
         invoice = db_instance.get_invoice(invoice_id)
         
         if not invoice:
-            return jsonify({'success': False, 'message': 'فاکتور یافت نشد'}), 404
+            return False, 'فاکتور یافت نشد'
         
         # Check if already approved or rejected
         receipt_status = invoice.get('receipt_status')
         if receipt_status == 'approved':
-            return jsonify({'success': False, 'message': 'این رسید قبلاً تایید شده است'}), 400
+            return False, 'این رسید قبلاً تایید شده است'
         
         if receipt_status == 'rejected':
-            return jsonify({'success': False, 'message': 'این رسید قبلاً رد شده است و امکان تغییر وجود ندارد'}), 400
+            return False, 'این رسید قبلاً رد شده است و امکان تغییر وجود ندارد'
         
         if invoice.get('status') in ['paid', 'completed']:
-            return jsonify({'success': False, 'message': 'این فاکتور قبلاً پرداخت شده است'}), 400
+            return False, 'این فاکتور قبلاً پرداخت شده است'
         
         # Update invoice status (only if not already approved/rejected)
         with db_instance.get_connection() as conn:
@@ -5419,14 +6411,14 @@ def api_approve_receipt(invoice_id):
                 WHERE id = %s AND receipt_status != 'approved' AND receipt_status != 'rejected'
             ''', (invoice_id,))
             if cursor.rowcount == 0:
-                return jsonify({'success': False, 'message': 'این رسید قبلاً تایید یا رد شده است'}), 400
+                return False, 'این رسید قبلاً تایید یا رد شده است'
             conn.commit()
             cursor.close()
         
         # Process payment (add balance or create service)
         user = db_instance.get_user_by_id(invoice['user_id'])
         if not user:
-            return jsonify({'success': False, 'message': 'کاربر یافت نشد'}), 404
+            return False, 'کاربر یافت نشد'
         
         # Add balance to user
         db_instance.update_user_balance(
@@ -5436,28 +6428,162 @@ def api_approve_receipt(invoice_id):
             f'تایید پرداخت فاکتور #{invoice_id}'
         )
         
-        # Send notification to user
-        try:
-            from telegram_helper import TelegramHelper
-            notification_message = f"""✅ **پرداخت شما تایید شد**
-
-💰 مبلغ: {invoice['amount']:,} تومان
-🔢 شماره فاکتور: #{invoice_id}
-
-💵 موجودی شما به مبلغ {invoice['amount']:,} تومان افزایش یافت.
-
-🎉 می‌توانید از این موجودی برای خرید سرویس استفاده کنید."""
-            
-            TelegramHelper.send_message_sync(user['telegram_id'], notification_message)
-        except Exception as e:
-            logger.error(f"Error sending approval notification: {e}")
+        # Check if this was a service purchase and create service automatically
+        purchase_type = invoice.get('purchase_type', 'balance')
         
-        return jsonify({'success': True, 'message': 'رسید تایید شد و موجودی کاربر افزایش یافت'})
+        if purchase_type in ['gigabyte', 'plan']:
+            try:
+                from admin_manager import AdminManager
+                from username_formatter import UsernameFormatter
+                from datetime import datetime, timedelta
+                
+                admin_manager = AdminManager(db_instance)
+                
+                # Get parameters from invoice
+                panel_id = invoice['panel_id']
+                volume_gb = float(invoice.get('gb_amount', 0))
+                expire_days = invoice.get('duration_days', 0)
+                product_id = invoice.get('product_id')
+                
+                # Get panel
+                panel = db_instance.get_panel(panel_id)
+                if panel and panel.get('is_active'):
+                    # Generate client name
+                    client_name = UsernameFormatter.format_client_name(user['telegram_id'])
+                    
+                    # Calculate expiration
+                    expires_at = None
+                    if expire_days > 0:
+                        expires_at = datetime.now() + timedelta(days=expire_days)
+                    
+                    # Get product details if available
+                    product_inbound_id = 0
+                    if product_id:
+                        product = db_instance.get_product(product_id)
+                        if product:
+                            product_inbound_id = product.get('inbound_id', 0)
+
+                    # Create client on panel
+                    logger.info(f"Auto-creating service for invoice {invoice_id}: user={user['telegram_id']}, panel={panel_id}, inbound={product_inbound_id}")
+                    
+                    success, message, client_data = admin_manager.create_client_on_all_panel_inbounds(
+                        panel_id=panel_id,
+                        client_name=client_name,
+                        expire_days=expire_days,
+                        total_gb=volume_gb,
+                        inbound_id=product_inbound_id
+                    )
+                    
+                    if success and client_data:
+                        # Get inbounds to find the correct inbound_id
+                        inbounds = admin_manager.get_panel_inbounds(panel_id)
+                        inbound_id = client_data.get('inbound_id')
+                        if not inbound_id and inbounds:
+                            inbound_id = inbounds[0]['id']
+                            
+                        # Save client to database
+                        client_id = db_instance.add_client(
+                            user_id=user['id'],
+                            panel_id=panel_id,
+                            client_name=client_name,
+                            client_uuid=client_data.get('id', ''),
+                            inbound_id=inbound_id,
+                            protocol=client_data.get('protocol', 'vless'),
+                            expire_days=expire_days,
+                            total_gb=volume_gb,
+                            expires_at=expires_at.isoformat() if expires_at else None,
+                            product_id=product_id if purchase_type == 'plan' else None,
+                            sub_id=client_data.get('sub_id'),
+                            invoice_id=invoice_id,
+                            config_link=client_data.get('config_link')
+                        )
+                        
+                        if client_id > 0:
+                            # Deduct balance for the service purchase
+                            description = f'خرید سرویس {volume_gb}GB'
+                            if purchase_type == 'plan' and product_id:
+                                product = db_instance.get_product(product_id)
+                                if product:
+                                    description = f"خرید اشتراک پلنی: {product.get('name')}"
+                            
+                            db_instance.update_user_balance(
+                                user['telegram_id'],
+                                -invoice['amount'],
+                                'service_purchase',
+                                description
+                            )
+                            
+                            # Report service purchase
+                            try:
+                                import asyncio
+                                from reporting_system import ReportingSystem
+                                from telegram import Bot
+                                bot_config = get_bot_config()
+                                telegram_bot = Bot(token=bot_config['token'])
+                                reporting_system = ReportingSystem(telegram_bot, bot_config=bot_config)
+                                
+                                service_data = {
+                                    'service_name': client_name,
+                                    'data_amount': volume_gb,
+                                    'amount': invoice['amount'],
+                                    'panel_name': panel.get('name', 'نامشخص'),
+                                    'duration_days': expire_days,
+                                    'product_name': product.get('name') if product_id and 'product' in locals() and product else None,
+                                    'purchase_type': purchase_type,
+                                    'payment_method': 'card'
+                                }
+                                
+                                # Run sync wrapper
+                                send_report_sync(
+                                    "report_service_purchased",
+                                    user=user,
+                                    service_data=service_data
+                                )
+                            except Exception as e:
+                                logger.error(f"Failed to report service purchase: {e}")
+                                
+                            # Send success message to user
+                            try:
+                                from telegram_helper import TelegramHelper
+                                
+                                # Get links
+                                subscription_link = client_data.get('subscription_link') or client_data.get('subscription_url', '')
+                                config_link = client_data.get('config_link') or client_data.get('config_url', '')
+                                
+                                links_msg = ""
+                                if subscription_link:
+                                    links_msg += f"\n🔗 لینک سابسکریپشن:\n`{subscription_link}`\n"
+                                
+                                if config_link and config_link != subscription_link:
+                                     if config_link.startswith(('vless://', 'vmess://', 'trojan://', 'ss://')):
+                                        links_msg += f"\n🔑 کانفیگ مستقیم:\n`{config_link}`\n"
+
+                                success_msg = f"""
+✅ *پرداخت تایید و سرویس شما ایجاد شد!*
+
+🎉 *جزئیات سرویس:*
+🔧 نام سرویس: `{client_name}`
+🔗 پنل: {panel.get('name', 'نامشخص')}
+📊 حجم: {volume_gb} گیگابایت
+💰 مبلغ: {invoice['amount']:,} تومان
+⏰ مدت: {expire_days} روز
+
+{links_msg}
+🚀 *از سرویس خود لذت ببرید!*
+"""
+                                TelegramHelper.send_message_sync(user['telegram_id'], success_msg)
+                            except Exception as e:
+                                logger.error(f"Failed to send user success message: {e}")
+                                
+            except Exception as e:
+                logger.error(f"Error auto-creating service: {e}")
+                # We don't fail the approval if service creation fails, but we should probably alert admin
+                return True, f'رسید تایید شد اما در ایجاد سرویس خطایی رخ داد: {str(e)}'
+
+        return True, 'رسید با موفقیت تایید شد'
     except Exception as e:
-        logger.error(f"Error approving receipt: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return secure_error_response(e)
+        logger.error(f"Error in _approve_invoice_logic: {e}")
+        return False, f'خطای سیستمی: {str(e)}'
 
 @app.route('/api/admin/transactions/<int:invoice_id>/receipt/reject', methods=['POST'])
 @admin_required
@@ -5598,20 +6724,24 @@ def api_admin_settings_backup():
         if request.method == 'GET':
             enabled = settings_mgr.get_setting('auto_backup_enabled', False)
             frequency = settings_mgr.get_setting('auto_backup_frequency', 24)
+            topic_id = settings_mgr.get_setting('backup_topic_id', 0)
             return jsonify({
                 'success': True,
                 'enabled': enabled,
-                'frequency': frequency
+                'frequency': frequency,
+                'topic_id': topic_id
             })
 
         # POST request
         data = request.get_json()
         enabled = data.get('enabled', False)
         frequency = data.get('frequency', 24)
+        topic_id = data.get('topic_id', 0)
         
         # Update settings
         settings_mgr.set_setting('auto_backup_enabled', enabled, description="Auto Backup Enabled", updated_by=session.get('user_id'))
         settings_mgr.set_setting('auto_backup_frequency', frequency, description="Auto Backup Frequency (Hours)", updated_by=session.get('user_id'))
+        settings_mgr.set_setting('backup_topic_id', topic_id, description="Backup Topic ID", updated_by=session.get('user_id'))
         
         # Trigger immediate backup if enabled
         if enabled:
@@ -5633,14 +6763,17 @@ def api_admin_settings_backup():
                     # Run async backup in new event loop
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
-                    loop.run_until_complete(backup_mgr.create_and_send_backup())
+                    result = loop.run_until_complete(backup_mgr.create_and_send_backup())
                     loop.close()
                     
-                    # Update last backup time
-                    # We need to re-instantiate settings manager with thread_db
-                    thread_settings_mgr = SettingsManager(thread_db)
-                    thread_settings_mgr.set_setting('last_auto_backup_time', datetime.now().isoformat(), description="Last Auto Backup Time", updated_by=0)
-                    logger.info("✅ Immediate backup triggered successfully")
+                    if result:
+                        # Update last backup time
+                        # We need to re-instantiate settings manager with thread_db
+                        thread_settings_mgr = SettingsManager(thread_db)
+                        thread_settings_mgr.set_setting('last_auto_backup_time', datetime.now().isoformat(), description="Last Auto Backup Time", updated_by=0)
+                        logger.info("✅ Immediate backup triggered successfully")
+                    else:
+                        logger.error("❌ Immediate backup failed (check logs for details)")
                 except Exception as e:
                     logger.error(f"❌ Error in immediate backup trigger: {e}")
                     import traceback
@@ -5668,13 +6801,70 @@ def admin_settings():
     from webapp_helper import get_webapp_url
     webapp_url = os.getenv('BOT_WEBAPP_URL') or get_webapp_url()
     
+    # Get settings
+    from settings_manager import SettingsManager
+    settings_mgr = SettingsManager(db_instance)
+    auto_approve_receipts = settings_mgr.get_setting('auto_approve_receipts', False)
+    
     photo_url = session.get('photo_url', '')
     return render_template('admin/settings.html', 
                          user=user, 
                          bot_username=BOT_CONFIG.get('bot_username', ''),
                          admin_id=BOT_CONFIG.get('admin_id', ''),
                          webapp_url=webapp_url,
+                         auto_approve_receipts=auto_approve_receipts,
                          photo_url=photo_url)
+
+@app.route('/api/admin/settings/update', methods=['POST'])
+@admin_required
+def api_update_setting():
+    """Update a system setting"""
+    try:
+        data = request.json
+        key = data.get('key')
+        value = data.get('value')
+        
+        if not key:
+            return jsonify({'success': False, 'message': 'Setting key is required'}), 400
+            
+        db_instance = get_db()
+        
+        # Check if setting exists to determine update or insert
+        with db_instance.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1 FROM settings WHERE setting_key = %s", (key,))
+            exists = cursor.fetchone()
+            
+            # Determine type
+            value_type = 'string'
+            if isinstance(value, bool):
+                value_type = 'bool'
+                value = 'true' if value else 'false'
+            elif isinstance(value, int):
+                value_type = 'int'
+                value = str(value)
+            elif isinstance(value, float):
+                value_type = 'float'
+                value = str(value)
+            elif isinstance(value, (dict, list)):
+                value_type = 'json'
+                import json
+                value = json.dumps(value)
+            else:
+                value = str(value)
+                
+            if exists:
+                cursor.execute("UPDATE settings SET setting_value = %s, setting_type = %s, updated_at = CURRENT_TIMESTAMP WHERE setting_key = %s", (value, value_type, key))
+            else:
+                cursor.execute("INSERT INTO settings (setting_key, setting_value, setting_type) VALUES (%s, %s, %s)", (key, value, value_type))
+            
+            conn.commit()
+            
+        return jsonify({'success': True, 'message': 'Setting updated successfully'})
+        
+    except Exception as e:
+        logger.error(f"Error updating setting: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 # ==================== ADMIN TEXT MANAGEMENT ROUTES ====================
 
@@ -6349,6 +7539,64 @@ def api_admin_stats():
         logger.error(f"Error getting admin stats: {e}")
         return secure_error_response(e)
 
+@app.route('/api/admin/system-stats')
+@admin_required
+def api_admin_system_stats():
+    """Get real-time system statistics"""
+    try:
+        from system_monitor import SystemMonitor
+        
+        # Get base stats
+        stats = SystemMonitor.get_system_stats() or {}
+        
+        # Add Database Stats
+        db_status = 'disconnected'
+        active_connections = 0
+        try:
+            db_instance = get_db()
+            with db_instance.get_connection() as conn:
+                if conn.is_connected():
+                    db_status = 'connected'
+                    # Count active connections
+                    cursor = conn.cursor(dictionary=True)
+                    cursor.execute("SHOW STATUS WHERE `variable_name` = 'Threads_connected'")
+                    res = cursor.fetchone()
+                    if res:
+                        active_connections = int(res['Value'])
+                    cursor.close()
+        except Exception as e:
+            logger.error(f"Error checking DB status: {e}")
+            
+        stats['database'] = {
+            'status': db_status,
+            'active_connections': active_connections
+        }
+        
+        # Add Panels Stats
+        panels_data = []
+        try:
+            db_instance = get_db()
+            panels = db_instance.get_panels(active_only=True)
+            for panel in panels:
+                # Basic info
+                panels_data.append({
+                    'name': panel['name'],
+                    'type': panel.get('panel_type', '3x-ui'),
+                    'host': panel.get('url', '').replace('https://', '').replace('http://', '').split(':')[0],
+                    'is_online': True, # Assume online if active for now
+                    'ping': 0
+                })
+        except Exception as e:
+            logger.error(f"Error getting panels stats: {e}")
+            
+        stats['panels'] = panels_data
+        
+        return jsonify({'success': True, 'stats': stats})
+        
+    except Exception as e:
+        logger.error(f"Error getting system stats: {e}")
+        return secure_error_response(e)
+
 @app.route('/api/admin/panels', methods=['GET'])
 @admin_required
 def api_admin_panels():
@@ -7005,6 +8253,59 @@ def api_admin_delete_service(service_id):
         admin_mgr = AdminManager(db_instance)
         panel_mgr = admin_mgr.get_panel_manager(service['panel_id'])
         
+        # Check if refund is needed (for resellers)
+        refund_processed = False
+        refund_message = ""
+        
+        # Check if user is a reseller
+        from reseller_panel.models import ResellerManager
+        reseller_manager = ResellerManager(db_instance)
+        reseller_profile = reseller_manager.get_reseller_by_user_id(service['user_id'])
+        
+        if reseller_profile and reseller_profile.get('status') == 'active':
+            # Check if within refund window (24h)
+            from datetime import datetime, timedelta
+            now = datetime.now()
+            created_at = service.get('created_at')
+            if isinstance(created_at, str):
+                try:
+                    created_at = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                except Exception:
+                    created_at = None
+            
+            # Check invoice
+            invoice_id = service.get('invoice_id')
+            invoice = None
+            if invoice_id:
+                invoice = db_instance.get_invoice(invoice_id)
+            
+            # Perform refund if eligible
+            if created_at and (now - created_at) <= timedelta(days=1) and invoice and str(invoice.get('status', '')).lower() not in ['refunded', 'cancelled']:
+                amount = int(invoice.get('amount') or 0)
+                if amount > 0:
+                    # Add balance
+                    if db_instance.add_balance(service['user_id'], amount, 'refund', description=f"بازگشت وجه حذف سرویس #{service_id} توسط ادمین (فاکتور #{invoice_id})"):
+                        # Update invoice status
+                        try:
+                            db_instance.update_invoice_status(invoice_id, 'refunded')
+                            refund_processed = True
+                            refund_message = f" و مبلغ {amount:,} تومان به کیف پول کاربر برگشت داده شد"
+                            
+                            # Send notification
+                            try:
+                                from telegram_helper import TelegramHelper
+                                user = db_instance.get_user_by_id(service['user_id'])
+                                if user:
+                                    msg = f"""♻️ **حذف سرویس و برگشت وجه**
+
+سرویس {service.get('client_name', '')} توسط مدیریت حذف شد.
+مبلغ {amount:,} تومان به کیف پول شما بازگشت داده شد."""
+                                    TelegramHelper.send_message_sync(user['telegram_id'], msg)
+                            except Exception:
+                                pass
+                        except Exception as e:
+                            logger.error(f"Error updating invoice status during admin delete: {e}")
+
         # Try to delete from panel first (use client_name for Rebecca)
         panel_deleted = False
         client_identifier = service.get('client_name') or service['client_uuid']
@@ -7016,7 +8317,7 @@ def api_admin_delete_service(service_id):
         
         # Delete from DB regardless of panel result (force delete)
         if db_instance.delete_client(service_id):
-            msg = 'سرویس با موفقیت حذف شد'
+            msg = 'سرویس با موفقیت حذف شد' + refund_message
             if not panel_deleted:
                 msg += ' (اما حذف از پنل با خطا مواجه شد)'
             return jsonify({'success': True, 'message': msg})
@@ -7168,7 +8469,9 @@ def api_admin_send_message(user_id):
 
 💬 در صورت نیاز به پاسخ، با پشتیبانی تماس بگیرید."""
             
-            TelegramHelper.send_message_sync(user['telegram_id'], notification_message)
+            result = TelegramHelper.send_message_sync(user['telegram_id'], notification_message)
+            if not result:
+                raise Exception("ارسال پیام در تلگرام ناموفق بود")
         except Exception as e:
             logger.error(f"Error sending message to user {user['telegram_id']}: {e}")
             return jsonify({'success': False, 'message': f'خطا در ارسال پیام: {str(e)}'}), 500
@@ -7176,6 +8479,41 @@ def api_admin_send_message(user_id):
         return jsonify({'success': True, 'message': 'پیام با موفقیت ارسال شد'})
     except Exception as e:
         logger.error(f"Error sending message: {e}")
+        return secure_error_response(e)
+
+@app.route('/api/admin/users/<int:user_id>/login', methods=['POST'])
+@admin_required
+def api_admin_login_as_user(user_id):
+    """Login as specific user (Masquerade)"""
+    try:
+        db_instance = get_db()
+        user = db_instance.get_user_by_id(user_id)
+        
+        if not user:
+            return jsonify({'success': False, 'message': 'کاربر یافت نشد'}), 404
+            
+        # Store original admin session if not already stored
+        if 'original_admin_id' not in session:
+            session['original_admin_id'] = session.get('user_id')
+            
+        # Set user session
+        # Note: session['user_id'] stores telegram_id
+        session['user_id'] = user['telegram_id']
+        session['is_masquerading'] = True
+        
+        # Log the action
+        logger.warning(f"Admin {session.get('original_admin_id')} logged in as user {user['telegram_id']}")
+        
+        redirect_path = bot_url_for('dashboard')
+        redirect_url = request.host_url.rstrip('/') + redirect_path
+        
+        return jsonify({
+            'success': True, 
+            'redirect_url': redirect_url
+        })
+        
+    except Exception as e:
+        logger.error(f"Error logging in as user: {e}")
         return secure_error_response(e)
 
 @app.route('/api/admin/users/gift-all', methods=['POST'])
@@ -7238,167 +8576,119 @@ def api_admin_gift_all_users():
         logger.error(f"Error gifting all users: {e}")
         return secure_error_response(e)
 
-@app.route('/api/admin/broadcast/count', methods=['POST'])
+@app.route('/api/admin/products/categories', methods=['POST'])
 @admin_required
-def api_admin_broadcast_count():
-    """Get user count for broadcast filter"""
+def api_admin_create_category_simple():
+    """Create a new category (Simple Route)"""
     try:
         data = request.json
-        user_filter = data.get('filter', 'all')
+        panel_id = data.get('panel_id')
+        name = data.get('name')
         
+        if not panel_id or not name:
+            return jsonify({'success': False, 'message': 'اطلاعات ناقص است'}), 400
+            
         db_instance = get_db()
-        count = 0
+        category_id = db_instance.add_category(panel_id, name)
         
-        if user_filter == 'all':
-            # All users (excluding banned)
-            all_users = db_instance.get_all_users()
-            count = len([u for u in all_users if u.get('is_banned', 0) == 0])
-        elif user_filter == 'active':
-            # Users with active services
-            with db_instance.get_connection() as conn:
-                cursor = conn.cursor(dictionary=True)
-                cursor.execute('''
-                    SELECT DISTINCT u.telegram_id 
-                    FROM users u
-                    INNER JOIN clients c ON u.telegram_id = c.user_id
-                    WHERE c.is_active = 1 
-                    AND c.expires_at > NOW()
-                    AND u.is_banned = 0
-                ''')
-                count = len(cursor.fetchall())
-                cursor.close()
-        elif user_filter == 'inactive':
-            # Users with expired services or no active services
-            with db_instance.get_connection() as conn:
-                cursor = conn.cursor(dictionary=True)
-                cursor.execute('''
-                    SELECT DISTINCT u.telegram_id 
-                    FROM users u
-                    LEFT JOIN clients c ON u.telegram_id = c.user_id AND c.is_active = 1 AND c.expires_at > NOW()
-                    WHERE c.id IS NULL
-                    AND u.is_banned = 0
-                ''')
-                count = len(cursor.fetchall())
-                cursor.close()
-        elif user_filter == 'no_purchase':
-            # Users with no purchases (no invoices)
-            with db_instance.get_connection() as conn:
-                cursor = conn.cursor(dictionary=True)
-                cursor.execute('''
-                    SELECT DISTINCT u.telegram_id 
-                    FROM users u
-                    LEFT JOIN invoices i ON u.telegram_id = i.user_id AND i.status IN ('paid', 'completed')
-                    WHERE i.id IS NULL
-                    AND u.is_banned = 0
-                ''')
-                count = len(cursor.fetchall())
-                cursor.close()
-        
-        return jsonify({'success': True, 'count': count})
+        if category_id:
+            return jsonify({'success': True, 'message': 'دسته‌بندی با موفقیت ایجاد شد', 'category_id': category_id})
+        else:
+            return jsonify({'success': False, 'message': 'خطا در ایجاد دسته‌بندی'}), 500
+            
     except Exception as e:
-        logger.error(f"Error getting broadcast count: {e}")
+        logger.error(f"Error creating category: {e}")
         return secure_error_response(e)
 
-@app.route('/api/admin/broadcast', methods=['POST'])
+@app.route('/api/admin/products/categories/<int:category_id>', methods=['PUT', 'DELETE'])
 @admin_required
-def api_admin_broadcast():
-    """Broadcast message to users with professional filter implementation"""
+def api_admin_manage_category_simple(category_id):
+    """Update or delete category (Simple Route)"""
+    try:
+        db_instance = get_db()
+        
+        if request.method == 'DELETE':
+            if db_instance.delete_category(category_id):
+                return jsonify({'success': True, 'message': 'دسته‌بندی حذف شد'})
+            else:
+                return jsonify({'success': False, 'message': 'خطا در حذف دسته‌بندی'}), 500
+                
+        elif request.method == 'PUT':
+            data = request.json
+            name = data.get('name')
+            is_active = data.get('is_active')
+            
+            updates = {}
+            if name: updates['name'] = name
+            if is_active is not None: updates['is_active'] = is_active
+            
+            if db_instance.update_category(category_id, **updates):
+                return jsonify({'success': True, 'message': 'دسته‌بندی ویرایش شد'})
+            else:
+                return jsonify({'success': False, 'message': 'خطا در ویرایش دسته‌بندی'}), 500
+                
+    except Exception as e:
+        logger.error(f"Error managing category: {e}")
+        return secure_error_response(e)
+
+@app.route('/api/admin/products', methods=['POST'])
+@admin_required
+def api_admin_create_product_simple():
+    """Create product (Simple Route)"""
     try:
         data = request.json
-        message = data.get('message', '')
-        user_filter = data.get('filter', 'all')
-        broadcast_type = data.get('type', 'message')
-        
-        if not message and broadcast_type == 'message':
-            return jsonify({'success': False, 'message': 'پیام نمی‌تواند خالی باشد'}), 400
-        
+        panel_id = data.get('panel_id')
+        if not panel_id:
+             return jsonify({'success': False, 'message': 'شناسه پنل الزامی است'}), 400
+             
         db_instance = get_db()
-        user_ids = []
+        product_id = db_instance.add_product(
+            panel_id=panel_id,
+            name=data.get('name'),
+            volume_gb=data.get('volume_gb'),
+            duration_days=data.get('duration_days'),
+            price=data.get('price'),
+            category_id=data.get('category_id'),
+            is_visible_to_users=data.get('is_visible_to_users', True),
+            is_visible_to_resellers=data.get('is_visible_to_resellers', True)
+        )
         
-        # Get users based on filter
-        if user_filter == 'all':
-            # All users (excluding banned)
-            all_users = db_instance.get_all_users()
-            user_ids = [u['telegram_id'] for u in all_users if u.get('is_banned', 0) == 0]
-        elif user_filter == 'active':
-            # Users with active services
-            with db_instance.get_connection() as conn:
-                cursor = conn.cursor(dictionary=True)
-                cursor.execute('''
-                    SELECT DISTINCT u.telegram_id 
-                    FROM users u
-                    INNER JOIN clients c ON u.telegram_id = c.user_id
-                    WHERE c.is_active = 1 
-                    AND c.expires_at > NOW()
-                    AND u.is_banned = 0
-                ''')
-                user_ids = [row['telegram_id'] for row in cursor.fetchall()]
-                cursor.close()
-        elif user_filter == 'inactive':
-            # Users with expired services or no active services
-            with db_instance.get_connection() as conn:
-                cursor = conn.cursor(dictionary=True)
-                cursor.execute('''
-                    SELECT DISTINCT u.telegram_id 
-                    FROM users u
-                    LEFT JOIN clients c ON u.telegram_id = c.user_id AND c.is_active = 1 AND c.expires_at > NOW()
-                    WHERE c.id IS NULL
-                    AND u.is_banned = 0
-                ''')
-                user_ids = [row['telegram_id'] for row in cursor.fetchall()]
-                cursor.close()
-        elif user_filter == 'no_purchase':
-            # Users with no purchases (no invoices)
-            with db_instance.get_connection() as conn:
-                cursor = conn.cursor(dictionary=True)
-                cursor.execute('''
-                    SELECT DISTINCT u.telegram_id 
-                    FROM users u
-                    LEFT JOIN invoices i ON u.telegram_id = i.user_id AND i.status IN ('paid', 'completed')
-                    WHERE i.id IS NULL
-                    AND u.is_banned = 0
-                ''')
-                user_ids = [row['telegram_id'] for row in cursor.fetchall()]
-                cursor.close()
-        
-        if not user_ids:
-            return jsonify({'success': False, 'message': 'هیچ کاربری با فیلتر انتخابی یافت نشد'}), 400
-        
-        # Send broadcast via Telegram bot
-        from telegram_helper import TelegramHelper
-        
-        success_count = 0
-        failed_count = 0
-        
-        for user_id in user_ids:
-            try:
-                if broadcast_type == 'message':
-                    TelegramHelper.send_message_sync(user_id, message)
-                else:
-                    # Forward message - would need message_id and chat_id
-                    pass
-                success_count += 1
-            except Exception as e:
-                logger.error(f"Error broadcasting to user {user_id}: {e}")
-                failed_count += 1
-        
-        filter_names = {
-            'all': 'همه کاربران',
-            'active': 'کاربران فعال',
-            'inactive': 'کاربران غیرفعال',
-            'no_purchase': 'بدون خرید'
-        }
-        
-        return jsonify({
-            'success': True,
-            'message': f'پیام به {success_count} کاربر ({filter_names.get(user_filter, user_filter)}) ارسال شد',
-            'success_count': success_count,
-            'failed_count': failed_count
-        })
+        if product_id:
+            return jsonify({'success': True, 'message': 'محصول با موفقیت ایجاد شد', 'product_id': product_id})
+        else:
+            return jsonify({'success': False, 'message': 'خطا در ایجاد محصول'}), 500
     except Exception as e:
-        logger.error(f"Error broadcasting: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
+        logger.error(f"Error creating product: {e}")
+        return secure_error_response(e)
+
+@app.route('/api/admin/products/<int:product_id>', methods=['PUT', 'DELETE', 'GET'])
+@admin_required
+def api_admin_manage_product_simple(product_id):
+    """Manage product (Simple Route)"""
+    try:
+        db_instance = get_db()
+        
+        if request.method == 'DELETE':
+            if db_instance.delete_product(product_id):
+                return jsonify({'success': True, 'message': 'محصول حذف شد'})
+            else:
+                return jsonify({'success': False, 'message': 'خطا در حذف محصول'}), 500
+        
+        elif request.method == 'GET':
+            product = db_instance.get_product(product_id)
+            if product:
+                return jsonify({'success': True, 'product': product})
+            else:
+                return jsonify({'success': False, 'message': 'محصول یافت نشد'}), 404
+                
+        elif request.method == 'PUT':
+            data = request.json
+            if db_instance.update_product(product_id, **data):
+                return jsonify({'success': True, 'message': 'محصول ویرایش شد'})
+            else:
+                return jsonify({'success': False, 'message': 'خطا در ویرایش محصول'}), 500
+    except Exception as e:
+        logger.error(f"Error managing product: {e}")
         return secure_error_response(e)
 
 @app.route('/api/admin/discounts', methods=['POST'])
@@ -7644,7 +8934,11 @@ def api_admin_add_product(panel_id):
             volume_gb=data.get('volume_gb', 0),
             duration_days=data.get('duration_days', 0),
             price=data.get('price', 0),
-            category_id=data.get('category_id')
+            category_id=data.get('category_id'),
+            inbound_id=data.get('inbound_id'),
+            user_limit=data.get('user_limit', 1),
+            is_visible_to_users=data.get('is_visible_to_users', True),
+            is_visible_to_resellers=data.get('is_visible_to_resellers', True)
         )
         
         if product_id:
@@ -7681,7 +8975,11 @@ def api_admin_update_product(product_id):
             volume_gb=data.get('volume_gb'),
             duration_days=data.get('duration_days'),
             price=data.get('price'),
-            is_active=data.get('is_active')
+            is_active=data.get('is_active'),
+            inbound_id=data.get('inbound_id'),
+            user_limit=data.get('user_limit'),
+            is_visible_to_users=data.get('is_visible_to_users'),
+            is_visible_to_resellers=data.get('is_visible_to_resellers')
         )
         
         if success:
@@ -7930,6 +9228,16 @@ def api_payment_upload_receipt():
             conn.commit()
             cursor.close()
         
+        # Auto-approve receipts if enabled
+        from settings_manager import SettingsManager
+        settings_mgr = SettingsManager(db_manager=db)
+        auto_approve_enabled = settings_mgr.get_setting('auto_approve_receipts', False)
+        auto_approved = False
+        if auto_approve_enabled:
+            auto_success, _ = _approve_invoice_logic(db, int(invoice_id))
+            if auto_success:
+                auto_approved = True
+        
         # Send to Telegram Receipts Channel (if configured) or notify admin
         from telegram import Bot, InputFile
         bot_config = get_bot_config()
@@ -7957,23 +9265,37 @@ def api_payment_upload_receipt():
                 if not invoice_data:
                     return jsonify({'success': False, 'message': 'فاکتور یافت نشد'}), 404
                 
-                caption = f"""🧾 **رسید پرداخت جدید**
+                auto_tag = "\n🏷️ رسیدهای خودکار\n✅ تایید خودکار انجام شد." if auto_approved else ""
+                instruction_line = "در صورت جعلی بودن از دکمه زیر استفاده کنید." if auto_approved else "جهت تایید یا رد پرداخت از دکمه‌های زیر استفاده کنید."
+                caption = f"""🧾 **رسید پرداخت جدید**{auto_tag}
 
 👤 **کاربر:** {user.get('first_name', 'Unknown')} (ID: {user_id})
 💰 **مبلغ:** {invoice_data['amount']:,} تومان
 🔢 **شماره فاکتور:** #{invoice_id}
 
-جهت تایید یا رد پرداخت از دکمه‌های زیر استفاده کنید."""
+{instruction_line}"""
                 
                 # Construct keyboard
-                keyboard_dict = {
-                    'inline_keyboard': [
-                        [
-                            {'text': "✅ تایید پرداخت", 'callback_data': f"approve_receipt_{invoice_id}"},
-                            {'text': "❌ رد پرداخت", 'callback_data': f"reject_receipt_{invoice_id}"}
+                if auto_approved:
+                    keyboard_dict = {
+                        'inline_keyboard': [
+                            [
+                                {'text': "🚫 رد + مسدود", 'callback_data': f"ban_receipt_{invoice_id}"}
+                            ]
                         ]
-                    ]
-                }
+                    }
+                else:
+                    keyboard_dict = {
+                        'inline_keyboard': [
+                            [
+                                {'text': "✅ تایید پرداخت", 'callback_data': f"approve_receipt_{invoice_id}"},
+                                {'text': "❌ رد پرداخت", 'callback_data': f"reject_receipt_{invoice_id}"}
+                            ],
+                            [
+                                {'text': "🚫 رد + مسدود", 'callback_data': f"ban_receipt_{invoice_id}"}
+                            ]
+                        ]
+                    }
                 
                 # Ensure receipts_channel_id is correct type
                 try:
@@ -8031,13 +9353,16 @@ def api_payment_upload_receipt():
                 
                 admin_id = bot_config.get('admin_id')
                 if admin_id:
-                    message = f"""🧾 **رسید پرداخت جدید**
+                    auto_tag = "\n🏷️ رسیدهای خودکار\n✅ تایید خودکار انجام شد." if auto_approved else ""
+                    instruction_line = "در صورت جعلی بودن از دکمه زیر استفاده کنید." if auto_approved else "جهت تایید یا رد پرداخت از دکمه‌های زیر استفاده کنید."
+                    message = f"""🧾 **رسید پرداخت جدید**{auto_tag}
 
 👤 **کاربر:** {user.get('first_name', 'Unknown')} (ID: {user_id})
 💰 **مبلغ:** {invoice_data['amount']:,} تومان
 🔢 **شماره فاکتور:** #{invoice_id}
 
-⚠️ **توجه:** کانال رسیدها تنظیم نشده است. لطفاً از طریق پنل مدیریت رسید را بررسی کنید."""
+⚠️ **توجه:** کانال رسیدها تنظیم نشده است. لطفاً از طریق پنل مدیریت رسید را بررسی کنید.
+{instruction_line}"""
                     
                     # Send message with photo to admin
                     try:
@@ -8048,12 +9373,20 @@ def api_payment_upload_receipt():
                         
                         # Send photo with inline keyboard
                         from telegram import InlineKeyboardMarkup, InlineKeyboardButton
-                        keyboard = InlineKeyboardMarkup([
-                            [
-                                InlineKeyboardButton("✅ تایید پرداخت", callback_data=f"approve_receipt_{invoice_id}"),
-                                InlineKeyboardButton("❌ رد پرداخت", callback_data=f"reject_receipt_{invoice_id}")
-                            ]
-                        ])
+                        if auto_approved:
+                            keyboard = InlineKeyboardMarkup([
+                                [InlineKeyboardButton("🚫 رد + مسدود", callback_data=f"ban_receipt_{invoice_id}")]
+                            ])
+                        else:
+                            keyboard = InlineKeyboardMarkup([
+                                [
+                                    InlineKeyboardButton("✅ تایید پرداخت", callback_data=f"approve_receipt_{invoice_id}"),
+                                    InlineKeyboardButton("❌ رد پرداخت", callback_data=f"reject_receipt_{invoice_id}")
+                                ],
+                                [
+                                    InlineKeyboardButton("🚫 رد + مسدود", callback_data=f"ban_receipt_{invoice_id}")
+                                ]
+                            ])
                         
                         import asyncio
                         loop = asyncio.new_event_loop()
@@ -8075,12 +9408,13 @@ def api_payment_upload_receipt():
                 logger.error(f"Error in admin notification: {e}")
                 telegram_success = False
                         
-        # Update invoice status
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("UPDATE invoices SET payment_method = 'card', status = 'pending_approval' WHERE id = %s", (invoice_id,))
-            conn.commit()
-            cursor.close()
+        # Update invoice status (only if not auto-approved)
+        if not auto_approved:
+            with db.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("UPDATE invoices SET payment_method = 'card', status = 'pending_approval' WHERE id = %s", (invoice_id,))
+                conn.commit()
+                cursor.close()
                 
         return jsonify({'success': True, 'message': 'رسید با موفقیت ارسال شد'})
 
@@ -8298,15 +9632,60 @@ def api_get_services():
         # Format services for frontend
         formatted_services = []
         for service in services:
+            # Calculate usage stats
+            total_gb = float(service.get('total_gb', 0) or 0)
+            total_gb = round(total_gb, 2)
+            used_gb = float(service.get('used_gb', 0) or 0)
+            used_gb = round(used_gb, 2)
+            remaining_gb = max(0, total_gb - used_gb)
+            remaining_gb = round(remaining_gb, 2)
+            
+            usage_percentage = 0
+            if total_gb > 0:
+                usage_percentage = min(100, round((used_gb / total_gb) * 100, 1))
+
+            # Determine effective active state
+            is_active = service.get('is_active', False)
+            status = service.get('status', '')
+            
+            expired = False
+            expires_at_dt = None
+            if service.get('expires_at'):
+                try:
+                    expires_at_dt = parse_datetime_safe(service.get('expires_at'))
+                except Exception:
+                    expires_at_dt = None
+            if expires_at_dt:
+                from datetime import datetime
+                expired = expires_at_dt <= datetime.now()
+
+            exhausted = bool(usage_percentage >= 100) or str(status or '') == 'exhausted'
+
+            if status in ('exhausted', 'expired', 'disabled') or expired or exhausted:
+                is_active = False
+            elif not status and is_active:
+                status = 'active'
+            
+            # Resolve is_online with fallback
+            is_online = service.get('is_online')
+            if is_online is None:
+                is_online = service.get('cached_is_online', False)
+
             # Include all services returned by DB (active + grace period)
             formatted_services.append({
                 'id': service['id'],
                 'name': service.get('client_name', 'Unknown'),
-                'total_gb': service.get('total_gb', 0),
+                'total_gb': total_gb,
+                'used_gb': used_gb,
+                'remaining_gb': remaining_gb,
+                'usage_percentage': usage_percentage,
                 'remaining_days': service.get('remaining_days', 0),
-                'is_active': service.get('is_active', False),
+                'is_active': is_active,
+                'is_online': is_online,
+                'status': status,
                 'panel_name': service.get('panel_name', ''),
                 'inbound_id': service.get('inbound_id'),
+                'inbound_name': service.get('inbound_name', ''),
                 'client_uuid': service.get('client_uuid'),
                 'price_per_gb': service.get('price_per_gb', 0)
             })
@@ -8360,12 +9739,33 @@ def api_admin_get_service_config(service_id):
             config_link = service.get('config_link', '')
         
         if not config_link:
-            # Construct subscription link for Marzban
+            # Construct subscription link for Marzban or 3x-ui
             panel = db.get_panel(service['panel_id'])
-            if panel and panel.get('panel_type') == 'marzban':
-                sub_url = panel.get('subscription_url', '')
+            if panel:
+                sub_url = panel.get('subscription_url', '').strip()
                 if sub_url:
-                    config_link = f"{sub_url}/sub/{service['client_uuid']}"
+                     if not sub_url.startswith(('http://', 'https://')):
+                          if not sub_url[0].isdigit():
+                              sub_url = 'https://' + sub_url
+                          else:
+                              sub_url = 'http://' + sub_url
+                     
+                     if panel.get('panel_type') == 'marzban':
+                         sub_url = sub_url.rstrip('/')
+                         config_link = f"{sub_url}/sub/{service['client_uuid']}"
+                     elif service.get('sub_id'):
+                         # 3x-ui logic
+                         if sub_url.endswith('/sub') or sub_url.endswith('/sub/'):
+                             sub_url = sub_url.rstrip('/')
+                             config_link = f"{sub_url}/{service.get('sub_id')}"
+                         elif '/sub' in sub_url:
+                             if sub_url.endswith('/'):
+                                 config_link = f"{sub_url}{service.get('sub_id')}"
+                             else:
+                                 config_link = f"{sub_url}/{service.get('sub_id')}"
+                         else:
+                             sub_url = sub_url.rstrip('/')
+                             config_link = f"{sub_url}/sub/{service.get('sub_id')}"
         
         if not config_link:
             return jsonify({'success': False, 'message': 'کانفیگ یافت نشد'}), 404
@@ -8524,7 +9924,8 @@ def api_admin_renew_service(service_id):
             success = panel_mgr.update_client_expiration(
                 service['inbound_id'],
                 service['client_uuid'],
-                expires_timestamp
+                expires_timestamp,
+                client_name=service.get('client_name')
             )
         else:
             # For panels that don't support expiration update, just update database
@@ -8807,6 +10208,22 @@ def api_admin_wheel_settings():
     try:
         db_instance = get_db()
         
+        # Ensure table exists
+        try:
+            with db_instance.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS wheel_settings (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        setting_key VARCHAR(255) UNIQUE NOT NULL,
+                        setting_value TEXT,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                ''')
+                conn.commit()
+        except Exception as table_err:
+            logger.error(f"Error checking/creating wheel_settings table: {table_err}")
+        
         if request.method == 'GET':
             settings = db_instance.get_wheel_settings()
             return jsonify({'success': True, 'settings': settings})
@@ -8833,30 +10250,94 @@ def api_admin_wheel_prizes():
     """Get or add wheel prizes"""
     try:
         db_instance = get_db()
+        db_name = db_instance.database_name if hasattr(db_instance, 'database_name') else 'unknown'
+        logger.info(f"Accessing wheel prizes. Method: {request.method}, DB: {db_name}")
         
+        # Ensure table exists
+        try:
+            with db_instance.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS wheel_prizes (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        name VARCHAR(255) NOT NULL,
+                        type VARCHAR(50) NOT NULL,
+                        value FLOAT DEFAULT 0,
+                        probability FLOAT DEFAULT 0,
+                        is_active TINYINT DEFAULT 1,
+                        display_order INT DEFAULT 0,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        INDEX idx_is_active (is_active)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                ''')
+                conn.commit()
+        except Exception as table_err:
+            logger.error(f"Error checking/creating wheel_prizes table: {table_err}")
+
         if request.method == 'GET':
             prizes = db_instance.get_prizes(active_only=False)
-            return jsonify({'success': True, 'prizes': prizes})
+            logger.info(f"Retrieved {len(prizes)} prizes from DB {db_name}")
+            
+            # Auto-seed if empty (Debug helper)
+            if not prizes:
+                logger.info("Prize list is empty. Seeding default prize...")
+                try:
+                    default_id = db_instance.add_prize(
+                        name="جایزه خوش‌آمدگویی (تست)",
+                        type="balance",
+                        value=1000,
+                        probability=100,
+                        is_active=True,
+                        display_order=1
+                    )
+                    if default_id:
+                        logger.info(f"Seeded default prize with ID: {default_id}")
+                        prizes = db_instance.get_prizes(active_only=False)
+                except Exception as seed_err:
+                    logger.error(f"Error seeding default prize: {seed_err}")
+
+            response = jsonify({'success': True, 'prizes': prizes, 'db_name': db_name})
+            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            return response
             
         elif request.method == 'POST':
             data = request.json
+            logger.info(f"Adding prize with data: {data}")
+            
+            # Validate input
+            if not data.get('name'):
+                return jsonify({'success': False, 'message': 'نام جایزه الزامی است'}), 400
+            
+            try:
+                val = float(data.get('value') or 0)
+                prob = float(data.get('probability') or 0)
+                order = int(data.get('display_order') or 0)
+            except ValueError:
+                return jsonify({'success': False, 'message': 'مقادیر عددی نامعتبر است'}), 400
+                
             prize_id = db_instance.add_prize(
                 name=data.get('name'),
                 type=data.get('type'),
-                value=float(data.get('value', 0)),
-                probability=float(data.get('probability', 0)),
+                value=val,
+                probability=prob,
                 is_active=data.get('is_active', True),
-                display_order=int(data.get('display_order', 0))
+                display_order=order
             )
             
             if prize_id:
+                logger.info(f"Prize added successfully with ID: {prize_id}")
                 return jsonify({'success': True, 'message': 'جایزه با موفقیت اضافه شد', 'prize_id': prize_id})
             else:
+                logger.error("Failed to add prize - DB returned 0/None")
                 return jsonify({'success': False, 'message': 'خطا در افزودن جایزه'}), 500
                 
     except Exception as e:
         logger.error(f"Error managing wheel prizes: {e}")
-        return secure_error_response(e)
+        import traceback
+        logger.error(traceback.format_exc())
+        # Return 200 with success=False to let frontend show the error message
+        return jsonify({'success': False, 'message': f'خطای سیستمی: {str(e)}'}), 200
 
 @app.route('/api/admin/wheel/prizes/<int:prize_id>', methods=['PUT', 'DELETE'])
 @admin_required
@@ -8864,20 +10345,41 @@ def api_admin_wheel_prize_detail(prize_id):
     """Update or delete a prize"""
     try:
         db_instance = get_db()
+        db_name = db_instance.database_name if hasattr(db_instance, 'database_name') else 'unknown'
+        logger.info(f"Managing prize {prize_id}. Method: {request.method}, DB: {db_name}")
         
         if request.method == 'PUT':
             data = request.json
+            logger.info(f"Updating prize {prize_id} with data: {data}")
+            
+            # Validate numeric inputs
+            if 'value' in data:
+                try:
+                    data['value'] = float(data['value'])
+                except:
+                    data['value'] = 0
+                    
+            if 'probability' in data:
+                try:
+                    data['probability'] = float(data['probability'])
+                except:
+                    data['probability'] = 0
+            
             success = db_instance.update_prize(prize_id, **data)
             if success:
+                logger.info(f"Prize {prize_id} updated successfully")
                 return jsonify({'success': True, 'message': 'جایزه با موفقیت بروزرسانی شد'})
             else:
+                logger.error(f"Failed to update prize {prize_id}")
                 return jsonify({'success': False, 'message': 'خطا در بروزرسانی جایزه'}), 500
                 
         elif request.method == 'DELETE':
             success = db_instance.delete_prize(prize_id)
             if success:
+                logger.info(f"Prize {prize_id} deleted successfully")
                 return jsonify({'success': True, 'message': 'جایزه با موفقیت حذف شد'})
             else:
+                logger.error(f"Failed to delete prize {prize_id}")
                 return jsonify({'success': False, 'message': 'خطا در حذف جایزه'}), 500
                 
     except Exception as e:

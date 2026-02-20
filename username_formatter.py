@@ -272,10 +272,18 @@ class UsernameFormatter:
         Returns:
             Formatted status with emoji
         """
+        if status is None:
+            status = ''
+        status_str = str(status).strip()
+        if not status_str:
+            status_str = 'active'
+
         status_map = {
             'active': '🟢 فعال',
             'inactive': '🔴 غیرفعال',
+            'disabled': '🔴 غیرفعال',
             'expired': '⏰ منقضی شده',
+            'exhausted': '🟠 حجم تمام شده',
             'suspended': '⏸️ معلق',
             'pending': '🟡 در انتظار',
             'connected': '🔗 متصل',
@@ -284,7 +292,7 @@ class UsernameFormatter:
             'offline': '🔴 آفلاین'
         }
         
-        return status_map.get(status.lower(), f"⚪ {status}")
+        return status_map.get(status_str.lower(), f"⚪ {status_str}")
     
     @staticmethod
     def format_connection_status(is_online: bool, last_seen: int = 0) -> str:
@@ -299,22 +307,29 @@ class UsernameFormatter:
             Formatted connection status
         """
         if is_online:
-            return "🟢 آنلاین"
+            return "🔗 متصل"
         
         if last_seen > 0:
+            try:
+                last_seen_int = int(float(last_seen))
+            except Exception:
+                last_seen_int = 0
+            if last_seen_int > 1000000000000:
+                last_seen_int = last_seen_int // 1000
+
             current_time = int(time.time())
-            time_diff = current_time - last_seen
+            time_diff = current_time - last_seen_int
             
             if time_diff < 300:  # 5 minutes
-                return "🟡 اخیراً آنلاین"
+                return "🟡 اخیراً متصل"
             elif time_diff < 3600:  # 1 hour
                 return "🟡 کمتر از یک ساعت پیش"
             elif time_diff < 86400:  # 1 day
                 return "🟡 کمتر از یک روز پیش"
             else:
-                return "🔴 آفلاین"
+                return "🔌 غیرمتصل"
         
-        return "🔴 آفلاین"
+        return "🔌 غیرمتصل"
 
 
 # ==================== Username Generation Methods ====================

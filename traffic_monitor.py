@@ -353,18 +353,20 @@ class TrafficMonitor:
                             
                             stat_id_str = str(stat_id) if stat_id else ''
                             stat_uuid_str = str(stat_uuid) if stat_uuid else ''
-                            
-                            # Extract UUID from email if present
-                            email_uuid = ''
-                            if '@' in str(stat_email):
-                                email_parts = str(stat_email).split('@')[0]
-                                if len(email_parts) > 30:  # UUID-like length
-                                    email_uuid = email_parts
-                            
-                            # Match using multiple methods
-                            if (stat_id_str == str(client_uuid) or 
-                                stat_uuid_str == str(client_uuid) or
-                                email_uuid == str(client_uuid)):
+
+                            client_email = str(client.get('email', '') or '')
+                            client_email_prefix = client_email.split('@')[0] if '@' in client_email else client_email
+                            stat_email_str = str(stat_email) if stat_email is not None else ''
+                            stat_email_prefix = stat_email_str.split('@')[0] if '@' in stat_email_str else stat_email_str
+
+                            client_uuid_str = str(client_uuid)
+
+                            if (
+                                stat_id_str == client_uuid_str or
+                                stat_uuid_str == client_uuid_str or
+                                (client_email and stat_email_str == client_email) or
+                                (client_email_prefix and stat_email_prefix == client_email_prefix)
+                            ):
                                 stat = stat_item
                                 up_bytes = stat.get('up', 0) or 0
                                 down_bytes = stat.get('down', 0) or 0
@@ -388,6 +390,14 @@ class TrafficMonitor:
                         last_activity = stat.get('lastOnline', 0) if stat else 0
                         if last_activity == 0:
                             last_activity = client.get('lastOnline', 0) or 0
+
+                    try:
+                        last_activity_num = int(float(last_activity)) if last_activity else 0
+                    except Exception:
+                        last_activity_num = 0
+                    if 0 < last_activity_num < 1000000000000:
+                        last_activity_num = last_activity_num * 1000
+                    last_activity = last_activity_num
                     
                     # Get total traffic
                     total_traffic = client.get('totalGB', 0)
@@ -570,17 +580,15 @@ class TrafficMonitor:
             
             # Check expiration for plan-based services first
             is_plan_service = service.get('product_id') is not None
+            is_test_account = service.get('is_test_account')
+            
             if is_plan_service:
                 await self.check_plan_expiration(service, client)
+            elif is_test_account:
+                await self.check_test_account_expiration(service, client)
             
-            # Get traffic data from client details (REAL-TIME from panel API)
-            # These values are in BYTES
-            total_traffic_bytes = client.get('total_traffic', 0)
             used_traffic_bytes = client.get('used_traffic', 0)
             
-            # Also check alternative field names (for compatibility)
-            if total_traffic_bytes == 0:
-                total_traffic_bytes = client.get('totalGB', 0)
             if used_traffic_bytes == 0:
                 # Try to get from up/down if available
                 up_bytes = client.get('up', 0) or 0
@@ -590,52 +598,150 @@ class TrafficMonitor:
             
             # Ensure values are numeric (handle None/string cases)
             try:
-                total_traffic_bytes = float(total_traffic_bytes) if total_traffic_bytes else 0
                 used_traffic_bytes = float(used_traffic_bytes) if used_traffic_bytes else 0
             except (ValueError, TypeError):
-                logger.warning(f"⚠️ Service {service_id}: Invalid traffic data - total={total_traffic_bytes}, used={used_traffic_bytes}")
-                total_traffic_bytes = 0
+                logger.warning(f"⚠️ Service {service_id}: Invalid traffic data - used={used_traffic_bytes}")
                 used_traffic_bytes = 0
             
             # Convert to GB for logging and calculations (with high precision)
             used_gb = round(used_traffic_bytes / (1024 * 1024 * 1024), 4) if used_traffic_bytes > 0 else 0
-            total_gb = round(total_traffic_bytes / (1024 * 1024 * 1024), 4) if total_traffic_bytes > 0 else 0
+            total_gb = 0
+            try:
+                total_gb = float(service.get('total_gb') or 0)
+            except Exception:
+                total_gb = 0
+            total_gb = round(total_gb, 4) if total_gb > 0 else 0
             
-            # Reduced logging for performance - only log important cases
-            
-            # Update used_gb in database - CRITICAL: This updates the database with real-time data
-            # OPTIMIZATION: Queue update for bulk commit instead of individual DB call
+            last_activity = client.get('last_activity', 0) or 0
+            if isinstance(last_activity, str):
+                try:
+                    from datetime import datetime, timezone
+                    if 'Z' in last_activity or '+' in last_activity:
+                        dt = datetime.fromisoformat(last_activity.replace('Z', '+00:00'))
+                    else:
+                        dt = datetime.fromisoformat(last_activity).replace(tzinfo=timezone.utc)
+                    last_activity = int(dt.timestamp() * 1000)
+                except Exception:
+                    last_activity = 0
+            try:
+                last_activity = int(float(last_activity)) if last_activity else 0
+            except Exception:
+                last_activity = 0
+
+            enable = client.get('enable', True)
+            enable_bool = bool(enable) if enable is not None else True
+
+            expires_at_dt = None
+            cached_remaining_days = None
+            expiry_time = client.get('expiryTime', 0) or 0
+            try:
+                expiry_time = int(float(expiry_time)) if expiry_time else 0
+            except Exception:
+                expiry_time = 0
+
+            if expiry_time and expiry_time > 0:
+                try:
+                    from datetime import datetime
+                    expiry_timestamp = (expiry_time / 1000) if expiry_time > 1000000000000 else expiry_time
+                    expires_at_dt = datetime.fromtimestamp(expiry_timestamp)
+                    now = datetime.now()
+                    cached_remaining_days = max(0, int((expires_at_dt - now).total_seconds() / 86400))
+                except Exception:
+                    expires_at_dt = None
+                    cached_remaining_days = None
+
+            cached_is_online = 0
+            last_activity_ms = 0
+            if last_activity and last_activity > 0:
+                try:
+                    import time
+                    last_activity_ms = last_activity if last_activity > 1000000000000 else int(last_activity * 1000)
+                except Exception:
+                    last_activity_ms = 0
+
+            prev_used_gb = 0.0
+            try:
+                prev_used_gb = float(service.get('used_gb') or service.get('cached_used_gb') or 0)
+            except Exception:
+                prev_used_gb = 0.0
+            traffic_increased = (used_gb - prev_used_gb) > 0.0001
+            cached_is_online = 1 if (enable_bool and traffic_increased) else 0
+
+            last_activity = last_activity_ms
+
             self.pending_updates.append({
                 'id': service_id,
-                'used_gb': used_gb
+                'monitoring_update': True,
+                'used_gb': used_gb,
+                'cached_used_gb': used_gb,
+                'cached_last_activity': last_activity,
+                'last_activity': last_activity,
+                'cached_is_online': cached_is_online,
+                'cached_remaining_days': cached_remaining_days,
+                'expires_at': expires_at_dt
             })
-            # self.db.update_client_status(service_id, used_gb=used_gb)
 
             
-            # Skip if unlimited traffic (total_traffic_bytes <= 0 means unlimited)
-            if total_traffic_bytes <= 0:
+            # Skip if unlimited traffic (total_gb <= 0 means unlimited)
+            if total_gb <= 0:
                 return
             
             # Calculate usage percentage with high precision
-            usage_percentage = (used_traffic_bytes / total_traffic_bytes) * 100 if total_traffic_bytes > 0 else 0
-            remaining_bytes = max(0, total_traffic_bytes - used_traffic_bytes)
-            remaining_gb = round(remaining_bytes / (1024 * 1024 * 1024), 4)
+            usage_percentage = (used_gb / total_gb) * 100 if total_gb > 0 else 0
+            remaining_gb = round(max(0, total_gb - used_gb), 4)
             
             # Check for 70% usage warning (only for active services, send once)
-            if usage_percentage >= 70 and usage_percentage < 100:
+            if usage_percentage >= 70 and usage_percentage < 80:
                 warned_70_percent = service.get('warned_70_percent', 0)
-                if not warned_70_percent and service.get('status') != 'disabled':
-                    logger.warning(f"⚠️ Service {service_id} ({client_name}) reached 70% usage: {usage_percentage:.2f}% ({used_gb:.2f}GB / {total_gb:.2f}GB, remaining: {remaining_gb:.2f}GB) - sending warning")
+                if not warned_70_percent and service.get('status') not in ('disabled', 'expired', 'exhausted'):
+                    logger.warning(f"⚠️ Service {service_id} ({client_name}) reached 70% usage - sending warning")
                     await self.send_70_percent_warning(service, usage_percentage, used_gb, total_gb, remaining_gb)
                     self.db.update_service_70_percent_warning(service_id, warned=True)
             
+            # Check for 80% usage warning
+            if usage_percentage >= 80 and usage_percentage < 90:
+                warned_80_percent = service.get('warned_80_percent', 0)
+                if not warned_80_percent and service.get('status') not in ('disabled', 'expired', 'exhausted'):
+                    logger.warning(f"⚠️ Service {service_id} ({client_name}) reached 80% usage - sending warning")
+                    await self.send_usage_warning(service, usage_percentage, used_gb, total_gb, remaining_gb, 80)
+                    if hasattr(self.db, 'update_service_80_percent_warning'):
+                        self.db.update_service_80_percent_warning(service_id, warned=True)
+
+            # Check for 90% usage warning
+            if usage_percentage >= 90 and usage_percentage < 95:
+                warned_90_percent = service.get('warned_90_percent', 0)
+                if not warned_90_percent and service.get('status') not in ('disabled', 'expired', 'exhausted'):
+                    logger.warning(f"⚠️ Service {service_id} ({client_name}) reached 90% usage - sending warning")
+                    await self.send_usage_warning(service, usage_percentage, used_gb, total_gb, remaining_gb, 90)
+                    if hasattr(self.db, 'update_service_90_percent_warning'):
+                        self.db.update_service_90_percent_warning(service_id, warned=True)
+
+            # Check for 95% usage warning
+            if usage_percentage >= 95 and usage_percentage < 98:
+                warned_95_percent = service.get('warned_95_percent', 0)
+                if not warned_95_percent and service.get('status') not in ('disabled', 'expired', 'exhausted'):
+                    logger.warning(f"⚠️ Service {service_id} ({client_name}) reached 95% usage - sending warning")
+                    await self.send_usage_warning(service, usage_percentage, used_gb, total_gb, remaining_gb, 95)
+                    if hasattr(self.db, 'update_service_95_percent_warning'):
+                        self.db.update_service_95_percent_warning(service_id, warned=True)
+
+            # Check for 98% usage warning
+            if usage_percentage >= 98 and usage_percentage < 100:
+                warned_98_percent = service.get('warned_98_percent', 0)
+                if not warned_98_percent and service.get('status') not in ('disabled', 'expired', 'exhausted'):
+                    logger.warning(f"⚠️ Service {service_id} ({client_name}) reached 98% usage - sending warning")
+                    await self.send_usage_warning(service, usage_percentage, used_gb, total_gb, remaining_gb, 98)
+                    if hasattr(self.db, 'update_service_98_percent_warning'):
+                        self.db.update_service_98_percent_warning(service_id, warned=True)
+            
             # Note: Services in grace period are handled by check_for_deletion
             # They get 24 hours to renew before deletion
+            await self.maybe_send_predelete_warning(service)
             
             # Check if 100% usage reached (even if already disabled, we should check for overage)
             if usage_percentage >= 100:
                 current_status = service.get('status', 'active')
-                if current_status != 'disabled':
+                if current_status not in ('disabled', 'expired', 'exhausted'):
                     logger.warning(f"🚫 Service {service_id} ({client_name}) reached 100% usage: {usage_percentage:.2f}% ({used_gb:.2f}GB / {total_gb:.2f}GB) - disabling immediately")
                     await self.handle_traffic_exhausted(service)
                 else:
@@ -645,6 +751,173 @@ class TrafficMonitor:
             
         except Exception as e:
             logger.error(f"❌ Error processing client traffic for service {service.get('id')}: {e}", exc_info=True)
+
+    def calculate_usage_stats(self, service: Dict, used_gb: float, total_gb: float) -> Dict:
+        """Calculate advanced usage statistics"""
+        stats = {
+            'avg_daily_usage': 0.0,
+            'estimated_days_remaining': None,
+            'days_active': 0
+        }
+        
+        try:
+            created_at = service.get('created_at')
+            if not created_at:
+                return stats
+                
+            if isinstance(created_at, str):
+                from datetime import datetime
+                try:
+                    # Handle various string formats
+                    if 'Z' in created_at:
+                        created_at = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                    else:
+                        created_at = datetime.fromisoformat(created_at)
+                except:
+                    return stats
+            
+            now = datetime.now()
+            if hasattr(created_at, 'tzinfo') and created_at.tzinfo:
+                from datetime import timezone
+                now = now.replace(tzinfo=created_at.tzinfo)
+            
+            # Ensure created_at is not in the future
+            if created_at > now:
+                created_at = now
+                
+            days_active = (now - created_at).total_seconds() / 86400
+            days_active = max(0.1, days_active) # Avoid division by zero
+            
+            stats['days_active'] = int(days_active)
+            
+            if used_gb > 0:
+                avg_daily = used_gb / days_active
+                stats['avg_daily_usage'] = avg_daily
+                
+                if total_gb > 0 and avg_daily > 0.001:
+                    remaining_gb = max(0, total_gb - used_gb)
+                    days_remaining = remaining_gb / avg_daily
+                    stats['estimated_days_remaining'] = int(days_remaining)
+            
+            return stats
+        except Exception as e:
+            logger.error(f"Error calculating usage stats: {e}")
+            return stats
+
+    async def send_usage_warning(self, service: Dict, usage_percentage: float, used_gb: float, total_gb: float, remaining_gb: float, threshold: int):
+        """Send usage warning to user with advanced stats"""
+        try:
+            user = self.db.get_user_by_id(service['user_id'])
+            if not user:
+                return
+            
+            # Check if already warned - FORCE CHECK FROM DB
+            flags = self.db.get_service_warning_flags(service['id'])
+            warning_key = f'warned_{threshold}_percent'
+            if flags.get(warning_key):
+                logger.info(f"⚠️ Service {service['id']} already warned about {threshold}% usage (DB check), skipping notification")
+                return
+
+            # Calculate advanced stats
+            stats = self.calculate_usage_stats(service, used_gb, total_gb)
+            avg_daily = stats.get('avg_daily_usage', 0)
+            est_days = stats.get('estimated_days_remaining')
+            
+            # Determine service type
+            is_plan_service = service.get('expires_at') is not None
+            
+            if is_plan_service:
+                suggestion_text = "برای جلوگیری از قطع سرویس، لطفا تمدید کنید."
+                action_callback = f"renew_service_{service['id']}"
+                button_text = "🔄 تمدید سرویس"
+            else:
+                suggestion_text = "برای جلوگیری از قطع سرویس، لطفا حجم اضافه کنید."
+                action_callback = f"add_volume_{service['id']}"
+                button_text = "➕ افزایش حجم"
+
+            # Build message
+            message = f"""⚠️ **هشدار مصرف حجم ({threshold}%)**
+
+🔗 **سرویس:** {service.get('client_name', 'سرویس')}
+📊 **مصرف:** {usage_percentage:.1f}%
+📦 **باقیمانده:** {remaining_gb:.2f} گیگابایت
+
+📈 **میانگین مصرف روزانه:** {avg_daily:.2f} گیگابایت"""
+
+            if est_days is not None and est_days < 30:
+                message += f"\n⏳ **تخمین اتمام حجم:** حدود {est_days} روز دیگر"
+            
+            message += f"\n\n💡 {suggestion_text}"
+
+            keyboard = [[InlineKeyboardButton(button_text, callback_data=action_callback)]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await self._send_message_safe(user['telegram_id'], message, reply_markup)
+            
+        except Exception as e:
+            logger.error(f"Error sending usage warning: {e}")
+
+    async def maybe_send_predelete_warning(self, service: Dict):
+        try:
+            service_id = service.get('id')
+            if not service_id:
+                return
+
+            status = str(service.get('status') or '')
+            if status not in ('disabled', 'exhausted', 'expired'):
+                return
+
+            if service.get('warned_3_hours_before_deletion'):
+                return
+
+            base_time = service.get('expired_at') if status == 'expired' else service.get('exhausted_at')
+            if not base_time:
+                return
+
+            if isinstance(base_time, str):
+                base_time = datetime.fromisoformat(base_time.replace('Z', '+00:00'))
+
+            now = datetime.now()
+            if base_time.tzinfo:
+                now = now.replace(tzinfo=base_time.tzinfo)
+
+            remaining_seconds = (24 * 3600) - (now - base_time).total_seconds()
+            if remaining_seconds <= 0 or remaining_seconds > (3 * 3600):
+                return
+
+            hours = int(remaining_seconds // 3600)
+            minutes = int((remaining_seconds % 3600) // 60)
+            time_text = f"{hours} ساعت و {minutes} دقیقه"
+
+            user = self.db.get_user_by_id(service.get('user_id'))
+            if not user:
+                return
+
+            is_plan_service = service.get('expires_at') is not None
+            if is_plan_service:
+                action_text = "تمدید"
+                action_callback = f"renew_service_{service_id}"
+                button_text = "🔄 تمدید سرویس"
+            else:
+                action_text = "افزایش حجم"
+                action_callback = f"add_volume_{service_id}"
+                button_text = "➕ افزایش حجم"
+
+            message = f"""⏳ **هشدار حذف نزدیک**
+
+🔗 **سرویس:** {service.get('client_name', 'سرویس')}
+
+⚠️ اگر تا **{time_text}** آینده {action_text} انجام ندهید، سرویس به صورت خودکار حذف خواهد شد."""
+
+            keyboard = [[InlineKeyboardButton(button_text, callback_data=action_callback)]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            await self._send_message_safe(chat_id=user['telegram_id'], message=message, reply_markup=reply_markup)
+
+            if hasattr(self.db, 'update_service_warned_3_hours_before_deletion'):
+                self.db.update_service_warned_3_hours_before_deletion(service_id, warned=True)
+        except Exception:
+            return
     
     async def check_disabled_service_overage(self, service: Dict, usage_percentage: float, used_gb: float, total_gb: float):
         """Check if disabled service has exceeded limits (110% or 1GB overage)"""
@@ -689,7 +962,7 @@ class TrafficMonitor:
         """Handle traffic exhaustion - disable service and set grace period"""
         try:
             # Check if already disabled
-            if service.get('status') == 'disabled':
+            if service.get('status') in ('disabled', 'exhausted'):
                 return
             
             # Disable service on panel
@@ -697,11 +970,8 @@ class TrafficMonitor:
             if panel_manager and panel_manager.login():
                 success = panel_manager.disable_client(service['inbound_id'], service['client_uuid'], client_name=service.get('client_name'))
                 if success:
-                    # Update database - set status to disabled but keep is_active=True during grace period
-                    self.db.update_service_status(service['id'], 'disabled')
+                    self.db.update_service_status(service['id'], 'exhausted')
                     self.db.update_service_exhaustion_time(service['id'])
-                    # Note: We do NOT set is_active=False here - service remains visible during 24h grace period
-                    # is_active will be set to False only when service is actually deleted after 24 hours
                     
                     # Send notification
                     await self.send_exhaustion_notification(service)
@@ -1039,6 +1309,46 @@ class TrafficMonitor:
         except Exception as e:
             logger.error(f"Error deleting exhausted service {service['id']}: {e}")
     
+    async def check_test_account_expiration(self, service: Dict, client: Dict):
+        """Check if test account has expired"""
+        try:
+            # Check expiry time from panel data (expiryTime is in milliseconds)
+            expiry_time = client.get('expiryTime', 0)
+            if expiry_time <= 0:
+                return
+
+            import time
+            current_time = int(time.time() * 1000)
+            
+            # If expired
+            if current_time >= expiry_time:
+                # Check if already disabled in DB
+                if service.get('status') in ('disabled', 'expired'):
+                    return
+            
+                logger.info(f"⌛️ Test account {service['id']} expired - sending notification")
+                
+                # Send notification
+                user = self.db.get_user_by_id(service['user_id'])
+                if user:
+                    message = f"""
+⌛️ **پایان مهلت تست**
+
+کاربر گرامی، زمان استفاده از اکانت تست شما به پایان رسید. 🔚
+امیدواریم از کیفیت و سرعت سرویس راضی بوده باشید. 🌹
+
+**🚀 برای تجربه نامحدود، همین حالا سرویس اصلی را تهیه کنید:**
+                    """
+                    keyboard = [[InlineKeyboardButton("🛒 خرید سرویس", callback_data="buy_service")]]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    
+                    await self._send_message_safe(user['telegram_id'], message, reply_markup)
+                    
+                    self.db.update_service_status(service['id'], 'expired')
+                    
+        except Exception as e:
+            logger.error(f"Error checking test account expiration: {e}")
+
     async def check_plan_expiration(self, service: Dict, client: Dict = None):
         """Check if a plan-based service has expired or is about to expire"""
         try:
@@ -1062,16 +1372,49 @@ class TrafficMonitor:
                 if exp_date.tzinfo:
                     now = now.replace(tzinfo=exp_date.tzinfo)
                 
-                # Calculate remaining days
+                # Calculate remaining days and hours
                 time_diff = exp_date - now
                 remaining_days = time_diff.days
+                remaining_hours = time_diff.total_seconds() / 3600
                 
+                # Check for 7 days warning
+                warned_7_days = service.get('warned_7_days', False)
+                if remaining_days <= 7 and remaining_days > 3 and not warned_7_days:
+                    logger.warning(f"⚠️ Plan service {service_id} expires in {remaining_days} days - sending 7-day warning")
+                    await self.send_expiration_warning(service, f"{remaining_days} روز", "7_days")
+                    if hasattr(self.db, 'update_service_7_days_warning'):
+                        self.db.update_service_7_days_warning(service_id, warned=True)
+
                 # Check for 3 days warning (only once)
-                warned_three_days = service.get('warned_one_week', False)  # Reuse this field for 3 days warning
-                if remaining_days <= 3 and remaining_days > 0 and not warned_three_days:
+                warned_three_days = service.get('warned_one_week', False)
+                if remaining_days <= 3 and remaining_days > 1 and not warned_three_days:
                     logger.warning(f"⚠️ Plan service {service_id} expires in {remaining_days} days - sending 3-day warning")
                     await self.send_three_days_expiration_warning(service, remaining_days)
                     self.db.update_service_warned_one_week(service_id, warned=True)
+                
+                # Check for 1 day warning
+                warned_one_day = service.get('warned_one_day', False)
+                if remaining_days <= 1 and remaining_days >= 0 and remaining_hours > 12 and not warned_one_day:
+                    logger.warning(f"⚠️ Plan service {service_id} expires in 1 day - sending warning")
+                    await self.send_expiration_warning(service, "۱ روز", "1_day")
+                    if hasattr(self.db, 'update_service_warned_one_day'):
+                        self.db.update_service_warned_one_day(service_id, warned=True)
+
+                # Check for 12 hours warning
+                warned_12_hours = service.get('warned_12_hours', False)
+                if remaining_hours <= 12 and remaining_hours > 6 and not warned_12_hours:
+                    logger.warning(f"⚠️ Plan service {service_id} expires in {int(remaining_hours)} hours - sending warning")
+                    await self.send_expiration_warning(service, f"{int(remaining_hours)} ساعت", "12_hours")
+                    if hasattr(self.db, 'update_service_warned_12_hours'):
+                        self.db.update_service_warned_12_hours(service_id, warned=True)
+                
+                # Check for 6 hours warning
+                warned_6_hours = service.get('warned_6_hours', False)
+                if remaining_hours <= 6 and remaining_hours > 0 and not warned_6_hours:
+                    logger.warning(f"⚠️ Plan service {service_id} expires in {int(remaining_hours)} hours - sending warning")
+                    await self.send_expiration_warning(service, f"{int(remaining_hours)} ساعت", "6_hours")
+                    if hasattr(self.db, 'update_service_6_hours_warning'):
+                        self.db.update_service_6_hours_warning(service_id, warned=True)
                 
                 # Check if expired
                 if exp_date <= now:
@@ -1080,19 +1423,23 @@ class TrafficMonitor:
                     expired_at = service.get('expired_at')
                     
                     # If not already disabled, disable it and send notification
-                    if current_status != 'disabled':
+                    if current_status not in ('disabled', 'expired'):
                         logger.warning(f"⏰ Plan service {service_id} expired - disabling")
                         await self.handle_plan_expiration(service)
                     # If already disabled, check for overage during grace period
                     elif expired_at and client:
                         # Check for overage during grace period
-                        total_traffic_bytes = client.get('total_traffic', 0) or client.get('totalGB', 0)
                         used_traffic_bytes = client.get('used_traffic', 0)
                         
-                        if total_traffic_bytes > 0:
+                        total_gb = 0
+                        try:
+                            total_gb = float(service.get('total_gb') or 0)
+                        except Exception:
+                            total_gb = 0
+                        if total_gb > 0:
                             used_gb = round(used_traffic_bytes / (1024 * 1024 * 1024), 4) if used_traffic_bytes > 0 else 0
-                            total_gb = round(total_traffic_bytes / (1024 * 1024 * 1024), 4) if total_traffic_bytes > 0 else 0
-                            usage_percentage = (used_traffic_bytes / total_traffic_bytes) * 100 if total_traffic_bytes > 0 else 0
+                            total_gb = round(total_gb, 4)
+                            usage_percentage = (used_gb / total_gb) * 100 if total_gb > 0 else 0
                             
                             await self.check_expired_service_overage(service, usage_percentage, used_gb, total_gb)
                 
@@ -1151,11 +1498,8 @@ class TrafficMonitor:
             if panel_manager and panel_manager.login():
                 success = panel_manager.disable_client(service['inbound_id'], service['client_uuid'])
                 if success:
-                    # Update database - set status to disabled but keep is_active=True during grace period
-                    self.db.update_service_status(service_id, 'disabled')
+                    self.db.update_service_status(service_id, 'expired')
                     self.db.update_service_expiration_time(service_id)
-                    # Note: We do NOT set is_active=False here - service remains visible during 24h grace period
-                    # is_active will be set to False only when service is actually deleted after 24 hours
                     
                     # Send notification
                     await self.send_plan_expiration_notification(service)
@@ -1167,6 +1511,46 @@ class TrafficMonitor:
         except Exception as e:
             logger.error(f"Error handling plan expiration for service {service['id']}: {e}")
     
+    async def send_expiration_warning(self, service: Dict, remaining_time_str: str, warning_type: str):
+        """Send generic expiration warning"""
+        try:
+            user = self.db.get_user_by_id(service['user_id'])
+            if not user: return
+            
+            expires_at = service.get('expires_at')
+            exp_date_str = "نامشخص"
+            if expires_at:
+                try:
+                    from datetime import datetime
+                    if isinstance(expires_at, str):
+                        exp_date = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
+                    else:
+                        exp_date = expires_at
+                    exp_date_str = exp_date.strftime('%Y-%m-%d %H:%M')
+                except: pass
+            
+            message = f"""⚠️ **هشدار انقضای سرویس**
+
+🔗 **سرویس:** {service.get('client_name', 'سرویس')}
+📅 **تاریخ انقضا:** {exp_date_str}
+⏰ **زمان باقی‌مانده:** {remaining_time_str}
+
+⚠️ **توجه:** زمان سرویس پلنی شما به زودی به پایان می‌رسد.
+
+برای تمدید سرویس و جلوگیری از قطع شدن، روی دکمه تمدید کلیک کنید."""
+            
+            keyboard = [
+                [InlineKeyboardButton("🔄 تمدید سرویس", callback_data=f"renew_service_{service['id']}")],
+                [InlineKeyboardButton("🏠 صفحه اصلی", callback_data="main_menu")]
+            ]
+            
+            await self._send_message_safe(user['telegram_id'], message, InlineKeyboardMarkup(keyboard))
+            
+        except Exception as e:
+            logger.error(f"Error sending expiration warning: {e}")
+
+
+
     async def send_three_days_expiration_warning(self, service: Dict, remaining_days: int):
         """Send 3 days expiration warning for plan services"""
         try:
@@ -1344,13 +1728,15 @@ class TrafficMonitor:
             # Send final notification to user
             user = self.db.get_user_by_id(service['user_id'])
             if user:
-                message = f"""🗑️ **سرویس حذف شد**
+                message = f"""🗑️ **حذف سرویس (عدم تمدید)**
 
-🔗 **سرویس:** {service.get('client_name', 'سرویس')}
+🔗 **نام سرویس:** {service.get('client_name', 'سرویس')}
 
-⚠️ **توجه:** سرویس پلنی شما به دلیل عدم تمدید بعد از ۲۴ ساعت حذف شده است.
+⚠️ **علت حذف:** پایان مهلت ۲۴ ساعته تمدید زمانی
 
-برای خرید سرویس جدید، روی دکمه صفحه اصلی کلیک کنید."""
+❌ متأسفانه به دلیل عدم تمدید اعتبار زمانی در مهلت مقرر، سرویس شما حذف گردید.
+
+**🛒 برای خرید سرویس جدید اقدام کنید:**"""
                 
                 keyboard = [[InlineKeyboardButton("🏠 صفحه اصلی", callback_data="main_menu")]]
                 reply_markup = InlineKeyboardMarkup(keyboard)

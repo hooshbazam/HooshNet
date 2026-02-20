@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}پنل نماینده{% endblock %}
+
+{% block content %}
+<div class="container" style="padding: 20px 16px 110px;">
+    <div class="glass-card" style="padding: 18px; margin-bottom: 14px;">
+        <div style="display:flex; justify-content: space-between; align-items: center; gap: 12px;">
+            <div>
+                <div style="font-weight: 900; color: white; font-size: 1.05rem;">پنل نماینده</div>
+                <div style="color: rgba(255,255,255,0.65); font-size: 0.85rem; margin-top: 4px;">
+                    سطح: {{ reseller.level or 'standard' }} | تخفیف: {{ reseller.discount_rate|int }}% | کمیسیون: {{ reseller.commission_rate|int }}%
+                </div>
+            </div>
+            <div style="text-align:left;">
+                <div style="color: rgba(255,255,255,0.65); font-size: 0.8rem;">موجودی کیف پول</div>
+                <div style="font-weight: 900; color: var(--neon-primary);">{{ "{:,}".format(user.balance or 0) }}</div>
+            </div>
+        </div>
+        <div style="margin-top: 12px; color: rgba(255,255,255,0.7); font-size: 0.85rem;">
+            امکان حذف با برگشت وجه تا ۲۴ ساعت بعد از خرید فعال است.
+        </div>
+    </div>
+
+    <div class="glass-card" style="padding: 14px;">
+        <div style="font-weight: 800; color: white; margin-bottom: 12px;">سرویس‌های شما</div>
+        {% if services %}
+            <div style="display:flex; flex-direction: column; gap: 10px;">
+                {% for s in services %}
+                <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 12px;">
+                    <div style="display:flex; justify-content: space-between; gap: 10px; align-items: flex-start;">
+                        <div style="min-width: 0;">
+                            <div style="font-weight: 800; color: white; overflow:hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                {{ s.client_name or 'سرویس' }}
+                            </div>
+                            <div style="color: rgba(255,255,255,0.65); font-size: 0.8rem; margin-top: 4px;">
+                                {{ s.panel_name or '' }} | ID: #{{ s.id }} | فاکتور: {{ s.invoice_id or '—' }}
+                            </div>
+                        </div>
+                        <div style="text-align:left;">
+                            <div style="color: rgba(255,255,255,0.55); font-size: 0.75rem;">تاریخ ایجاد</div>
+                            <div style="color: rgba(255,255,255,0.85); font-size: 0.85rem;">{{ s.created_at }}</div>
+                        </div>
+                    </div>
+
+                    <div style="display:flex; justify-content: space-between; align-items:center; gap: 10px; margin-top: 10px;">
+                        <a href="{{ url_for('service_detail', service_id=s.id) }}" class="btn-nav" style="text-decoration:none;">
+                            جزئیات
+                        </a>
+                        {% if s.refundable %}
+                        <form method="POST" action="{{ url_for('reseller_refund_delete', service_id=s.id) }}" style="margin:0;">
+                            <button type="submit" class="btn-nav" style="background: rgba(239,68,68,0.15); border-color: rgba(239,68,68,0.35); color: #fecaca;">
+                                حذف + برگشت وجه
+                            </button>
+                        </form>
+                        {% else %}
+                        <div style="color: rgba(255,255,255,0.5); font-size: 0.8rem;">غیرقابل برگشت</div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div style="text-align:center; color: rgba(255,255,255,0.65); padding: 18px;">
+                هنوز سرویسی ندارید.
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+

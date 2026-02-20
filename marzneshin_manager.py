@@ -613,7 +613,7 @@ class MarzneshinPanelManager:
             
         return None
     
-    def update_client_traffic(self, inbound_id: int, client_uuid: str, new_total_gb: int) -> bool:
+    def update_client_traffic(self, inbound_id: int, client_uuid: str, new_total_gb: int, client_name: str = None) -> bool:
         """
         Update client traffic (for renewal) in Marzneshin
         
@@ -621,6 +621,7 @@ class MarzneshinPanelManager:
             inbound_id: Not used in Marzneshin
             client_uuid: Username
             new_total_gb: New total GB limit
+            client_name: Optional client name
             
         Returns:
             True if successful, False otherwise
@@ -712,6 +713,106 @@ class MarzneshinPanelManager:
         except Exception as e:
             logger.error(f"❌ Error updating Marzneshin user traffic: {e}")
             return False
+
+    def update_client_expiration(self, inbound_id: int, client_uuid: str, expiry_timestamp: int, client_name: str = None) -> bool:
+        """
+        Update client expiration (for renewal) in Marzneshin
+        
+        Args:
+            inbound_id: Not used in Marzneshin
+            client_uuid: Username (or UUID to search)
+            expiry_timestamp: New expiration timestamp (Unix timestamp in seconds)
+            client_name: Optional client name (Username)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            if not self.ensure_logged_in():
+                logger.error("❌ Failed to login to Marzneshin panel")
+                return False
+            
+            # Marzneshin uses username. Prefer client_name if provided, else client_uuid
+            username = client_name if client_name else client_uuid
+            
+            # Get current user data
+            response = self.session.get(
+                f"{self.base_url}/api/users/{username}",
+                verify=False,
+                timeout=30
+            )
+            
+            # If not found and looks like a UUID, search for the user
+            if response.status_code == 404 and '-' in str(client_uuid) and not client_name:
+                logger.info(f"⚠️ User {username} not found, searching by UUID...")
+                
+                # Get users with search parameter
+                users_response = self.session.get(
+                    f"{self.base_url}/api/users",
+                    params={'search': client_uuid},
+                    verify=False,
+                    timeout=30
+                )
+                
+                if users_response.status_code == 200:
+                    users_data = users_response.json()
+                    users_list = users_data.get('users', []) if isinstance(users_data, dict) else users_data
+                    
+                    found = False
+                    for user in users_list:
+                        proxies = user.get('proxies', {})
+                        for protocol, settings in proxies.items():
+                            if isinstance(settings, dict) and settings.get('id') == client_uuid:
+                                username = user.get('username')
+                                logger.info(f"✅ Found user by UUID: {username}")
+                                response = self.session.get(
+                                    f"{self.base_url}/api/users/{username}",
+                                    verify=False,
+                                    timeout=30
+                                )
+                                found = True
+                                break
+                        if found:
+                            break
+            
+            if response.status_code != 200:
+                logger.error(f"❌ Failed to get user: {response.status_code}")
+                return False
+            
+            current_user = response.json()
+            
+            update_data = {
+                "username": username,
+                "expire": expiry_timestamp, # Marzneshin uses seconds (Unix timestamp)
+                "proxies": current_user.get('proxies', {}),
+                "data_limit": current_user.get('data_limit'),
+                "data_limit_reset_strategy": current_user.get('data_limit_reset_strategy', 'no_reset'),
+                "status": "active"
+            }
+            
+            # Update user
+            response = self.session.put(
+                f"{self.base_url}/api/users/{username}",
+                json=update_data,
+                verify=False,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                logger.info(f"✅ Successfully updated Marzneshin user expiration")
+                return True
+            else:
+                logger.error(f"❌ Failed to update Marzneshin user: {response.status_code}")
+                try:
+                    logger.error(f"   Response: {response.text}")
+                except:
+                    pass
+                return False
+            
+        except Exception as e:
+            logger.error(f"❌ Error updating Marzneshin user expiration: {e}")
+            return False
+
     
     def disable_client(self, inbound_id: int, client_uuid: str, client_name: str = None) -> bool:
         """Disable user on Marzneshin panel"""
@@ -761,6 +862,51 @@ class MarzneshinPanelManager:
             
         except Exception as e:
             print(f"❌ Error disabling Marzneshin user: {e}")
+            return False
+
+    def enable_client(self, inbound_id: int, client_uuid: str, client_name: str = None) -> bool:
+        """Enable user on Marzneshin panel"""
+        try:
+            if not self.ensure_logged_in():
+                return False
+            
+            username = client_name if client_name else client_uuid
+            
+            response = self.session.get(
+                f"{self.base_url}/api/users/{username}",
+                verify=False,
+                timeout=30
+            )
+            
+            if response.status_code != 200:
+                return False
+            
+            current_user = response.json()
+            
+            update_data = {
+                "status": "active",
+                "proxies": current_user.get('proxies', {}),
+                "expire": current_user.get('expire'),
+                "data_limit": current_user.get('data_limit'),
+                "data_limit_reset_strategy": current_user.get('data_limit_reset_strategy', 'no_reset')
+            }
+            
+            response = self.session.put(
+                f"{self.base_url}/api/users/{username}",
+                json=update_data,
+                verify=False,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                print(f"✅ Successfully enabled Marzneshin user: {username}")
+                return True
+            else:
+                print(f"❌ Failed to enable Marzneshin user: {response.status_code}")
+                return False
+            
+        except Exception as e:
+            print(f"❌ Error enabling Marzneshin user: {e}")
             return False
     
     def delete_client(self, inbound_id: int, client_uuid: str) -> bool:

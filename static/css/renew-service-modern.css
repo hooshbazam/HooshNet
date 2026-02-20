@@ -1,3 +1,4 @@
+:root {
     --text-muted: #a1a1aa;
     --border-color: #333333;
     --glass-bg: rgba(17, 17, 17, 0.8);
@@ -6,9 +7,9 @@
     --radius-md: 16px;
     --radius-sm: 12px;
     --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    }
+}
 
-    body {
+body {
         background-color: var(--bg-dark);
         color: var(--text-main);
         font-family: 'Vazirmatn', system-ui, -apple-system, sans-serif;
@@ -37,6 +38,7 @@
         font-weight: 900;
         background: linear-gradient(135deg, #fff 0%, var(--text-muted) 100%);
         -webkit-background-clip: text;
+        background-clip: text;
         -webkit-text-fill-color: transparent;
         margin-bottom: 10px;
     }

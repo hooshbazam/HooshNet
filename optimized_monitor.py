@@ -151,16 +151,20 @@ class OptimizedMonitor:
                                 
                                 stat_id_str = str(stat_id) if stat_id else ''
                                 stat_uuid_str = str(stat_uuid) if stat_uuid else ''
-                                
-                                email_uuid = ''
-                                if '@' in str(stat_email):
-                                    email_parts = str(stat_email).split('@')[0]
-                                    if len(email_parts) > 30:  # UUID-like length
-                                        email_uuid = email_parts
-                                
-                                if (stat_id_str == str(client_uuid) or 
-                                    stat_uuid_str == str(client_uuid) or
-                                    email_uuid == str(client_uuid)):
+
+                                client_email = str(client.get('email', '') or '')
+                                client_email_prefix = client_email.split('@')[0] if '@' in client_email else client_email
+                                stat_email_str = str(stat_email) if stat_email is not None else ''
+                                stat_email_prefix = stat_email_str.split('@')[0] if '@' in stat_email_str else stat_email_str
+
+                                client_uuid_str = str(client_uuid)
+
+                                if (
+                                    stat_id_str == client_uuid_str or
+                                    stat_uuid_str == client_uuid_str or
+                                    (client_email and stat_email_str == client_email) or
+                                    (client_email_prefix and stat_email_prefix == client_email_prefix)
+                                ):
                                     stat = stat_item
                                     up_bytes = stat.get('up', 0) or 0
                                     down_bytes = stat.get('down', 0) or 0
@@ -184,6 +188,14 @@ class OptimizedMonitor:
                             last_activity = stat.get('lastOnline', 0) if stat else 0
                             if last_activity == 0:
                                 last_activity = client.get('lastOnline', 0) or 0
+
+                        try:
+                            last_activity_num = int(float(last_activity)) if last_activity else 0
+                        except Exception:
+                            last_activity_num = 0
+                        if 0 < last_activity_num < 1000000000000:
+                            last_activity_num = last_activity_num * 1000
+                        last_activity = last_activity_num
                         
                         # Get total traffic
                         total_traffic = client.get('totalGB', 0)
@@ -324,8 +336,21 @@ class OptimizedMonitor:
                         total_gb = db_client.get('total_gb', 0)
                     
                     # Check if online (last activity < 2 minutes)
-                    current_time = int(time.time() * 1000)
-                    is_online = (current_time - last_activity) < 120000 if last_activity > 0 else False
+                    try:
+                        last_activity_num = int(float(last_activity)) if last_activity else 0
+                    except Exception:
+                        last_activity_num = 0
+                    last_activity_ms = last_activity_num if last_activity_num > 1000000000000 else (last_activity_num * 1000 if last_activity_num > 0 else 0)
+                    enable = panel_client.get('enable', True)
+                    enable_bool = bool(enable) if enable is not None else True
+
+                    prev_used_gb = 0.0
+                    try:
+                        prev_used_gb = float(db_client.get('used_gb') or db_client.get('cached_used_gb') or 0)
+                    except Exception:
+                        prev_used_gb = 0.0
+                    traffic_increased = (used_gb - prev_used_gb) > 0.0001
+                    is_online = bool(enable_bool and traffic_increased)
                     
                     # Process expiry time
                     expiry_time = panel_client.get('expiryTime', 0)
@@ -350,8 +375,8 @@ class OptimizedMonitor:
                     update_data = {
                         'client_id': int(db_client.get('id', 0)),
                         'used_gb': used_gb,
-                        'last_activity': last_activity,
-                        'is_online': is_online,
+                        'last_activity': last_activity_ms,
+                        'is_online': 1 if is_online else 0,
                         'remaining_days': remaining_days,
                         'expires_at': expires_at.isoformat() if expires_at else None
                     }
@@ -364,11 +389,16 @@ class OptimizedMonitor:
                     usage_percentage = 0
                     if total_gb > 0:
                         usage_percentage = (used_gb / total_gb) * 100
+
+                    current_status = str(db_client.get('status') or '').strip()
+                    if total_gb > 0 and usage_percentage < 100:
+                        if current_status in ('disabled', 'exhausted') and db_client.get('exhausted_at'):
+                            self.db.reset_service_exhaustion(db_client['id'])
                     
                     # Check for 70% warning
                     if 70 <= usage_percentage < 100:
                         warned_70 = db_client.get('warned_70_percent', 0)
-                        if not warned_70 and db_client.get('status') != 'disabled':
+                        if not warned_70 and current_status not in ('disabled', 'expired', 'exhausted'):
                             result['notifications'].append({
                                 'type': '70_percent',
                                 'service': db_client,
@@ -427,15 +457,15 @@ class OptimizedMonitor:
                                 logger.error(f"Error checking grace period for {db_client['id']}: {e}")
 
                         # 3. Standard Exhaustion Handling (Disable + Notify ONCE)
-                        current_status = db_client.get('status', 'active')
+                        current_status = str(db_client.get('status', 'active') or 'active')
                         
                         # If not already disabled or not notified
-                        if current_status != 'disabled' or not notified_exhausted:
+                        if current_status not in ('disabled', 'exhausted') or not notified_exhausted:
                             # Disable if not disabled
-                            if current_status != 'disabled':
+                            if current_status not in ('disabled', 'exhausted'):
                                 try:
                                     if panel_manager.disable_client(db_client['inbound_id'], client_uuid):
-                                        self.db.update_service_status(db_client['id'], 'disabled')
+                                        self.db.update_service_status(db_client['id'], 'exhausted')
                                         self.db.update_service_exhaustion_time(db_client['id'])
                                 except Exception as e:
                                     logger.error(f"Failed to disable exhausted service {db_client['id']}: {e}")
@@ -480,10 +510,13 @@ class OptimizedMonitor:
                     update_query = '''
                         UPDATE clients 
                         SET used_gb = %s,
+                            cached_used_gb = %s,
+                            cached_last_activity = %s,
                             last_activity = %s,
                             cached_is_online = %s,
-                            remaining_days = %s,
+                            cached_remaining_days = %s,
                             expires_at = %s,
+                            data_last_synced = NOW(),
                             updated_at = NOW()
                         WHERE id = %s
                     '''
@@ -491,9 +524,11 @@ class OptimizedMonitor:
                     values = [
                         (
                             update['used_gb'],
+                            update['used_gb'],
+                            update['last_activity'],
                             update['last_activity'],
                             update['is_online'],
-                            update['remaining_days'],
+                            update.get('remaining_days'),
                             update['expires_at'],
                             update['client_id']
                         )

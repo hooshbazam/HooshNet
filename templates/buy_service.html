@@ -193,6 +193,10 @@
                 <span class="invoice-label">مدت زمان</span>
                 <span class="invoice-value" id="summaryDuration">-</span>
             </div>
+            <div class="invoice-row" id="summaryUsersRow" style="display: none;">
+                <span class="invoice-label">کاربر</span>
+                <span class="invoice-value" id="summaryUsers">-</span>
+            </div>
 
             <div class="discount-box">
                 <input type="text" id="discountCode" placeholder="کد تخفیف دارید؟">
@@ -293,8 +297,8 @@
     let originalPrice = 0;
     let userBalance = 0;
     let selectedPaymentMethod = 'card';
-    let renewServiceId = {{ renew_service_id|default ('null') | tojson | safe }};
-    let renewPanelId = {{ renew_panel_id|default ('null') | tojson | safe }};
+    let renewServiceId = JSON.parse('{{ renew_service_id|default ("null") | tojson | safe }}');
+    let renewPanelId = JSON.parse('{{ renew_panel_id|default ("null") | tojson | safe }}');
     let hasSinglePanel = false;
 
     document.addEventListener('DOMContentLoaded', function () {
@@ -506,6 +510,17 @@
             const categories = data.categories || [];
             const hasNoCat = data.has_products_without_category;
 
+            if (categories.length === 0 && !hasNoCat) {
+                container.innerHTML = `
+                    <div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-secondary);">
+                        <i class="fas fa-box-open" style="font-size: 3rem; margin-bottom: 16px; opacity: 0.5;"></i>
+                        <p>هیچ محصولی یافت نشد</p>
+                        <p style="font-size: 0.9rem; margin-top: 8px;">لطفاً از پنل‌های دیگر خرید کنید یا با پشتیبانی تماس بگیرید</p>
+                    </div>
+                `;
+                return;
+            }
+
             if (categories.length === 0 && hasNoCat) {
                 loadProducts(null);
                 goToStep('step3_product');
@@ -572,30 +587,60 @@
 
             if (data.products && data.products.length > 0) {
                 data.products.forEach(product => {
+                    const userLimitText = (product.user_limit && Number(product.user_limit) > 0)
+                        ? `<div class="product-badge limit">👤 محدودیت کاربر: ${product.user_limit}</div>`
+                        : '';
+                    
                     const div = document.createElement('div');
-                    div.className = 'modern-card';
-                    div.style.flexDirection = 'row';
-                    div.style.alignItems = 'center';
-                    div.style.textAlign = 'right';
-                    div.style.padding = '16px';
+                    div.className = 'card product-card';
                     div.onclick = () => selectProduct(product);
+                    
+                    // Format price
+                    const price = Number(product.price);
+                    const originalPrice = product.original_price ? Number(product.original_price) : price;
+                    const isDiscounted = product.is_discounted;
+                    
+                    let priceHtml = '';
+                    if (isDiscounted) {
+                        priceHtml = `
+                            <div class="product-price">
+                                <span class="original-price">${originalPrice.toLocaleString()}</span>
+                                <span class="current-price">${price.toLocaleString()} تومان</span>
+                            </div>
+                        `;
+                    } else {
+                        priceHtml = `<div class="product-price">${price.toLocaleString()} تومان</div>`;
+                    }
 
                     div.innerHTML = `
-                        <div style="flex:1;">
-                            <div class="card-title" style="font-size:1rem;">${product.name}</div>
-                            <div class="card-subtitle">${product.volume_gb} GB • ${product.duration_days} روز</div>
-                            ${product.is_discounted ?
-                            `<div style="font-size:0.8rem; color:#ef4444; text-decoration:line-through;">${product.original_price.toLocaleString('fa-IR')}</div>` : ''}
+                        <div class="product-name">${product.name}</div>
+                        <div class="product-details">
+                            <div class="product-detail">
+                                <i class="fas fa-hdd"></i>
+                                <span>${product.volume_gb} گیگابایت</span>
+                            </div>
+                            <div class="product-detail">
+                                <i class="fas fa-clock"></i>
+                                <span>${product.duration_days} روز</span>
+                            </div>
                         </div>
-                        <div style="font-weight: 800; color: var(--primary); font-size:1.1rem;">
-                            ${product.price.toLocaleString('fa-IR')}
-                            ${product.is_discounted ? '<i class="fas fa-fire" style="color:#f59e0b; margin-right:4px; font-size:0.9rem;"></i>' : ''}
-                        </div>
+                        ${userLimitText}
+                        ${priceHtml}
+                        ${isDiscounted ? `<div class="discount-badge">${Math.round(product.discount_rate)}% تخفیف</div>` : ''}
                     `;
                     container.appendChild(div);
                 });
             } else {
-                container.innerHTML = '<div style="text-align:center; width:100%; color:var(--text-secondary);">محصولی یافت نشد</div>';
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 40px 20px; color: var(--text-secondary);">
+                        <i class="fas fa-box-open" style="font-size: 3rem; margin-bottom: 15px; opacity: 0.5;"></i>
+                        <p style="font-size: 1.1rem; margin-bottom: 10px;">موجودی ندارد</p>
+                        <p style="font-size: 0.9rem; opacity: 0.8;">از پنل دیگر خرید کنید یا بعداً تلاش کنید</p>
+                        <button onclick="goToStep('step1')" class="btn btn-outline" style="margin-top: 15px;">
+                            <i class="fas fa-arrow-right"></i> بازگشت به لیست پنل‌ها
+                        </button>
+                    </div>
+                `;
             }
         } catch (error) {
             showToast('خطا در بارگذاری محصولات', 'error');
@@ -675,11 +720,15 @@
             document.getElementById('summaryVolume').textContent = selectedProduct.name;
             document.getElementById('summaryDurationRow').style.display = 'flex';
             document.getElementById('summaryDuration').textContent = selectedProduct.duration_days + ' روز';
+            const users = Number(selectedProduct.user_limit || 0);
+            document.getElementById('summaryUsersRow').style.display = 'flex';
+            document.getElementById('summaryUsers').textContent = (users && users > 0) ? `${users} کاربر` : 'نامحدود';
         } else {
             document.getElementById('summaryType').textContent = 'حجمی';
             document.getElementById('summaryVolumeLabel').textContent = 'حجم';
             document.getElementById('summaryVolume').textContent = selectedVolume.gb + ' GB';
             document.getElementById('summaryDurationRow').style.display = 'none';
+            document.getElementById('summaryUsersRow').style.display = 'none';
         }
 
         document.getElementById('summaryPrice').innerHTML = `
@@ -960,8 +1009,52 @@
 
                 } else if (paymentMethod === 'balance') {
                     // Balance payment - service created immediately
-                    showToast('سرویس با موفقیت ایجاد شد', 'success');
-                    setTimeout(() => window.location.href = '/services', 1500);
+                    if (data.subscription_link || data.config_link) {
+                        // Show success modal with links
+                        const modalHtml = `
+                        <div id="successModal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 20px; backdrop-filter: blur(5px);">
+                            <div style="background: #1a1b1e; padding: 25px; border-radius: 16px; width: 100%; max-width: 500px; color: #fff; text-align: center; border: 1px solid #2c2e33; box-shadow: 0 10px 40px rgba(0,0,0,0.6);">
+                                <div style="font-size: 50px; color: #4CAF50; margin-bottom: 20px;">
+                                    <i class="fas fa-check-circle"></i>
+                                </div>
+                                <h2 style="margin-bottom: 15px; font-size: 22px; font-weight: bold; color: #fff;">سرویس با موفقیت فعال شد</h2>
+                                
+                                ${data.subscription_link ? `
+                                <div style="margin-bottom: 20px; text-align: right;">
+                                    <label style="display: block; margin-bottom: 8px; font-size: 13px; color: #aaa;">لینک سابسکریپشن:</label>
+                                    <div style="display: flex; gap: 10px; background: #25262b; padding: 8px; border-radius: 8px; border: 1px solid #373a40;">
+                                        <input type="text" value="${data.subscription_link}" readonly style="width: 100%; background: transparent; border: none; color: #e9ecef; outline: none; font-family: monospace; font-size: 13px; direction: ltr;" id="subLinkInput">
+                                        <button onclick="navigator.clipboard.writeText('${data.subscription_link}').then(() => showToast('لینک کپی شد', 'success'))" style="background: #228be6; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; transition: all 0.2s;">
+                                            <i class="fas fa-copy"></i>
+                                        </button>
+                                    </div>
+                                    <div style="font-size: 11px; color: #868e96; margin-top: 5px;">این لینک را در نرم‌افزار VPN خود اضافه کنید</div>
+                                </div>
+                                ` : ''}
+                                
+                                ${data.config_link ? `
+                                <div style="margin-bottom: 25px; text-align: right;">
+                                    <label style="display: block; margin-bottom: 8px; font-size: 13px; color: #aaa;">کانفیگ مستقیم:</label>
+                                    <div style="display: flex; gap: 10px; background: #25262b; padding: 8px; border-radius: 8px; border: 1px solid #373a40;">
+                                        <input type="text" value="${data.config_link}" readonly style="width: 100%; background: transparent; border: none; color: #e9ecef; outline: none; font-family: monospace; font-size: 13px; direction: ltr;" id="configLinkInput">
+                                        <button onclick="navigator.clipboard.writeText('${data.config_link}').then(() => showToast('کانفیگ کپی شد', 'success'))" style="background: #228be6; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; transition: all 0.2s;">
+                                            <i class="fas fa-copy"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                ` : ''}
+                                
+                                <button onclick="window.location.href='/services'" style="background: #40c057; color: white; border: none; padding: 12px 30px; border-radius: 8px; font-size: 16px; cursor: pointer; width: 100%; font-weight: bold; transition: all 0.2s; box-shadow: 0 4px 15px rgba(64, 192, 87, 0.3);">
+                                    مشاهده سرویس‌ها
+                                </button>
+                            </div>
+                        </div>
+                        `;
+                        document.body.insertAdjacentHTML('beforeend', modalHtml);
+                    } else {
+                        showToast('سرویس با موفقیت ایجاد شد', 'success');
+                        setTimeout(() => window.location.href = '/services', 1500);
+                    }
                 } else if (data.payment_link) {
                     window.location.href = data.payment_link;
                 } else {

@@ -44,6 +44,10 @@
     </div>
 
     <!-- Categories Section -->
+    <style>
+        .product-icon-active { color: var(--p-success) !important; }
+        .product-icon-inactive { color: var(--p-text-muted) !important; }
+    </style>
     <div style="margin-bottom: var(--sp-2xl);">
         <div style="display: flex; align-items: center; gap: var(--sp-md); margin-bottom: var(--sp-lg);">
             <i class="fas fa-folder" style="color: var(--p-primary); font-size: 1.2rem;"></i>
@@ -69,18 +73,18 @@
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-sm);">
                     <button class="btn btn-sm btn-outline"
-                        onclick="toggleCategory({{ category.id }}, {{ 'true' if category.is_active else 'false' }})">
+                        onclick="toggleCategory('{{ category.id }}', '{{ category.is_active }}')">
                         <i class="fas fa-{% if category.is_active %}toggle-on{% else %}toggle-off{% endif %}"></i>
                         {% if category.is_active %}غیرفعال{% else %}فعال{% endif %}
                     </button>
                     <button class="btn btn-sm btn-outline"
-                        onclick="editCategory({{ category.id }}, '{{ category.name }}')">
+                        onclick="editCategory('{{ category.id }}', '{{ category.name }}')">
                         <i class="fas fa-edit"></i>
                         ویرایش
                     </button>
                     <button class="btn btn-sm btn-outline"
                         style="grid-column: 1 / -1; border-color: var(--p-error); color: var(--p-error);"
-                        onclick="deleteCategory({{ category.id }})">
+                        onclick="deleteCategory('{{ category.id }}')">
                         <i class="fas fa-trash"></i>
                         حذف
                     </button>
@@ -114,8 +118,8 @@
                     style="margin-bottom: var(--sp-md); padding-bottom: var(--sp-md); border-bottom: 1px solid var(--border-color);">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                         <div style="display: flex; gap: var(--sp-sm); align-items: center;">
-                            <div
-                                style="width: 40px; height: 40px; border-radius: var(--radius-lg); background: var(--p-bg-hover); display: flex; align-items: center; justify-content: center; color: {% if product.is_active %}var(--p-success){% else %}var(--p-text-muted){% endif %};">
+                            <div class="{% if product.is_active %}product-icon-active{% else %}product-icon-inactive{% endif %}"
+                                style="width: 40px; height: 40px; border-radius: var(--radius-lg); background: var(--p-bg-hover); display: flex; align-items: center; justify-content: center;">
                                 <i class="fas fa-box"></i>
                             </div>
                             <div>
@@ -155,17 +159,17 @@
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-sm);">
                     <button class="btn btn-sm btn-outline"
-                        onclick="toggleProduct({{ product.id }}, {{ 'true' if product.is_active else 'false' }})">
+                        onclick="toggleProduct('{{ product.id }}', '{{ product.is_active }}')">
                         <i class="fas fa-{% if product.is_active %}toggle-on{% else %}toggle-off{% endif %}"></i>
                         {% if product.is_active %}غیرفعال{% else %}فعال{% endif %}
                     </button>
-                    <button class="btn btn-sm btn-outline" onclick="editProduct({{ product.id }})">
+                    <button class="btn btn-sm btn-outline" onclick="editProduct('{{ product.id }}')">
                         <i class="fas fa-edit"></i>
                         ویرایش
                     </button>
                     <button class="btn btn-sm btn-outline"
                         style="grid-column: 1 / -1; border-color: var(--p-error); color: var(--p-error);"
-                        onclick="deleteProduct({{ product.id }})">
+                        onclick="deleteProduct('{{ product.id }}')">
                         <i class="fas fa-trash"></i>
                         حذف
                     </button>
@@ -198,8 +202,8 @@
                     style="margin-bottom: var(--sp-md); padding-bottom: var(--sp-md); border-bottom: 1px solid var(--border-color);">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                         <div style="display: flex; gap: var(--sp-sm); align-items: center;">
-                            <div
-                                style="width: 40px; height: 40px; border-radius: var(--radius-lg); background: var(--p-bg-hover); display: flex; align-items: center; justify-content: center; color: {% if product.is_active %}var(--p-success){% else %}var(--p-text-muted){% endif %};">
+                            <div class="{% if product.is_active %}product-icon-active{% else %}product-icon-inactive{% endif %}"
+                                style="width: 40px; height: 40px; border-radius: var(--radius-lg); background: var(--p-bg-hover); display: flex; align-items: center; justify-content: center;">
                                 <i class="fas fa-box"></i>
                             </div>
                             <div>
@@ -239,17 +243,17 @@
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-sm);">
                     <button class="btn btn-sm btn-outline"
-                        onclick="toggleProduct({{ product.id }}, {{ 'true' if product.is_active else 'false' }})">
+                        onclick="toggleProduct('{{ product.id }}', '{{ product.is_active }}')">
                         <i class="fas fa-{% if product.is_active %}toggle-on{% else %}toggle-off{% endif %}"></i>
                         {% if product.is_active %}غیرفعال{% else %}فعال{% endif %}
                     </button>
-                    <button class="btn btn-sm btn-outline" onclick="editProduct({{ product.id }})">
+                    <button class="btn btn-sm btn-outline" onclick="editProduct('{{ product.id }}')">
                         <i class="fas fa-edit"></i>
                         ویرایش
                     </button>
                     <button class="btn btn-sm btn-outline"
                         style="grid-column: 1 / -1; border-color: var(--p-error); color: var(--p-error);"
-                        onclick="deleteProduct({{ product.id }})">
+                        onclick="deleteProduct('{{ product.id }}')">
                         <i class="fas fa-trash"></i>
                         حذف
                     </button>
@@ -330,6 +334,20 @@
                     </select>
                 </div>
             </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-md); margin-top: var(--sp-md);">
+                <div class="form-group">
+                    <label class="form-label" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                        <input type="checkbox" name="is_visible_to_users" checked style="width: 20px; height: 20px;">
+                        نمایش برای کاربران عادی
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                        <input type="checkbox" name="is_visible_to_resellers" checked style="width: 20px; height: 20px;">
+                        نمایش برای نمایندگان
+                    </label>
+                </div>
+            </div>
             <div style="display: flex; gap: var(--sp-md); margin-top: var(--sp-lg);">
                 <button type="button" class="btn btn-secondary" onclick="closeModal('addProductModal')"
                     style="flex: 1;">لغو</button>
@@ -376,6 +394,37 @@
                         <option value="1">فعال</option>
                         <option value="0">غیرفعال</option>
                     </select>
+                </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-md);">
+                <div class="form-group">
+                    <label class="form-label">اینباند (اختیاری)</label>
+                    <select name="inbound_id" class="form-control">
+                        <option value="">پیش‌فرض (خودکار)</option>
+                        {% if inbounds %}
+                        {% for inbound in inbounds %}
+                        <option value="{{ inbound.id }}">{{ inbound.remark or inbound.tag or inbound.id }} ({{ inbound.protocol }})</option>
+                        {% endfor %}
+                        {% endif %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">تعداد کاربر (نمایشی)</label>
+                    <input type="number" name="user_limit" class="form-control" min="1">
+                </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-md); margin-top: var(--sp-md);">
+                <div class="form-group">
+                    <label class="form-label" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                        <input type="checkbox" name="is_visible_to_users" style="width: 20px; height: 20px;">
+                        نمایش برای کاربران عادی
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                        <input type="checkbox" name="is_visible_to_resellers" style="width: 20px; height: 20px;">
+                        نمایش برای نمایندگان
+                    </label>
                 </div>
             </div>
             <div style="display: flex; gap: var(--sp-md); margin-top: var(--sp-lg);">
@@ -475,7 +524,9 @@
             volume_gb: parseInt(form.volume_gb.value),
             duration_days: parseInt(form.duration_days.value),
             price: parseInt(form.price.value),
-            category_id: form.category_id.value ? parseInt(form.category_id.value) : null
+            category_id: form.category_id.value ? parseInt(form.category_id.value) : null,
+            is_visible_to_users: form.is_visible_to_users.checked,
+            is_visible_to_resellers: form.is_visible_to_resellers.checked
         };
 
         try {
@@ -534,10 +585,11 @@
     }
 
     async function toggleProduct(id, isActive) {
+        const activeState = String(isActive).toLowerCase() === 'true';
         try {
             await apiCall(`/api/admin/products/${id}`, {
                 method: 'PUT',
-                body: JSON.stringify({ is_active: !isActive })
+                body: JSON.stringify({ is_active: !activeState })
             });
             showToast('وضعیت محصول تغییر کرد', 'success');
             setTimeout(() => window.location.reload(), 500);
@@ -560,25 +612,34 @@
         }
     }
 
-    function editProduct(id) {
-        // Fetch product details and populate modal
-        // This part requires fetching product data first or passing it via data attributes
-        // For simplicity, I'll assume we can get data from the card
-        const card = document.querySelector(`.product-card[data-product-id="${id}"]`);
-        if (!card) return;
-
-        const form = document.getElementById('editProductForm');
-        form.product_id.value = id;
-        form.name.value = card.querySelector('.product-name').textContent.trim();
-        form.volume_gb.value = parseInt(card.querySelector('.product-volume').textContent);
-        form.duration_days.value = parseInt(card.querySelector('.product-duration').textContent);
-        form.price.value = parseInt(card.querySelector('.product-price').getAttribute('data-price'));
-
-        // Check for text-success class to determine if active
-        const isActive = card.querySelector('.text-success') !== null;
-        form.is_active.value = isActive ? '1' : '0';
-
-        document.getElementById('editProductModal').style.display = 'flex';
+    async function editProduct(id) {
+        try {
+            const response = await apiCall(`/api/admin/products/${id}`, { method: 'GET' });
+            const product = response.product;
+            
+            const form = document.getElementById('editProductForm');
+            form.product_id.value = product.id;
+            form.name.value = product.name;
+            form.volume_gb.value = product.volume_gb;
+            form.duration_days.value = product.duration_days;
+            form.price.value = product.price;
+            form.is_active.value = product.is_active ? '1' : '0';
+            form.inbound_id.value = product.inbound_id || '';
+            form.user_limit.value = product.user_limit || 1;
+            
+            // Set visibility checkboxes
+            if (form.is_visible_to_users) {
+                form.is_visible_to_users.checked = product.is_visible_to_users !== false; // Default true
+            }
+            if (form.is_visible_to_resellers) {
+                form.is_visible_to_resellers.checked = product.is_visible_to_resellers !== false; // Default true
+            }
+            
+            document.getElementById('editProductModal').style.display = 'flex';
+        } catch (error) {
+            console.error(error);
+            showToast('خطا در دریافت اطلاعات محصول', 'error');
+        }
     }
 
     async function updateProduct(event) {
@@ -590,7 +651,11 @@
             volume_gb: parseInt(form.volume_gb.value),
             duration_days: parseInt(form.duration_days.value),
             price: parseInt(form.price.value),
-            is_active: form.is_active.value === '1'
+            is_active: form.is_active.value === '1',
+            inbound_id: form.inbound_id.value ? parseInt(form.inbound_id.value) : null,
+            user_limit: parseInt(form.user_limit.value),
+            is_visible_to_users: form.is_visible_to_users.checked,
+            is_visible_to_resellers: form.is_visible_to_resellers.checked
         };
 
         try {

@@ -87,15 +87,15 @@
             </div>
 
             <div style="display: flex; gap: var(--sp-sm);">
-                <button class="btn btn-sm btn-secondary" style="flex: 1;" onclick="testPanel({{ panel.id }})">
+                <button class="btn btn-sm btn-secondary" style="flex: 1;" onclick="testPanel('{{ panel.id }}')">
                     <i class="fas fa-plug"></i> تست
                 </button>
-                <button class="btn btn-sm btn-secondary" style="flex: 1;" onclick="editPanel({{ panel.id }})">
+                <button class="btn btn-sm btn-secondary" style="flex: 1;" onclick="editPanel('{{ panel.id }}')">
                     <i class="fas fa-edit"></i> ویرایش
                 </button>
                 <button class="btn btn-sm btn-outline"
                     style="flex: 0 0 auto; border-color: var(--p-error); color: var(--p-error);"
-                    onclick="deletePanel({{ panel.id }})">
+                    onclick="deletePanel('{{ panel.id }}')">
                     <i class="fas fa-trash"></i>
                 </button>
             </div>
@@ -190,6 +190,7 @@
                     <select name="delivery_method" class="form-control" required>
                         <option value="subscription_link">لینک سابسکریپشن</option>
                         <option value="direct_configuration">کانفیگ مستقیم</option>
+                        <option value="both">هر دو</option>
                     </select>
                 </div>
             </div>
@@ -299,6 +300,7 @@
                     <select name="delivery_method" class="form-control" required>
                         <option value="subscription_link">لینک سابسکریپشن</option>
                         <option value="direct_configuration">کانفیگ مستقیم</option>
+                        <option value="both">هر دو</option>
                     </select>
                 </div>
             </div>

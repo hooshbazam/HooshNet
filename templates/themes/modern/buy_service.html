@@ -94,6 +94,7 @@
                 <div style="text-align: left;">
                     <div style="font-size: 0.9rem; font-weight: 700;" id="sheetService">-</div>
                     <div style="font-size: 0.8rem; color: var(--r-accent);" id="sheetAmount">-</div>
+                    <div style="font-size: 0.75rem; color: var(--r-text-muted); margin-top: 4px; display: none;" id="sheetUsers">-</div>
                 </div>
             </div>
 
@@ -311,7 +312,15 @@
 
             container.innerHTML = '';
             if (state.products.length === 0) {
-                container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--r-text-muted);">محصولی یافت نشد</div>';
+                container.innerHTML = `
+                    <div style="grid-column: 1/-1; text-align: center; padding: 40px 20px;">
+                        <div style="width: 60px; height: 60px; background: rgba(255,255,255,0.05); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 15px auto;">
+                            <i class="fas fa-box-open" style="font-size: 24px; color: var(--r-text-muted);"></i>
+                        </div>
+                        <div style="font-weight: 700; color: #fff; margin-bottom: 5px;">محصولی موجود نیست</div>
+                        <div style="font-size: 0.9rem; color: var(--r-text-muted);">در حال حاضر هیچ بسته‌ای برای این سرور تعریف نشده است.<br>لطفاً از پنل‌های دیگر خرید کنید یا با پشتیبانی تماس بگیرید.</div>
+                    </div>
+                `;
                 return;
             }
 
@@ -319,9 +328,14 @@
                 const el = document.createElement('div');
                 el.className = 'r-select-card';
                 el.onclick = () => selectProduct(prod, el);
+                const userLimitText = (prod.user_limit && Number(prod.user_limit) > 0) ? `${prod.user_limit} کاربر` : 'نامحدود';
                 el.innerHTML = `
                     <div style="font-size: 1rem; font-weight: 700;">${prod.name}</div>
-                    <div style="font-size: 0.8rem; color: var(--r-text-muted);">${prod.duration_days} روز</div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--r-text-muted);">
+                        <span>${prod.duration_days} روز</span>
+                        <span>${prod.volume_gb} GB</span>
+                    </div>
+                    <div style="font-size: 0.8rem; color: var(--r-text-muted); margin-top: 4px;">${userLimitText}</div>
                     <div style="font-size: 0.9rem; color: var(--r-accent); margin-top: 4px;">${prod.price.toLocaleString()}</div>
                 `;
                 container.appendChild(el);
@@ -367,7 +381,19 @@
         sheet.classList.add('visible');
 
         document.getElementById('sheetService').textContent = state.selectedPanel.name;
-        document.getElementById('sheetAmount').textContent = state.selectedItem.type === 'volume' ? `${state.selectedItem.val} GB` : state.selectedItem.val.name;
+        const sheetUsersEl = document.getElementById('sheetUsers');
+        if (state.selectedItem.type === 'volume') {
+            document.getElementById('sheetAmount').textContent = `${state.selectedItem.val} GB`;
+            sheetUsersEl.style.display = 'none';
+            sheetUsersEl.textContent = '';
+        } else {
+            const prod = state.selectedItem.val;
+            const users = Number(prod.user_limit || 0);
+            const userLimitText = (users && users > 0) ? `${users} کاربر` : 'نامحدود';
+            document.getElementById('sheetAmount').textContent = `${prod.duration_days} روز • ${prod.volume_gb} GB`;
+            sheetUsersEl.style.display = 'block';
+            sheetUsersEl.textContent = userLimitText;
+        }
         document.getElementById('sheetPrice').textContent = state.selectedItem.price.toLocaleString();
 
         // Auto-switch payment method if balance insufficient

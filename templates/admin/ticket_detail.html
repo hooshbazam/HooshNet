@@ -480,7 +480,7 @@
 
         } catch (error) {
             console.error(error);
-            showToast(error.message || 'خطا در بستن تیکت', 'error');
+            showToast((error && error.message) || 'خطا در بستن تیکت', 'error');
             btn.disabled = false;
             btn.innerHTML = originalContent;
         }

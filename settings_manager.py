@@ -13,15 +13,26 @@ class SettingsManager:
     Implements caching to reduce database hits.
     """
     
-    _instance = None
-    _cache = {}
+    _instances: Dict[str, "SettingsManager"] = {}
     
     def __new__(cls, db_manager=None):
-        if cls._instance is None:
-            cls._instance = super(SettingsManager, cls).__new__(cls)
-            cls._instance.db = db_manager if db_manager else ProfessionalDatabaseManager()
-            cls._instance._load_cache()
-        return cls._instance
+        if db_manager is None:
+            db_manager = ProfessionalDatabaseManager()
+
+        db_key = getattr(db_manager, "database_name", None)
+        if not db_key:
+            db_key = str(id(db_manager))
+
+        if db_key not in cls._instances:
+            instance = super(SettingsManager, cls).__new__(cls)
+            instance.db = db_manager
+            instance._cache = {}
+            instance._last_cache_update = 0
+            instance._cache_ttl = 5
+            instance._load_cache()
+            cls._instances[db_key] = instance
+
+        return cls._instances[db_key]
 
     def __init__(self, db_manager=None):
         pass
@@ -29,10 +40,19 @@ class SettingsManager:
     def _load_cache(self):
         """Load all settings from database into cache"""
         try:
+            import time
+            current_time = time.time()
+            
+            # Don't reload if recently updated (unless forced, but here we just check logic)
+            # Actually _load_cache is usually called when we want to force load
+            
             with self.db.get_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
                 cursor.execute("SELECT setting_key, setting_value, setting_type FROM settings")
                 rows = cursor.fetchall()
+                
+                # Clear existing cache to remove deleted keys
+                self._cache.clear()
                 
                 for row in rows:
                     key = row['setting_key']
@@ -51,6 +71,7 @@ class SettingsManager:
                     else:
                         self._cache[key] = value
                         
+            self._last_cache_update = current_time
             logger.info(f"✅ Loaded {len(self._cache)} settings into cache")
         except Exception as e:
             logger.error(f"Error loading settings cache: {e}")
@@ -59,10 +80,15 @@ class SettingsManager:
         """
         Get setting value.
         Priority:
-        1. Cache (Database)
+        1. Cache (Database) - Refreshed if expired
         2. config.py (if applicable mapping exists)
         3. Default value provided
         """
+        # Check cache expiration
+        import time
+        if time.time() - self._last_cache_update > self._cache_ttl:
+            self._load_cache()
+            
         # 1. Check Cache
         if key in self._cache:
             return self._cache[key]
@@ -90,15 +116,21 @@ class SettingsManager:
                     user_id = user['id']
                 else:
                     logger.warning(f"Could not resolve Telegram ID {user_id} to internal ID for setting {key}")
+                    # If we can't resolve the user, don't pass an invalid ID to avoid FK constraint error
                     user_id = None
             except Exception as e:
                 logger.error(f"Error resolving user ID: {e}")
                 user_id = None
+        
+        # If user_id is still invalid (not in users table), set to None to avoid FK error
+        # This handles cases where system updates settings (like auto-backup)
+        if user_id == 0:
+            user_id = None
             
         success = self.db.set_setting(key, value, description, user_id)
         if success:
-            self._cache[key] = value
-            logger.info(f"Updated setting '{key}' to '{value}'")
+            self._load_cache()
+            logger.info(f"Updated setting '{key}' to '{self._cache.get(key)}'")
         return success
 
     def _get_config_fallback(self, key: str) -> Any:

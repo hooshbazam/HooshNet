@@ -241,8 +241,8 @@ class AdminBot:
         active_bots = self.config_manager.get_active_bots()
         
         text = (
-            "🤖 *پنل مدیریت ربات‌های VPN*\n\n"
-            f"📊 *آمار:*\n"
+            "🤖 پنل مدیریت ربات‌های VPN\n\n"
+            f"📊 آمار:\n"
             f"• کل ربات‌ها: {len(all_bots)}\n"
             f"• ربات‌های فعال: {len(active_bots)}\n"
             f"• ربات‌های غیرفعال: {len(all_bots) - len(active_bots)}\n\n"
@@ -306,7 +306,7 @@ class AdminBot:
         self.user_sessions[user_id] = {'creating_bot': {}}
         
         text = (
-            "➕ *ساخت ربات جدید*\n\n"
+            "➕ ساخت ربات جدید\n\n"
             "لطفاً نام ربات را وارد کنید:\n"
             "⚠️ فقط حروف انگلیسی، اعداد، خط تیره و آندرلاین مجاز است."
         )
@@ -579,6 +579,13 @@ class AdminBot:
         webapp_url = update.message.text.strip()
         
         if webapp_url:
+            # Ensure https:// prefix
+            if not webapp_url.startswith('https://'):
+                if webapp_url.startswith('http://'):
+                    webapp_url = webapp_url.replace('http://', 'https://', 1)
+                else:
+                    webapp_url = f"https://{webapp_url}"
+            
             self.user_sessions[user_id]['creating_bot']['webapp_url'] = webapp_url
         
         # Prepare config for registration
@@ -638,7 +645,7 @@ class AdminBot:
             return ConversationHandler.END
         else:
             text = (
-                "❌ *خطا در ثبت ربات!*\n\n"
+                "❌ خطا در ثبت ربات\n\n"
                 "لطفاً دوباره تلاش کنید یا با پشتیبانی تماس بگیرید."
             )
             
@@ -685,7 +692,7 @@ class AdminBot:
             await query.edit_message_text(text, reply_markup=reply_markup)
             return MAIN_MENU
         
-        text = "📋 *لیست ربات‌ها:*\n\n"
+        text = "📋 لیست ربات‌ها:\n\n"
         keyboard = []
         
         for bot_name, bot_config in all_bots.items():
@@ -698,7 +705,7 @@ class AdminBot:
             escaped_username = escape_markdown(username, version=2)
             escaped_db_name = escape_markdown(str(bot_config.get('database_name', 'N/A')), version=2)
             
-            text += f"{status} *{escaped_bot_name}*\n"
+            text += f"{status} {escaped_bot_name}\n"
             text += f"   📱 @{escaped_username}\n"
             text += f"   💾 {escaped_db_name}\n\n"
             
@@ -764,7 +771,7 @@ class AdminBot:
             await query.edit_message_text(text, reply_markup=reply_markup)
             return MAIN_MENU
         
-        text = "✏️ *ویرایش ربات*\n\nلطفاً ربات مورد نظر را انتخاب کنید:"
+        text = "✏️ ویرایش ربات\n\nلطفاً ربات مورد نظر را انتخاب کنید:"
         keyboard = []
         
         for bot_name in all_bots.keys():
@@ -802,7 +809,7 @@ class AdminBot:
             'bot_config': bot_config.copy()
         }
         
-        text = f"✏️ *ویرایش ربات: {bot_name}*\n\n"
+        text = f"✏️ ویرایش ربات: {bot_name}\n\n"
         text += "لطفاً فیلد مورد نظر را انتخاب کنید:\n\n"
         
         keyboard = []
@@ -948,7 +955,7 @@ class AdminBot:
                 await query.answer("❌ ربات یافت نشد!", show_alert=True)
                 return EDIT_BOT_FIELD_SELECT
             
-            text = f"✏️ *ویرایش ربات: {escape_markdown(bot_name, version=2)}*\n\n"
+            text = f"✏️ ویرایش ربات: {escape_markdown(bot_name, version=2)}\n\n"
             text += "لطفاً فیلد مورد نظر را انتخاب کنید:\n\n"
             
             keyboard = []
@@ -996,7 +1003,7 @@ class AdminBot:
             await query.edit_message_text(text, reply_markup=reply_markup)
             return MAIN_MENU
         
-        text = "🗑️ *حذف ربات*\n\nلطفاً ربات مورد نظر را انتخاب کنید:"
+        text = "🗑️ حذف ربات\n\nلطفاً ربات مورد نظر را انتخاب کنید:"
         keyboard = []
         
         for bot_name, bot_config in all_bots.items():
@@ -1031,7 +1038,7 @@ class AdminBot:
             return DELETE_BOT_CONFIRM
         
         text = (
-            f"🗑️ *حذف ربات: {bot_name}*\n\n"
+            f"🗑️ حذف ربات: {bot_name}\n\n"
             f"📱 یوزرنیم: @{bot_config.get('bot_username', 'N/A')}\n"
             f"💾 دیتابیس: {bot_config.get('database_name', 'N/A')}\n\n"
             f"⚠️ آیا مطمئن هستید که می‌خواهید این ربات را غیرفعال کنید؟\n"
@@ -1061,7 +1068,7 @@ class AdminBot:
         
         if self.config_manager.delete_bot(bot_name):
             text = (
-                f"✅ *ربات '{bot_name}' با موفقیت غیرفعال شد!*\n\n"
+                f"✅ ربات '{bot_name}' با موفقیت غیرفعال شد\n\n"
                 f"💡 می‌توانید بعداً آن را دوباره فعال کنید."
             )
         else:
@@ -1106,7 +1113,7 @@ class AdminBot:
             await query.edit_message_text(text, reply_markup=reply_markup)
             return MAIN_MENU
         
-        text = "🔄 *فعال/غیرفعال کردن ربات*\n\nلطفاً ربات مورد نظر را انتخاب کنید:"
+        text = "🔄 فعال/غیرفعال کردن ربات\n\nلطفاً ربات مورد نظر را انتخاب کنید:"
         keyboard = []
         
         for bot_name, bot_config in all_bots.items():
@@ -1147,7 +1154,7 @@ class AdminBot:
         current_status_text = "فعال" if current_status else "غیرفعال"
         
         text = (
-            f"🔄 *تغییر وضعیت ربات: {bot_name}*\n\n"
+            f"🔄 تغییر وضعیت ربات: {bot_name}\n\n"
             f"📱 یوزرنیم: @{bot_config.get('bot_username', 'N/A')}\n"
             f"💾 دیتابیس: {bot_config.get('database_name', 'N/A')}\n\n"
             f"وضعیت فعلی: {current_status_text}\n"
@@ -1222,8 +1229,8 @@ class AdminBot:
     
     def _format_bot_config_summary(self, bot_name: str, config: Dict) -> str:
         """Format bot configuration as summary text"""
-        text = f"📋 *خلاصه اطلاعات ربات:*\n\n"
-        text += f"📝 نام ربات: *{bot_name}*\n"
+        text = f"📋 خلاصه اطلاعات ربات:\n\n"
+        text += f"📝 نام ربات: {bot_name}\n"
         
         for field in REQUIRED_FIELDS:
             value = config.get(field, 'N/A')

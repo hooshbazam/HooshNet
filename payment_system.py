@@ -30,7 +30,7 @@ class PaymentManager:
         user = self.db.get_user(user_id)
         return user.get('balance', 0) if user else 0
     
-    def create_invoice(self, user_id: int, panel_id: int, gb_amount: int, amount: int, 
+    def create_invoice(self, user_id: int, panel_id: int, gb_amount: float, amount: int, 
                      payment_method: str = 'gateway', discount_code: str = None) -> Dict[str, Any]:
         """Create a new invoice with optional discount code"""
         try:
@@ -178,18 +178,18 @@ class PaymentManager:
         # Placeholder for future payment gateway
         return {'success': False, 'message': 'درگاه پرداخت غیرفعال است'}
     
-    def create_service_payment(self, user_id: int, panel_id: int, volume_gb: int, price: int, 
+    def create_service_payment(self, user_id: int, panel_id: int, volume_gb: float, price: int, 
                              invoice_id: int = None, discount_code: str = None) -> Dict[str, Any]:
         """Create a new service purchase payment (Placeholder)"""
         # Placeholder for future payment gateway
         return {'success': False, 'message': 'درگاه پرداخت غیرفعال است'}
     
-    def create_volume_payment(self, user_id: int, panel_id: int, volume_gb: int, price: int, discount_code: str = None) -> Dict[str, Any]:
+    def create_volume_payment(self, user_id: int, panel_id: int, volume_gb: float, price: int, discount_code: str = None) -> Dict[str, Any]:
         """Create a volume purchase payment (Placeholder)"""
         # Placeholder for future payment gateway
         return {'success': False, 'message': 'درگاه پرداخت غیرفعال است'}
     
-    def create_add_volume_payment(self, user_id: int, service_id: int, panel_id: int, volume_gb: int, price: int, discount_code: str = None) -> Dict[str, Any]:
+    def create_add_volume_payment(self, user_id: int, service_id: int, panel_id: int, volume_gb: float, price: int, discount_code: str = None) -> Dict[str, Any]:
         """Create a payment for adding volume to existing service (Placeholder)"""
         # Placeholder for future payment gateway
         return {'success': False, 'message': 'درگاه پرداخت غیرفعال است'}

@@ -90,29 +90,29 @@ class StatisticsSystem:
     def get_user_statistics(self) -> Tuple[str, InlineKeyboardMarkup]:
         """Get detailed user statistics"""
         try:
-            # Get all users
-            all_users = self.db.get_all_users()
-            total_users = len(all_users)
-            
-            # Get active users (logged in within last 7 days)
-            active_users = [u for u in all_users if u.get('last_activity') and 
-                          self._is_recent_date(u['last_activity'], days=7)]
-            active_count = len(active_users)
-            
-            # Get users with services
-            users_with_services = [u for u in all_users if u.get('total_services', 0) > 0]
-            
-            # Get new users today
-            new_users_today = [u for u in all_users if u.get('created_at') and 
-                             self._is_today(u['created_at'])]
-            
-            # Get new users this week
-            new_users_week = [u for u in all_users if u.get('created_at') and 
-                            self._is_recent_date(u['created_at'], days=7)]
-            
-            # Get new users this month
-            new_users_month = [u for u in all_users if u.get('created_at') and 
-                             self._is_recent_date(u['created_at'], days=30)]
+            with self.db.get_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute("SELECT COUNT(*) AS cnt FROM users")
+                total_users = int((cursor.fetchone() or {}).get('cnt') or 0)
+                
+                cursor.execute("SELECT COUNT(*) AS cnt FROM users WHERE last_activity >= DATE_SUB(NOW(), INTERVAL 7 DAY)")
+                active_count = int((cursor.fetchone() or {}).get('cnt') or 0)
+                
+                cursor.execute("""
+                    SELECT COUNT(DISTINCT u.id) AS cnt
+                    FROM users u
+                    JOIN clients c ON c.user_id = u.id
+                """)
+                users_with_services_count = int((cursor.fetchone() or {}).get('cnt') or 0)
+                
+                cursor.execute("SELECT COUNT(*) AS cnt FROM users WHERE DATE(created_at) = CURDATE()")
+                new_users_today_count = int((cursor.fetchone() or {}).get('cnt') or 0)
+                
+                cursor.execute("SELECT COUNT(*) AS cnt FROM users WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)")
+                new_users_week_count = int((cursor.fetchone() or {}).get('cnt') or 0)
+                
+                cursor.execute("SELECT COUNT(*) AS cnt FROM users WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)")
+                new_users_month_count = int((cursor.fetchone() or {}).get('cnt') or 0)
             
             # Format message
             message = f"""👥 **آمار کاربران**
@@ -120,13 +120,13 @@ class StatisticsSystem:
 📊 **کلی:**
 • کل کاربران: `{total_users:,} نفر`
 • کاربران فعال (۷ روز گذشته): `{active_count:,} نفر`
-• کاربران با سرویس: `{len(users_with_services):,} نفر`
-• کاربران بدون سرویس: `{total_users - len(users_with_services):,} نفر`
+• کاربران با سرویس: `{users_with_services_count:,} نفر`
+• کاربران بدون سرویس: `{total_users - users_with_services_count:,} نفر`
 
 📈 **ثبت نام‌های جدید:**
-• امروز: `{len(new_users_today)} نفر`
-• هفته گذشته: `{len(new_users_week)} نفر`
-• ماه گذشته: `{len(new_users_month)} نفر`
+• امروز: `{new_users_today_count} نفر`
+• هفته گذشته: `{new_users_week_count} نفر`
+• ماه گذشته: `{new_users_month_count} نفر`
 
 ⏰ **آخرین به‌روزرسانی:** {PersianDateTime.now().strftime('%H:%M:%S')}"""
             
@@ -262,42 +262,36 @@ class StatisticsSystem:
     def get_services_statistics(self) -> Tuple[str, InlineKeyboardMarkup]:
         """Get detailed services statistics"""
         try:
-            # Get all services from database (only truly active ones for statistics)
+            stats = self.db.get_system_stats()
+            total_services = int(stats.get('total_services', 0) or 0)
+            active_services = int(stats.get('active_services', 0) or 0)
+            disabled_services = int(stats.get('disabled_services', 0) or 0)
+            total_volume = float(stats.get('total_volume_gb', 0.0) or 0.0)
+            used_volume = float(stats.get('used_volume_gb', 0.0) or 0.0)
+
             with self.db.get_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
-                cursor.execute('''
-                    SELECT c.*, p.name as panel_name
+                cursor.execute("""
+                    SELECT p.name AS panel_name, COUNT(*) AS cnt
                     FROM clients c
                     JOIN panels p ON c.panel_id = p.id
-                    ORDER BY c.created_at DESC
-                ''')
-                all_services = cursor.fetchall() or []
-            
-            # Get active services (only truly active, not recently disabled)
-            active_services = [s for s in all_services if s.get('is_active', 0) == 1]
-            
-            # Get disabled services
-            disabled_services = [s for s in all_services if s.get('is_active', 1) == 0 or s.get('status') == 'disabled']
-            
-            # Calculate total volume
-            total_volume = sum(s.get('total_gb', 0) for s in all_services)
-            
-            # Calculate used volume
-            used_volume = sum(s.get('used_gb', 0) for s in all_services)
-            
-            # Get services by panel
-            services_by_panel = {}
-            for service in all_services:
-                panel_name = service.get('panel_name', 'نامشخص')
-                services_by_panel[panel_name] = services_by_panel.get(panel_name, 0) + 1
+                    GROUP BY p.id
+                    ORDER BY cnt DESC
+                    LIMIT 5
+                """)
+                panel_rows = cursor.fetchall() or []
+                services_by_panel_lines = [
+                    f"• {r.get('panel_name', 'نامشخص')}: `{int(r.get('cnt') or 0)} عدد`"
+                    for r in panel_rows
+                ]
             
             # Format message
             message = f"""🛒 **آمار سفارشات و خدمات**
 
 📊 **کلی:**
-• کل سرویس‌ها: `{len(all_services)} عدد`
-• سرویس‌های فعال: `{len(active_services)} عدد`
-• سرویس‌های غیرفعال: `{len(disabled_services)} عدد`
+• کل سرویس‌ها: `{total_services} عدد`
+• سرویس‌های فعال: `{active_services} عدد`
+• سرویس‌های غیرفعال: `{disabled_services} عدد`
 
 📦 **حجم:**
 • حجم کل: `{total_volume:.2f} گیگابایت`
@@ -305,7 +299,7 @@ class StatisticsSystem:
 • حجم باقی‌مانده: `{max(0, total_volume - used_volume):.2f} گیگابایت`
 
 🔗 **توزیع سرویس‌ها بر اساس پنل:**
-{chr(10).join([f"• {panel}: `{count} عدد`" for panel, count in list(services_by_panel.items())[:5]])}
+{chr(10).join(services_by_panel_lines) if services_by_panel_lines else '—'}
 
 ⏰ **آخرین به‌روزرسانی:** {PersianDateTime.now().strftime('%H:%M:%S')}"""
             
@@ -327,35 +321,51 @@ class StatisticsSystem:
     def get_all_services_list(self, page: int) -> Tuple[str, InlineKeyboardMarkup]:
         """Get paginated list of all services"""
         try:
-            # Get all services from database
             with self.db.get_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
-                cursor.execute('''
-                    SELECT c.*, p.name as panel_name
+                cursor.execute("""
+                    SELECT COUNT(*) AS cnt
+                    FROM clients c
+                    JOIN panels p ON c.panel_id = p.id
+                """)
+                total_services = int((cursor.fetchone() or {}).get('cnt') or 0)
+
+                total_pages = max(1, (total_services + self.ITEMS_PER_PAGE - 1) // self.ITEMS_PER_PAGE)
+                page = max(1, min(page, total_pages))
+                offset = (page - 1) * self.ITEMS_PER_PAGE
+
+                cursor.execute(f"""
+                    SELECT
+                        c.id, c.client_name, c.total_gb,
+                        COALESCE(c.used_gb, c.cached_used_gb, 0) AS used_gb,
+                        c.is_active, c.status
                     FROM clients c
                     JOIN panels p ON c.panel_id = p.id
                     ORDER BY c.created_at DESC
-                ''')
-                all_services = cursor.fetchall() or []
-            
-            # Pagination
-            total_pages = (len(all_services) + self.ITEMS_PER_PAGE - 1) // self.ITEMS_PER_PAGE
-            start_idx = (page - 1) * self.ITEMS_PER_PAGE
-            end_idx = start_idx + self.ITEMS_PER_PAGE
-            
-            services_page = all_services[start_idx:end_idx]
+                    LIMIT {self.ITEMS_PER_PAGE} OFFSET %s
+                """, (offset,))
+                services_page = cursor.fetchall() or []
             
             # Create buttons for services
             keyboard = []
             for service in services_page:
                 service_name = service.get('client_name', 'نامشخص')
-                volume = service.get('total_gb', 0)
-                used = service.get('used_gb', 0)
-                status = "🟢" if service.get('is_active', 1) == 1 else "🔴"
+                volume = float(service.get('total_gb') or 0)
+                used = float(service.get('used_gb') or 0)
+                is_active = int(service.get('is_active') or 0)
+                status_str = str(service.get('status') or '')
+                if is_active == 1 and (status_str == 'active' or status_str == ''):
+                    status_icon = "🟢"
+                elif status_str == 'exhausted':
+                    status_icon = "🟠"
+                elif status_str == 'expired':
+                    status_icon = "🟡"
+                else:
+                    status_icon = "🔴"
                 
                 keyboard.append([
                     InlineKeyboardButton(
-                        f"{status} {service_name} | {used:.1f}GB/{volume:.1f}GB",
+                        f"{status_icon} {service_name} | {used:.1f}GB/{volume:.1f}GB",
                         callback_data=f"service_detail_{service['id']}"
                     )
                 ])
@@ -378,7 +388,7 @@ class StatisticsSystem:
             message = f"""🛒 **لیست همه سرویس‌ها**
 
 📊 **صفحه:** `{page}/{total_pages}`
-📦 **کل سرویس‌ها:** `{len(all_services)} عدد`"""
+📦 **کل سرویس‌ها:** `{total_services} عدد`"""
             
             reply_markup = InlineKeyboardMarkup(keyboard)
             return message, reply_markup
@@ -392,58 +402,65 @@ class StatisticsSystem:
     async def get_online_services(self) -> Tuple[str, InlineKeyboardMarkup]:
         """Get real-time online services from all panels"""
         try:
-            # Get all active services (only truly active ones for online check)
             with self.db.get_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
-                cursor.execute('''
-                    SELECT c.*, p.name as panel_name, p.default_inbound_id
+                cursor.execute("""
+                    SELECT COUNT(*) AS cnt
+                    FROM clients
+                    WHERE (is_active = 1 OR status = 'active' OR status IS NULL OR status = '')
+                      AND COALESCE(status, '') NOT IN ('disabled', 'expired', 'exhausted')
+                """)
+                total_active = int((cursor.fetchone() or {}).get('cnt') or 0)
+
+                cursor.execute("""
+                    SELECT COUNT(*) AS cnt
+                    FROM clients
+                    WHERE (is_active = 1 OR status = 'active' OR status IS NULL OR status = '')
+                      AND COALESCE(status, '') NOT IN ('disabled', 'expired', 'exhausted')
+                      AND COALESCE(cached_is_online, 0) = 1
+                """)
+                online_count = int((cursor.fetchone() or {}).get('cnt') or 0)
+
+                cursor.execute("""
+                    SELECT
+                        c.id, c.client_name, c.total_gb,
+                        COALESCE(c.used_gb, c.cached_used_gb, 0) AS used_gb,
+                        p.name AS panel_name
                     FROM clients c
                     JOIN panels p ON c.panel_id = p.id
                     WHERE c.is_active = 1
-                    ORDER BY c.created_at DESC
-                ''')
-                all_services = cursor.fetchall() or []
-            
-            online_count = 0
-            online_services = []
-            
-            # Check each service
-            for service in all_services:
-                try:
-                    panel_manager = self.admin_manager.get_panel_manager(service['panel_id'])
-                    if panel_manager and panel_manager.login():
-                        client_details = panel_manager.get_client_details(
-                            service['inbound_id'],
-                            service['client_uuid']
-                        )
-                        
-                        if client_details:
-                            # Check if client has recent activity (last 5 minutes)
-                            last_activity = client_details.get('last_activity', 0)
-                            if last_activity > 0 and last_activity > (datetime.now().timestamp() * 1000 - 5 * 60 * 1000):
-                                online_count += 1
-                                online_services.append(service)
-                except Exception as e:
-                    logger.debug(f"Error checking service {service['id']}: {e}")
-                    continue
-            
-            # Format message
-            message = f"""🔗 **سرویس‌های آنلاین (لحظه‌ای)**
+                      AND (c.status = 'active' OR c.status IS NULL OR c.status = '')
+                      AND COALESCE(c.status, '') NOT IN ('disabled', 'expired', 'exhausted')
+                      AND COALESCE(cached_is_online, 0) = 1
+                    ORDER BY c.cached_last_activity DESC, c.created_at DESC
+                    LIMIT 30
+                """)
+                online_services = cursor.fetchall() or []
+
+            lines = []
+            for s in online_services:
+                name = s.get('client_name', 'سرویس')
+                panel_name = s.get('panel_name', 'نامشخص')
+                used = float(s.get('used_gb') or 0)
+                total = float(s.get('total_gb') or 0)
+                lines.append(f"• {name} ({panel_name}) — {used:.1f}/{total:.1f}GB")
+
+            message = f"""🔗 **سرویس‌های آنلاین**
 
 📊 **وضعیت:**
 • سرویس‌های آنلاین: `{online_count} عدد`
-• سرویس‌های آفلاین: `{len(all_services) - online_count} عدد`
-• کل سرویس‌ها: `{len(all_services)} عدد`
+• سرویس‌های آفلاین: `{max(0, total_active - online_count)} عدد`
+• کل سرویس‌های فعال: `{total_active} عدد`
 
-⏰ **آخرین به‌روزرسانی:** {PersianDateTime.now().strftime('%H:%M:%S')}
-🔄 **بازه بررسی:** ۵ دقیقه گذشته"""
-            
-            keyboard = [
+📋 **نمایش (حداکثر ۳۰ مورد):**
+{chr(10).join(lines) if lines else '—'}
+
+⏰ **آخرین به‌روزرسانی:** {PersianDateTime.now().strftime('%H:%M:%S')}"""
+
+            reply_markup = InlineKeyboardMarkup([
                 [InlineKeyboardButton("🔄 بروزرسانی", callback_data="stats_online")],
                 [InlineKeyboardButton("◀️ بازگشت به آمار", callback_data="admin_stats")]
-            ]
-            
-            reply_markup = InlineKeyboardMarkup(keyboard)
+            ])
             return message, reply_markup
             
         except Exception as e:
@@ -455,31 +472,39 @@ class StatisticsSystem:
     def get_payment_statistics(self) -> Tuple[str, InlineKeyboardMarkup]:
         """Get payment statistics"""
         try:
-            # Get payment transactions (only positive amounts from balance additions, not refunds or service purchases)
+            # Use invoices with statuses 'paid' and 'completed' for consistency with web panel revenue
             with self.db.get_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
-                cursor.execute('''
-                    SELECT * FROM balance_transactions 
-                    WHERE amount > 0 
-                    AND transaction_type IN ('balance_add', 'payment_callback', 'gateway', 'balance_recharge', 'gift', 'referral_reward')
-                    ORDER BY created_at DESC
-                ''')
-                transactions = cursor.fetchall() or []
-            
-            # Filter transactions by date
-            transactions_today = [t for t in transactions if t.get('created_at') and self._is_today(t['created_at'])]
-            transactions_week = [t for t in transactions if t.get('created_at') and self._is_recent_date(t['created_at'], days=7)]
-            transactions_month = [t for t in transactions if t.get('created_at') and self._is_recent_date(t['created_at'], days=30)]
-            
-            # Calculate amounts (already filtered for positive amounts)
-            total_today = sum(t.get('amount', 0) for t in transactions_today)
-            total_week = sum(t.get('amount', 0) for t in transactions_week)
-            total_month = sum(t.get('amount', 0) for t in transactions_month)
-            
-            # Calculate counts
-            payment_count_today = len(transactions_today)
-            payment_count_week = len(transactions_week)
-            payment_count_month = len(transactions_month)
+                
+                cursor.execute("""
+                    SELECT COUNT(*) AS cnt, COALESCE(SUM(amount), 0) AS total
+                    FROM invoices
+                    WHERE status IN ('paid', 'completed')
+                      AND DATE(created_at) = CURDATE()
+                """)
+                row_today = cursor.fetchone() or {}
+                payment_count_today = int(row_today.get('cnt') or 0)
+                total_today = int(row_today.get('total') or 0)
+                
+                cursor.execute("""
+                    SELECT COUNT(*) AS cnt, COALESCE(SUM(amount), 0) AS total
+                    FROM invoices
+                    WHERE status IN ('paid', 'completed')
+                      AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                """)
+                row_week = cursor.fetchone() or {}
+                payment_count_week = int(row_week.get('cnt') or 0)
+                total_week = int(row_week.get('total') or 0)
+                
+                cursor.execute("""
+                    SELECT COUNT(*) AS cnt, COALESCE(SUM(amount), 0) AS total
+                    FROM invoices
+                    WHERE status IN ('paid', 'completed')
+                      AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                """)
+                row_month = cursor.fetchone() or {}
+                payment_count_month = int(row_month.get('cnt') or 0)
+                total_month = int(row_month.get('total') or 0)
             
             # Format message
             message = f"""💳 **آمار پرداختی‌ها**
@@ -529,7 +554,7 @@ class StatisticsSystem:
                 transactions = cursor.fetchall() or []
             
             # Pagination
-            total_pages = (len(transactions) + self.ITEMS_PER_PAGE - 1) // self.ITEMS_PER_PAGE
+            total_pages = max(1, (len(transactions) + self.ITEMS_PER_PAGE - 1) // self.ITEMS_PER_PAGE)
             start_idx = (page - 1) * self.ITEMS_PER_PAGE
             end_idx = start_idx + self.ITEMS_PER_PAGE
             
@@ -589,40 +614,60 @@ class StatisticsSystem:
     def get_revenue_statistics(self) -> Tuple[str, InlineKeyboardMarkup]:
         """Get revenue statistics"""
         try:
-            # Get all completed/paid invoices - check both statuses for consistency
+            # Use SQL-based aggregation to avoid datetime parsing issues
             with self.db.get_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
-                cursor.execute('''
-                    SELECT * FROM invoices 
-                    WHERE status IN ('completed', 'paid')
-                    ORDER BY created_at DESC
-                ''')
-                invoices = cursor.fetchall() or []
-            
-            # Filter by date ranges
-            invoices_today = [inv for inv in invoices if inv.get('created_at') and self._is_today(inv['created_at'])]
-            invoices_week = [inv for inv in invoices if inv.get('created_at') and self._is_recent_date(inv['created_at'], days=7)]
-            invoices_month = [inv for inv in invoices if inv.get('created_at') and self._is_recent_date(inv['created_at'], days=30)]
-            
-            # Calculate revenue
-            revenue_today = sum(inv.get('amount', 0) for inv in invoices_today)
-            revenue_week = sum(inv.get('amount', 0) for inv in invoices_week)
-            revenue_month = sum(inv.get('amount', 0) for inv in invoices_month)
-            revenue_total = sum(inv.get('amount', 0) for inv in invoices)
+                
+                cursor.execute("""
+                    SELECT COUNT(*) AS cnt, COALESCE(SUM(amount), 0) AS total
+                    FROM invoices
+                    WHERE status IN ('paid', 'completed')
+                      AND DATE(created_at) = CURDATE()
+                """)
+                row_today = cursor.fetchone() or {}
+                orders_today = int(row_today.get('cnt') or 0)
+                revenue_today = int(row_today.get('total') or 0)
+                
+                cursor.execute("""
+                    SELECT COUNT(*) AS cnt, COALESCE(SUM(amount), 0) AS total
+                    FROM invoices
+                    WHERE status IN ('paid', 'completed')
+                      AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                """)
+                row_week = cursor.fetchone() or {}
+                orders_week = int(row_week.get('cnt') or 0)
+                revenue_week = int(row_week.get('total') or 0)
+                
+                cursor.execute("""
+                    SELECT COUNT(*) AS cnt, COALESCE(SUM(amount), 0) AS total
+                    FROM invoices
+                    WHERE status IN ('paid', 'completed')
+                      AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                """)
+                row_month = cursor.fetchone() or {}
+                orders_month = int(row_month.get('cnt') or 0)
+                revenue_month = int(row_month.get('total') or 0)
+                
+                cursor.execute("""
+                    SELECT COALESCE(SUM(amount), 0) AS total
+                    FROM invoices
+                    WHERE status IN ('paid', 'completed')
+                """)
+                revenue_total = int((cursor.fetchone() or {}).get('total') or 0)
             
             # Format message
             message = f"""📈 **آمار درآمد**
 
 💰 **درآمد امروز:**
-• تعداد سفارش: `{len(invoices_today)} عدد`
+• تعداد سفارش: `{orders_today} عدد`
 • مبلغ کل: `{revenue_today:,} تومان`
 
 📊 **درآمد هفته گذشته:**
-• تعداد سفارش: `{len(invoices_week)} عدد`
+• تعداد سفارش: `{orders_week} عدد`
 • مبلغ کل: `{revenue_week:,} تومان`
 
 📈 **درآمد ماه گذشته:**
-• تعداد سفارش: `{len(invoices_month)} عدد`
+• تعداد سفارش: `{orders_month} عدد`
 • مبلغ کل: `{revenue_month:,} تومان`
 
 🏆 **درآمد کل:**
@@ -659,7 +704,7 @@ class StatisticsSystem:
                 invoices = cursor.fetchall() or []
             
             # Pagination
-            total_pages = (len(invoices) + self.ITEMS_PER_PAGE - 1) // self.ITEMS_PER_PAGE
+            total_pages = max(1, (len(invoices) + self.ITEMS_PER_PAGE - 1) // self.ITEMS_PER_PAGE)
             start_idx = (page - 1) * self.ITEMS_PER_PAGE
             end_idx = start_idx + self.ITEMS_PER_PAGE
             
@@ -727,31 +772,40 @@ class StatisticsSystem:
     def get_active_services_list(self, page: int) -> Tuple[str, InlineKeyboardMarkup]:
         """Get paginated list of active services"""
         try:
-            # Get only truly active services from database
             with self.db.get_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
-                cursor.execute('''
-                    SELECT c.*, p.name as panel_name
+                cursor.execute("""
+                    SELECT COUNT(*) AS cnt
                     FROM clients c
                     JOIN panels p ON c.panel_id = p.id
-                    WHERE c.is_active = 1
+                    WHERE (c.is_active = 1 OR c.status = 'active' OR c.status IS NULL OR c.status = '')
+                      AND COALESCE(c.status, '') NOT IN ('disabled', 'expired', 'exhausted')
+                """)
+                total_services = int((cursor.fetchone() or {}).get('cnt') or 0)
+
+                total_pages = max(1, (total_services + self.ITEMS_PER_PAGE - 1) // self.ITEMS_PER_PAGE)
+                page = max(1, min(page, total_pages))
+                offset = (page - 1) * self.ITEMS_PER_PAGE
+
+                cursor.execute(f"""
+                    SELECT
+                        c.id, c.client_name, c.total_gb,
+                        COALESCE(c.used_gb, c.cached_used_gb, 0) AS used_gb
+                    FROM clients c
+                    JOIN panels p ON c.panel_id = p.id
+                    WHERE (c.is_active = 1 OR c.status = 'active' OR c.status IS NULL OR c.status = '')
+                      AND COALESCE(c.status, '') NOT IN ('disabled', 'expired', 'exhausted')
                     ORDER BY c.created_at DESC
-                ''')
-                active_services = cursor.fetchall() or []
-            
-            # Pagination
-            total_pages = (len(active_services) + self.ITEMS_PER_PAGE - 1) // self.ITEMS_PER_PAGE if active_services else 1
-            start_idx = (page - 1) * self.ITEMS_PER_PAGE
-            end_idx = start_idx + self.ITEMS_PER_PAGE
-            
-            services_page = active_services[start_idx:end_idx]
+                    LIMIT {self.ITEMS_PER_PAGE} OFFSET %s
+                """, (offset,))
+                services_page = cursor.fetchall() or []
             
             # Create buttons for services
             keyboard = []
             for service in services_page:
                 service_name = service.get('client_name', 'نامشخص')
-                volume = service.get('total_gb', 0)
-                used = service.get('used_gb', 0)
+                volume = float(service.get('total_gb') or 0)
+                used = float(service.get('used_gb') or 0)
                 
                 keyboard.append([
                     InlineKeyboardButton(
@@ -778,7 +832,7 @@ class StatisticsSystem:
             message = f"""🟢 **لیست سرویس‌های فعال**
 
 📊 **صفحه:** `{page}/{total_pages}`
-📦 **سرویس‌های فعال:** `{len(active_services)} عدد`"""
+📦 **سرویس‌های فعال:** `{total_services} عدد`"""
             
             reply_markup = InlineKeyboardMarkup(keyboard)
             return message, reply_markup
@@ -792,35 +846,50 @@ class StatisticsSystem:
     def get_disabled_services_list(self, page: int) -> Tuple[str, InlineKeyboardMarkup]:
         """Get paginated list of disabled services"""
         try:
-            # Get disabled services from database
             with self.db.get_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
-                cursor.execute('''
-                    SELECT c.*, p.name as panel_name
+                cursor.execute("""
+                    SELECT COUNT(*) AS cnt
                     FROM clients c
                     JOIN panels p ON c.panel_id = p.id
-                    WHERE c.is_active = 0 OR c.status = 'disabled'
+                    WHERE c.is_active = 0 OR c.status IN ('disabled', 'expired', 'exhausted')
+                """)
+                total_services = int((cursor.fetchone() or {}).get('cnt') or 0)
+
+                total_pages = max(1, (total_services + self.ITEMS_PER_PAGE - 1) // self.ITEMS_PER_PAGE)
+                page = max(1, min(page, total_pages))
+                offset = (page - 1) * self.ITEMS_PER_PAGE
+
+                cursor.execute(f"""
+                    SELECT
+                        c.id, c.client_name, c.total_gb,
+                        COALESCE(c.used_gb, c.cached_used_gb, 0) AS used_gb,
+                        c.status
+                    FROM clients c
+                    JOIN panels p ON c.panel_id = p.id
+                    WHERE c.is_active = 0 OR c.status IN ('disabled', 'expired', 'exhausted')
                     ORDER BY c.created_at DESC
-                ''')
-                disabled_services = cursor.fetchall() or []
-            
-            # Pagination
-            total_pages = (len(disabled_services) + self.ITEMS_PER_PAGE - 1) // self.ITEMS_PER_PAGE if disabled_services else 1
-            start_idx = (page - 1) * self.ITEMS_PER_PAGE
-            end_idx = start_idx + self.ITEMS_PER_PAGE
-            
-            services_page = disabled_services[start_idx:end_idx]
+                    LIMIT {self.ITEMS_PER_PAGE} OFFSET %s
+                """, (offset,))
+                services_page = cursor.fetchall() or []
             
             # Create buttons for services
             keyboard = []
             for service in services_page:
                 service_name = service.get('client_name', 'نامشخص')
-                volume = service.get('total_gb', 0)
-                used = service.get('used_gb', 0)
+                volume = float(service.get('total_gb') or 0)
+                used = float(service.get('used_gb') or 0)
+                status_str = str(service.get('status') or '')
+                if status_str == 'exhausted':
+                    status_icon = "🟠"
+                elif status_str == 'expired':
+                    status_icon = "🟡"
+                else:
+                    status_icon = "🔴"
                 
                 keyboard.append([
                     InlineKeyboardButton(
-                        f"🔴 {service_name} | {used:.1f}GB/{volume:.1f}GB",
+                        f"{status_icon} {service_name} | {used:.1f}GB/{volume:.1f}GB",
                         callback_data=f"service_detail_{service['id']}"
                     )
                 ])
@@ -843,7 +912,7 @@ class StatisticsSystem:
             message = f"""🔴 **لیست سرویس‌های غیرفعال**
 
 📊 **صفحه:** `{page}/{total_pages}`
-📦 **سرویس‌های غیرفعال:** `{len(disabled_services)} عدد`"""
+📦 **سرویس‌های غیرفعال:** `{total_services} عدد`"""
             
             reply_markup = InlineKeyboardMarkup(keyboard)
             return message, reply_markup

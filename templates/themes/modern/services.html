@@ -95,9 +95,8 @@
             <!-- Filters -->
             <div class="filters-scroll fade-in delay-1">
                 <button class="filter-chip active" onclick="setFilter('all', this)">همه</button>
-                <button class="filter-chip" onclick="setFilter('online', this)">آنلاین</button>
-                <button class="filter-chip" onclick="setFilter('offline', this)">آفلاین</button>
-                <button class="filter-chip" onclick="setFilter('expiring', this)">در حال انقضا</button>
+                <button class="filter-chip" onclick="setFilter('active', this)">فعال</button>
+                <button class="filter-chip" onclick="setFilter('inactive', this)">غیرفعال</button>
             </div>
 
             <!-- Services Grid -->
@@ -105,8 +104,7 @@
                 {% if services %}
                 {% for service in services %}
                 <div class="service-card-detailed" data-name="{{ service.client_name or service.id }}"
-                    data-status="{% if service.is_online %}online{% else %}offline{% endif %}"
-                    data-expiring="{% if service.remaining_days and service.remaining_days < 3 %}true{% else %}false{% endif %}">
+                    data-status="{% if service.is_active %}active{% else %}inactive{% endif %}">
 
                     <div class="card-header-detailed">
                         <div class="service-icon">
@@ -119,12 +117,18 @@
                         <div class="service-info-main">
                             <div class="service-title">{{ service.client_name or 'سرویس شخصی' }}</div>
                             <div class="service-subtitle">#{{ service.id }} • {{ service.protocol|upper if
-                                service.protocol else 'VLESS' }}</div>
+                                service.protocol else 'VLESS' }}{% if service.inbound_name %} • {{ service.inbound_name }}{% endif %}</div>
                         </div>
                         <div
-                            class="status-badge-lg {% if service.is_online %}status-active{% else %}status-inactive{% endif %}">
+                            class="status-badge-lg {% if service.is_active %}status-active{% else %}status-inactive{% endif %}">
                             <span class="pulse-dot"></span>
-                            {% if service.is_online %}آنلاین{% else %}آفلاین{% endif %}
+                            {% if not service.is_active %}
+                            غیرفعال
+                            {% elif service.used_gb|default(0)|float == 0 %}
+                            استفاده نشده
+                            {% else %}
+                            فعال
+                            {% endif %}
                         </div>
                     </div>
 
@@ -143,8 +147,8 @@
 
                         {% set percentage = service.usage_percentage|default(0)|int %}
                         <div class="progress-container-lg">
-                            <div class="progress-bar"
-                                style="width: {{ percentage }}%; {% if percentage > 90 %}background: var(--c-danger);{% endif %}">
+                            <div class="progress-bar {% if percentage > 90 %}bg-danger{% endif %}"
+                                data-width="{{ percentage }}">
                             </div>
                         </div>
 
@@ -246,6 +250,17 @@
 
     <script src="{{ url_for('static', filename='themes/modern/script.js') }}"></script>
     <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const bars = document.querySelectorAll('.progress-bar[data-width]');
+            bars.forEach(bar => {
+                const width = bar.getAttribute('data-width');
+                if(width) {
+                    setTimeout(() => { bar.style.width = width + '%'; }, 100);
+                }
+            });
+        });
+    </script>
+    <script>
         // Filter Logic
         let currentFilter = 'all';
 
@@ -267,14 +282,12 @@
             cards.forEach(card => {
                 const name = card.dataset.name.toLowerCase();
                 const status = card.dataset.status;
-                const expiring = card.dataset.expiring === 'true';
 
                 let matchesSearch = name.includes(searchTerm);
                 let matchesFilter = true;
 
-                if (currentFilter === 'online' && status !== 'online') matchesFilter = false;
-                if (currentFilter === 'offline' && status !== 'offline') matchesFilter = false;
-                if (currentFilter === 'expiring' && !expiring) matchesFilter = false;
+                if (currentFilter === 'active' && status !== 'active') matchesFilter = false;
+                if (currentFilter === 'inactive' && status !== 'inactive') matchesFilter = false;
 
                 if (matchesSearch && matchesFilter) {
                     card.style.display = 'flex';

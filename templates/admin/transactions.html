@@ -99,8 +99,7 @@
                 style="margin-bottom: var(--sp-md); border-bottom: 1px solid var(--border-color); padding-bottom: var(--sp-md);">
                 <div style="display: flex; gap: var(--sp-md); align-items: center;">
                     <div style="position: relative;">
-                        <div
-                            style="width: 50px; height: 50px; border-radius: var(--radius-lg); background: var(--p-bg-hover); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; color: {% if invoice.status == 'paid' or invoice.status == 'completed' %}var(--p-success){% elif invoice.status == 'pending' %}var(--p-warning){% else %}var(--p-error){% endif %};">
+                        <div class="transaction-icon icon-{{ 'success' if invoice.status in ['paid', 'completed'] else 'warning' if invoice.status == 'pending' else 'error' }}">
                             {% if invoice.status == 'paid' or invoice.status == 'completed' %}
                             <i class="fas fa-check-circle"></i>
                             {% elif invoice.status == 'pending' %}
@@ -118,8 +117,7 @@
                         </div>
                     </div>
                     <div style="text-align: left;">
-                        <div
-                            style="font-weight: 800; font-size: 1.1rem; color: {% if invoice.status == 'paid' or invoice.status == 'completed' %}var(--p-success){% elif invoice.status == 'pending' %}var(--p-warning){% else %}var(--p-error){% endif %};">
+                        <div class="transaction-amount text-{{ 'success' if invoice.status in ['paid', 'completed'] else 'warning' if invoice.status == 'pending' else 'error' }}">
                             {{ "{:,}".format(invoice.amount) }} <span style="font-size: 0.7rem;">تومان</span>
                         </div>
                     </div>
@@ -165,7 +163,7 @@
 
                 {% if invoice.status == 'pending' and invoice.order_id %}
                 <button class="btn btn-sm btn-outline" style="width: 100%; margin-top: var(--sp-sm);"
-                    onclick="checkTransactionStatus({{ invoice.id }}, '{{ invoice.order_id }}', this)">
+                    onclick="checkTransactionStatus('{{ invoice.id }}', '{{ invoice.order_id }}', this)">
                     <i class="fas fa-sync-alt"></i>
                     بررسی وضعیت
                 </button>
@@ -173,7 +171,7 @@
                 
                 {% if invoice.receipt_path %}
                 <button class="btn btn-sm btn-info" style="width: 100%; margin-top: var(--sp-sm); background: var(--p-info); border-color: var(--p-info); color: white;"
-                    onclick="showReceiptModal({{ invoice.id }}, '{{ invoice.receipt_path }}', '{{ invoice.receipt_status }}')">
+                    onclick="showReceiptModal('{{ invoice.id }}', '{{ invoice.receipt_path }}', '{{ invoice.receipt_status }}')">
                     <i class="fas fa-file-invoice"></i>
                     مشاهده رسید
                 </button>
@@ -323,7 +321,7 @@
             setTimeout(() => window.location.reload(), 1000);
         } catch (error) {
             console.error(error);
-            showToast(error.message || 'خطا در تایید رسید', 'error');
+            showToast((error && error.message) || 'خطا در تایید رسید', 'error');
         }
     }
 
@@ -339,7 +337,7 @@
             setTimeout(() => window.location.reload(), 1000);
         } catch (error) {
             console.error(error);
-            showToast(error.message || 'خطا در رد رسید', 'error');
+            showToast((error && error.message) || 'خطا در رد رسید', 'error');
         }
     }
 </script>

@@ -125,6 +125,69 @@ def sanitize_input(text: str, max_length: Optional[int] = None) -> str:
     
     return text.strip()
 
+def check_waf(request) -> Optional[Response]:
+    """
+    Basic Web Application Firewall (WAF)
+    Checks for common attack patterns in request arguments, form data, and headers
+    """
+    try:
+        # Common attack patterns
+        sql_injection_patterns = [
+            r"(\%27)|(\')",  # Single quote
+            r"(\-\-)",       # Comment
+            r"(\%23)|(#)",   # Comment
+            r"((\%3D)|(=))[^\n]*((\%27)|(\')|(\-\-)|(\%3B)|(;))", # SQL meta-characters
+            r"\w*((\%27)|(\'))((\%6F)|o|(\%4F))((\%72)|r|(\%52))", # ' or '
+            r"((\%27)|(\'))union", # ' union
+            r"exec(\s|\+)+(s|x)p\w+", # exec sp_...
+            r"union\s+select", # union select
+            r"information_schema" # information_schema
+        ]
+        
+        xss_patterns = [
+            r"<script>",
+            r"javascript:",
+            r"onload=",
+            r"onerror=",
+            r"alert\(",
+            r"document\.cookie"
+        ]
+        
+        path_traversal_patterns = [
+            r"\.\./",
+            r"\.\.\\"
+        ]
+        
+        all_patterns = sql_injection_patterns + xss_patterns + path_traversal_patterns
+        
+        # Check query parameters
+        for key, value in request.args.items():
+            for pattern in all_patterns:
+                if re.search(pattern, str(value), re.IGNORECASE):
+                    logger.warning(f"WAF: Blocked suspicious request param {key}={value} from {request.remote_addr}")
+                    return jsonify({'success': False, 'message': 'Request blocked by security firewall'}), 403
+                    
+        # Check form data
+        for key, value in request.form.items():
+            for pattern in all_patterns:
+                if re.search(pattern, str(value), re.IGNORECASE):
+                    logger.warning(f"WAF: Blocked suspicious form data {key}={value} from {request.remote_addr}")
+                    return jsonify({'success': False, 'message': 'Request blocked by security firewall'}), 403
+                    
+        # Check JSON data
+        if request.is_json and request.json:
+            import json
+            json_str = json.dumps(request.json)
+            for pattern in all_patterns:
+                if re.search(pattern, json_str, re.IGNORECASE):
+                    logger.warning(f"WAF: Blocked suspicious JSON data from {request.remote_addr}")
+                    return jsonify({'success': False, 'message': 'Request blocked by security firewall'}), 403
+                    
+        return None
+    except Exception as e:
+        logger.error(f"Error in WAF check: {e}")
+        return None
+
 def sanitize_filename(filename: str) -> str:
     """Sanitize filename to prevent path traversal attacks"""
     # Remove directory separators

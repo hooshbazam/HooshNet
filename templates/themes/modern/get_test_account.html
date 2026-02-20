@@ -1,0 +1,302 @@
+{% extends "themes/modern/base.html" %}
+
+{% block title %}دریافت اکانت تست{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='themes/modern/redesign.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="redesign-wrapper">
+    <!-- Header -->
+    <div class="r-header anim-entry">
+        <a href="{{ add_bot_prefix('/dashboard') }}" class="r-back-btn">
+            <i class="fas fa-arrow-right"></i>
+        </a>
+        <h1 class="r-page-title">اکانت تست رایگان</h1>
+        <div style="width: 44px;"></div>
+    </div>
+
+    <!-- Hero Section -->
+    <div class="r-hero-card anim-entry delay-1 shimmer-effect" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+        <div style="position: relative; z-index: 1;">
+            <div style="font-size: 0.9rem; color: rgba(255,255,255,0.9); margin-bottom: 4px;">تست کیفیت سرویس</div>
+            <div style="font-size: 1.5rem; font-weight: 800; color: #fff; letter-spacing: -0.5px; margin-bottom: 10px;">
+                رایگان و آنی
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <div style="background: rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; display: flex; align-items: center; gap: 6px;">
+                    <i class="fas fa-database"></i> {{ volume }} گیگابایت
+                </div>
+                <div style="background: rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; display: flex; align-items: center; gap: 6px;">
+                    <i class="fas fa-clock"></i> {{ duration }} ساعت
+                </div>
+            </div>
+        </div>
+        <i class="fas fa-flask" style="position: absolute; left: 20px; bottom: 20px; font-size: 4rem; opacity: 0.2; transform: rotate(15deg);"></i>
+    </div>
+
+    {% if panels %}
+    <!-- Step 1: Location Selection -->
+    <div class="anim-entry delay-2" style="margin-top: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding: 0 4px;">
+            <h3 style="font-size: 1.1rem; font-weight: 700;">انتخاب لوکیشن</h3>
+            <span style="font-size: 0.8rem; color: var(--r-text-muted);">یک سرور را انتخاب کنید</span>
+        </div>
+
+        <div class="r-grid-2">
+            {% for panel in panels %}
+            <div class="r-select-card" onclick="selectPanel('{{ panel.id }}', 'تست رایگان از {{ panel.display_name }}', '{{ panel.country_fa }}')" id="panel-{{ panel.id }}">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div class="flag-icon">
+                            {% if 'آلمان' in panel.country_fa %}🇩🇪
+                            {% elif 'هلند' in panel.country_fa %}🇳🇱
+                            {% elif 'فنلاند' in panel.country_fa %}🇫🇮
+                            {% elif 'آمریکا' in panel.country_fa %}🇺🇸
+                            {% elif 'فرانسه' in panel.country_fa %}🇫🇷
+                            {% elif 'ترکیه' in panel.country_fa %}🇹🇷
+                            {% elif 'ایران' in panel.country_fa %}🇮🇷
+                            {% else %}🌍{% endif %}
+                        </div>
+                        <div>
+                            <div style="font-weight: 700; font-size: 0.95rem;">{{ panel.country_fa }}</div>
+                            <div style="font-size: 0.75rem; color: var(--r-text-muted);">تست رایگان از {{ panel.display_name }}</div>
+                        </div>
+                    </div>
+                    <div class="r-radio-circle"></div>
+                </div>
+                
+                <div style="display: flex; gap: 8px; font-size: 0.75rem; color: var(--r-text-muted);">
+                    <span style="background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px;">ضد فیلتر</span>
+                    <span style="background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px;">پرسرعت</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% else %}
+    <div class="anim-entry delay-2" style="margin-top: 24px; text-align: center; padding: 40px 20px; background: rgba(255,255,255,0.03); border-radius: 20px;">
+        <i class="fas fa-exclamation-circle" style="font-size: 3rem; color: var(--r-text-muted); margin-bottom: 16px;"></i>
+        <h3 style="margin-bottom: 8px;">هیچ سرور تستی در دسترس نیست</h3>
+        <p style="color: var(--r-text-muted); font-size: 0.9rem;">
+            ممکن است سقف دریافت اکانت تست شما پر شده باشد یا در حال حاضر سرور تستی موجود نباشد.
+        </p>
+        <a href="{{ add_bot_prefix('/dashboard') }}" class="r-btn r-btn-glass" style="margin-top: 20px; display: inline-flex;">بازگشت به داشبورد</a>
+    </div>
+    {% endif %}
+
+    <!-- Bottom Action -->
+    <div id="actionContainer" class="anim-entry delay-3" style="position: fixed; bottom: 0; left: 0; right: 0; padding: 20px; background: rgba(18, 18, 18, 0.95); backdrop-filter: blur(10px); border-top: 1px solid rgba(255,255,255,0.1); transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 100;">
+        <div class="redesign-wrapper" style="padding: 0; min-height: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <div>
+                    <div style="font-size: 0.8rem; color: var(--r-text-muted);">سرور انتخاب شده</div>
+                    <div style="font-weight: 700; color: #fff;" id="selectedPanelName">-</div>
+                </div>
+                <div style="text-align: left;">
+                    <div style="font-size: 0.8rem; color: var(--r-text-muted);">هزینه</div>
+                    <div style="font-weight: 700; color: var(--r-success);">رایگان</div>
+                </div>
+            </div>
+            <button class="r-btn r-btn-primary" id="submitBtn" onclick="createTestAccount()" style="width: 100%;">
+                <span id="btnText">دریافت اکانت تست</span>
+                <i class="fas fa-bolt"></i>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Success Modal -->
+<div id="successModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center; padding: 20px; backdrop-filter: blur(5px);">
+    <div class="anim-scale-in" style="background: #1e1e1e; width: 100%; max-width: 400px; border-radius: 24px; padding: 24px; border: 1px solid rgba(255,255,255,0.1); text-align: center;">
+        <div style="width: 80px; height: 80px; background: rgba(16, 185, 129, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px;">
+            <i class="fas fa-check" style="font-size: 40px; color: #10b981;"></i>
+        </div>
+        
+        <h2 style="font-size: 1.5rem; font-weight: 800; margin-bottom: 12px;">اکانت تست ساخته شد!</h2>
+        <p style="color: var(--r-text-muted); font-size: 0.9rem; margin-bottom: 24px;">
+            اطلاعات اتصال برای شما در تلگرام ارسال شد. همچنین می‌توانید لینک زیر را کپی کنید.
+        </p>
+        
+        <div class="r-input-wrapper" style="margin-bottom: 12px;">
+            <i class="fas fa-link r-input-icon"></i>
+            <input type="text" id="subLink" class="r-input" readonly value="">
+            <button onclick="copyLink('subLink')" style="position: absolute; left: 8px; top: 8px; background: rgba(255,255,255,0.1); border: none; color: #fff; width: 32px; height: 32px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-copy"></i>
+            </button>
+        </div>
+
+        <a href="{{ add_bot_prefix('/dashboard') }}" class="r-btn r-btn-primary" style="margin-top: 20px;">
+            بازگشت به داشبورد
+        </a>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script id="categories-data" type="application/json">
+    {{ panel_categories_map | default({}) | tojson | safe }}
+</script>
+<script>
+    let selectedPanelId = null;
+    let selectedCategoryId = null;
+    
+    // Store categories
+    const panelCategories = JSON.parse(document.getElementById('categories-data').textContent);
+
+    function selectPanel(id, name, country) {
+        // Reset category
+        selectedCategoryId = null;
+        
+        // Check if panel has categories
+        if (panelCategories[id] && panelCategories[id].length > 0) {
+            // If only one category, auto select it
+            if (panelCategories[id].length === 1) {
+                 selectedCategoryId = panelCategories[id][0].id;
+                 finalizePanelSelection(id, name, country);
+            } else {
+                 // Show modal
+                 showCategoryModal(id, name, country);
+            }
+            return;
+        }
+        
+        finalizePanelSelection(id, name, country);
+    }
+    
+    function finalizePanelSelection(id, name, country, categoryName = '') {
+        // Deselect others
+        document.querySelectorAll('.r-select-card').forEach(el => el.classList.remove('selected'));
+        
+        // Select this
+        const card = document.getElementById(`panel-${id}`);
+        if (card) {
+            card.classList.add('selected');
+            selectedPanelId = id;
+            
+            // Update UI
+            let displayName = country + ' - ' + name;
+            if (categoryName) {
+                displayName += ` (${categoryName})`;
+            }
+            document.getElementById('selectedPanelName').textContent = displayName;
+            
+            // Show action bar
+            document.getElementById('actionContainer').style.transform = 'translateY(0)';
+        }
+    }
+    
+    function showCategoryModal(panelId, panelName, country) {
+        const modal = document.getElementById('categoryModal');
+        const list = document.getElementById('categoryList');
+        list.innerHTML = '';
+        
+        const categories = panelCategories[panelId];
+        categories.forEach(cat => {
+            const div = document.createElement('div');
+            div.className = 'r-select-card';
+            div.style.padding = '12px';
+            div.style.marginBottom = '0';
+            div.onclick = () => {
+                selectedCategoryId = cat.id;
+                closeCategoryModal();
+                finalizePanelSelection(panelId, panelName, country, cat.name);
+            };
+            
+            div.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="font-weight: 700; color: #fff;">${cat.name}</div>
+                        <div style="font-size: 0.8rem; color: var(--r-text-muted);">
+                            <i class="fas fa-database"></i> ${cat.test_volume || 0} GB
+                            <span style="margin: 0 4px;">|</span>
+                            <i class="fas fa-clock"></i> ${cat.test_duration || 0} ساعت
+                        </div>
+                    </div>
+                    <i class="fas fa-chevron-left" style="color: var(--r-text-muted);"></i>
+                </div>
+            `;
+            list.appendChild(div);
+        });
+        
+        modal.style.display = 'flex';
+    }
+    
+    function closeCategoryModal() {
+        document.getElementById('categoryModal').style.display = 'none';
+    }
+
+    async function createTestAccount() {
+        if (!selectedPanelId) return;
+
+        const btn = document.getElementById('submitBtn');
+        const btnText = document.getElementById('btnText');
+        const originalText = btnText.textContent;
+        
+        // Loading state
+        btn.disabled = true;
+        btnText.textContent = 'در حال ساخت اکانت...';
+        btn.style.opacity = '0.7';
+
+        try {
+            const res = await fetch(fixUrl('/api/create-test-account'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    panel_id: selectedPanelId
+                })
+            });
+
+            const data = await res.json();
+
+            if (data.success) {
+                // Show success modal
+                document.getElementById('subLink').value = data.subscription_link;
+                document.getElementById('successModal').style.display = 'flex';
+                document.getElementById('actionContainer').style.display = 'none';
+            } else {
+                showToast(data.message || 'خطا در ساخت اکانت', 'error');
+                btn.disabled = false;
+                btnText.textContent = originalText;
+                btn.style.opacity = '1';
+            }
+        } catch (e) {
+            console.error(e);
+            showToast('خطا در ارتباط با سرور', 'error');
+            btn.disabled = false;
+            btnText.textContent = originalText;
+            btn.style.opacity = '1';
+        }
+    }
+
+    function copyLink(id) {
+        const input = document.getElementById(id);
+        input.select();
+        document.execCommand('copy');
+        showToast('لینک کپی شد', 'success');
+    }
+
+    // Helper for URL fixing (if needed for bot context)
+    function fixUrl(url) {
+        // Check if we are in bot webview context (url starts with /bot<id>)
+        const path = window.location.pathname;
+        const parts = path.split('/');
+        if (parts.length > 1 && /^\d+$/.test(parts[1])) {
+            return `/${parts[1]}${url}`;
+        }
+        return url;
+    }
+
+    function showToast(message, type = 'info') {
+        // Simple toast implementation if not available globally
+        if (window.showToast) {
+            window.showToast(message, type);
+            return;
+        }
+        alert(message);
+    }
+</script>
+{% endblock %}

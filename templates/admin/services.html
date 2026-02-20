@@ -1,6 +1,17 @@
 {% extends "admin/base.html" %}
 
-{% block page_title %}مدیریت سرویس‌ها{% endblock %}
+{% block page_title %}مدیریت سرویس‌ها    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const bars = document.querySelectorAll('.progress-bar-fill[data-width]');
+            bars.forEach(bar => {
+                const width = bar.getAttribute('data-width');
+                if(width) {
+                    setTimeout(() => { bar.style.width = width + '%'; }, 100);
+                }
+            });
+        });
+    </script>
+{% endblock %}
 {% block page_subtitle %}لیست و وضعیت سرویس‌های کاربران{% endblock %}
 
 {% block content %}
@@ -65,12 +76,10 @@
                 style="margin-bottom: var(--sp-md); border-bottom: 1px solid var(--border-color); padding-bottom: var(--sp-md);">
                 <div style="display: flex; gap: var(--sp-md); align-items: center;">
                     <div style="position: relative;">
-                        <div
-                            style="width: 50px; height: 50px; border-radius: var(--radius-lg); background: var(--p-bg-hover); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; color: {% if service.is_active %}var(--p-success){% else %}var(--p-error){% endif %};">
+                        <div class="service-icon icon-{{ 'active' if service.is_active else 'inactive' }}">
                             <i class="fas fa-network-wired"></i>
                         </div>
-                        <div
-                            style="position: absolute; bottom: -2px; right: -2px; width: 12px; height: 12px; border-radius: 50%; background: {% if service.is_active %}var(--p-success){% else %}var(--p-error){% endif %}; border: 2px solid var(--p-bg-card);">
+                        <div class="status-dot dot-{{ 'active' if service.is_active else 'inactive' }}">
                         </div>
                     </div>
                     <div style="flex: 1; min-width: 0;">
@@ -120,8 +129,8 @@
                         style="height: 6px; background: var(--p-bg-main); border-radius: 3px; overflow: hidden;">
                         {% set used_percent = ((service.used_gb or service.cached_used_gb or 0) / (service.total_gb or
                         1) * 100) if (service.total_gb or 0) > 0 else 0 %}
-                        <div
-                            style="width: {{ used_percent }}%; height: 100%; background: {% if used_percent > 90 %}var(--p-error){% elif used_percent > 70 %}var(--p-warning){% else %}var(--p-success){% endif %}; border-radius: 3px;">
+                        <div class="progress-bar-fill {% if used_percent > 90 %}bg-error{% elif used_percent > 70 %}bg-warning{% else %}bg-success{% endif %}"
+                            data-width="{{ used_percent }}">
                         </div>
                     </div>
                 </div>

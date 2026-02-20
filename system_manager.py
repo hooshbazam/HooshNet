@@ -34,6 +34,7 @@ class SystemManager:
         self.db_manager = db_manager
         self.bot_config = bot_config
         self.backup_system = DatabaseBackupManager(db_manager, bot, bot_config)
+        self.backup_manager = self.backup_system
 
     async def update_system(self) -> Tuple[bool, str]:
         """
@@ -71,6 +72,9 @@ class SystemManager:
             Tuple (success, message)
         """
         try:
+            if not getattr(self.backup_system, 'channel_id', None):
+                return False, "❌ آیدی کانال گزارشات (reports_channel_id) تنظیم نشده است."
+
             # Use existing backup system
             backup_path = await self.backup_system.create_and_send_backup()
             if backup_path:
@@ -117,7 +121,11 @@ class SystemManager:
             ram_percent = memory.percent
             
             # Disk
-            disk = psutil.disk_usage('/')
+            disk_path = '/'
+            if platform.system() == 'Windows':
+                disk_path = os.path.abspath(os.sep)
+            
+            disk = psutil.disk_usage(disk_path)
             disk_used = disk.used / (1024 * 1024 * 1024)
             disk_total = disk.total / (1024 * 1024 * 1024)
             disk_percent = disk.percent
@@ -205,6 +213,9 @@ class SystemManager:
             Tuple (success, message)
         """
         try:
+            if platform.system() == 'Windows':
+                 return False, "⚠️ ریستارت سرویس‌ها در ویندوز پشتیبانی نمی‌شود. لطفاً دستی ریستارت کنید."
+            
             # Restart services
             subprocess.Popen(['sudo', 'systemctl', 'restart', 'vpn-bot', 'vpn-webapp'])
             return True, "✅ دستور ریستارت ارسال شد. ربات تا لحظاتی دیگر مجدداً فعال می‌شود."
@@ -215,6 +226,23 @@ class SystemManager:
     def _check_service_active(self, service_name: str) -> bool:
         """Check if a systemd service is active"""
         try:
+            if platform.system() == 'Windows':
+                # Simple process check for Windows
+                # Mapping service names to likely process names
+                process_map = {
+                    'vpn-bot': 'python',
+                    'vpn-webapp': 'python',
+                    'mysql': 'mysqld',
+                    'nginx': 'nginx'
+                }
+                proc_name = process_map.get(service_name, service_name)
+                # Check if psutil is available (it should be as we checked in get_system_status)
+                if psutil:
+                    for p in psutil.process_iter(['name']):
+                        if p.info['name'] and proc_name.lower() in p.info['name'].lower():
+                            return True
+                return False
+
             result = subprocess.run(
                 ['systemctl', 'is-active', service_name],
                 stdout=subprocess.PIPE,

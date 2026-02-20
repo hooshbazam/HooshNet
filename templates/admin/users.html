@@ -326,7 +326,7 @@
             document.getElementById('giftForm').reset();
             setTimeout(() => window.location.reload(), 1500);
         } catch (error) {
-            showToast(error.message || 'خطا در ارسال هدیه', 'error');
+            showToast((error && error.message) || 'خطا در ارسال هدیه', 'error');
             btn.innerHTML = originalText;
             btn.disabled = false;
         }
