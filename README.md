@@ -35,7 +35,7 @@
 ### 🚀 دستور نصب سریع
 
 ```bash
-git clone https://github.com/hooshbazam/HooshNet.git && cd hoshnetsc && chmod +x installer.sh && sudo ./installer.sh
+git clone https://github.com/hooshbazam/HooshNet.git && cd hooshnet && chmod +x installer.sh && sudo ./installer.sh
 ```
 
 پس از اجرای دستور، منوی نصب ظاهر می‌شود. گزینه **Install** را انتخاب کنید و مراحل را دنبال نمایید.
